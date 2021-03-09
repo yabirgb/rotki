@@ -13282,6 +13282,20 @@
         "symbol": "X8X",
         "type": "ethereum token"
     },
+    "xAAVEa": {
+        "coingecko": "xaavea",
+        "name": "xAAVEa",
+        "started": 1606451749,
+        "symbol": "xAAVEa",
+        "type": "ethereum token"
+    },
+    "xAAVEb": {
+        "coingecko": "xaaveb",
+        "name": "xAAVEb",
+        "started": 1606456410,
+        "symbol": "xAAVEb",
+        "type": "ethereum token"
+    },
     "XAI": {
         "active": false,
         "coingecko": "",
@@ -13453,6 +13467,20 @@
         "symbol": "XID",
         "type": "ethereum token"
     },
+    "xINCHa": {
+        "coingecko": "xincha",
+        "name": "xINCHa",
+        "started": 1611777065,
+        "symbol": "xINCHa",
+        "type": "ethereum token"
+    },
+    "xINCHb": {
+        "coingecko": "xinchb",
+        "name": "xINCHb",
+        "started": 1611779302,
+        "symbol": "xINCHb",
+        "type": "ethereum token"
+    },
     "XLB": {
         "active": false,
         "coingecko": "",
@@ -13618,6 +13646,13 @@
         "started": 1398211200,
         "symbol": "XSI",
         "type": "own chain"
+    },
+    "xSNXa": {
+        "coingecko": "xsnxa",
+        "name": "xSNXa",
+        "started": 1601566970,
+        "symbol": "xSNXa",
+        "type": "ethereum token"
     },
     "XSR": {
         "active": true,
