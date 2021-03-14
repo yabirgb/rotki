@@ -1469,6 +1469,63 @@ class DBHandler:
         self.conn.commit()
         self.update_last_write()
 
+    def add_yearn_v2_vaults_events(
+            self,
+            address: ChecksumEthAddress,
+            events: List[YearnVaultEvent],
+    ) -> None:
+        cursor = self.conn.cursor()
+        for e in events:
+            pnl_amount = None
+            pnl_usd_value = None
+            if e.realized_pnl:
+                pnl_amount = str(e.realized_pnl.amount)
+                pnl_usd_value = str(e.realized_pnl.usd_value)
+            event_tuple = (
+                address,
+                e.event_type,
+                e.from_asset.identifier,
+                str(e.from_value.amount),
+                str(e.from_value.usd_value),
+                e.to_asset.identifier,
+                str(e.to_value.amount),
+                str(e.to_value.usd_value),
+                pnl_amount,
+                pnl_usd_value,
+                str(e.block_number),
+                str(e.timestamp),
+                e.tx_hash,
+                e.log_index,
+            )
+            try:
+                cursor.execute(
+                    'INSERT INTO yearn_v2_vaults_events( '
+                    'address, '
+                    'event_type, '
+                    'from_asset, '
+                    'from_amount, '
+                    'from_usd_value, '
+                    'to_asset, '
+                    'to_amount, '
+                    'to_usd_value, '
+                    'pnl_amount, '
+                    'pnl_usd_value, '
+                    'block_number, '
+                    'timestamp, '
+                    'tx_hash, '
+                    'log_index)'
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    event_tuple,
+                )
+            except sqlcipher.IntegrityError:  # pylint: disable=no-member
+                self.msg_aggregator.add_warning(
+                    f'Tried to add a yearn vault event that already exists in the DB. '
+                    f'Event data: {event_tuple}. Skipping...',
+                )
+
+        self.conn.commit()
+        self.update_last_write()
+
     def get_yearn_vaults_events(
             self,
             address: ChecksumEthAddress,

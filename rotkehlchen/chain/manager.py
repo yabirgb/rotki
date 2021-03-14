@@ -51,6 +51,7 @@ from rotkehlchen.chain.ethereum.modules import (
     MakerdaoVaults,
     Uniswap,
     YearnVaults,
+    YearnV2Vaults,
 )
 from rotkehlchen.chain.ethereum.tokens import EthTokens
 from rotkehlchen.chain.substrate.manager import wait_until_a_node_is_available
@@ -405,6 +406,10 @@ class ChainManager(CacheableObject, LockableQueryObject):
 
     @overload
     def get_module(self, module_name: Literal['yearn_vaults']) -> Optional[YearnVaults]:
+        ...
+
+    @overload
+    def get_module(self, module_name: Literal['yearn_v2_vaults']) -> Optional[YearnV2Vaults]:
         ...
 
     def get_module(self, module_name: ModuleName) -> Optional[Any]:

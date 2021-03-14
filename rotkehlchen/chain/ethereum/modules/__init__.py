@@ -8,6 +8,7 @@ __all__ = [
     'MakerdaoVaults',
     'Uniswap',
     'YearnVaults',
+    'YearnV2Vaults',
 ]
 
 from .aave import Aave
@@ -19,3 +20,4 @@ from .makerdao.dsr import MakerdaoDsr
 from .makerdao.vaults import MakerdaoVaults
 from .uniswap.uniswap import Uniswap
 from .yearn.vaults import YearnVaults
+from .yearn.v2_vaults import YearnV2Vaults

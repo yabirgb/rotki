@@ -278,6 +278,14 @@ def handle_defi_price_query(
             div_decimals=token.decimals,
             asset_price=underlying_asset_price,
         )
+    elif token_symbol == 'yv1INCH':
+        assert underlying_asset_price
+        token = EthereumToken(token_symbol)
+        usd_value = handle_underlying_price_harvest_vault(
+            ethereum=ethereum,
+            token=token,
+            underlying_asset_price=underlying_asset_price,
+        )
     elif token_symbol in HARVEST_VAULTS:
         assert underlying_asset_price
         token = EthereumToken(token_symbol)

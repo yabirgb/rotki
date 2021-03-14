@@ -142,3 +142,4 @@ ERC20TOKEN_ABI = EthereumConstants.abi('ERC20_TOKEN')
 FARM_ASSET_ABI = EthereumConstants.abi('FARM_ASSET')
 
 YEARN_VAULTS_PREFIX = 'yearn_vaults_events'
+YEARN_V2_VAULTS_PREFIX = 'yearn_v2_vaults_events'
