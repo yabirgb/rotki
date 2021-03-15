@@ -322,7 +322,7 @@ class Loopring(ExternalServiceWithApiKey, EthereumModule, LockableQueryObject):
         for balance_entry in response:
             try:
                 token_id = balance_entry['tokenId']
-                total = balance_entry['total']
+                total = int(balance_entry['total'])
             except KeyError as e:
                 raise RemoteError(
                     f'Failed to query loopring balances because a balance entry '
