@@ -29,6 +29,7 @@ from rotkehlchen.db.loopring import DBLoopring
 from rotkehlchen.errors import DeserializationError, RemoteError
 from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
 from rotkehlchen.inquirer import Inquirer
+from rotkehlchen.serialization.deserialize import deserialize_int_from_str
 from rotkehlchen.typing import ChecksumEthAddress, ExternalService
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule, LockableQueryObject, protect_with_lock
@@ -322,7 +323,7 @@ class Loopring(ExternalServiceWithApiKey, EthereumModule, LockableQueryObject):
         for balance_entry in response:
             try:
                 token_id = balance_entry['tokenId']
-                total = int(balance_entry['total'])
+                total = deserialize_int_from_str(balance_entry['total'], 'loopring_balances')
             except KeyError as e:
                 raise RemoteError(
                     f'Failed to query loopring balances because a balance entry '
