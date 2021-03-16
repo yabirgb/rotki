@@ -47,7 +47,7 @@ def get_manually_tracked_balances(db: 'DBHandler') -> List[ManuallyTrackedBalanc
 
         balances_with_value.append(ManuallyTrackedBalanceWithValue(
             **entry._asdict(),
-            usd_value=FVal(price) * entry.amount,
+            usd_value=price * entry.amount,
         ))
 
     return balances_with_value
