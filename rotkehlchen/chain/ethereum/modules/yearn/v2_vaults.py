@@ -1,4 +1,5 @@
 from collections import defaultdict
+import logging
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from gevent.lock import Semaphore
@@ -24,6 +25,9 @@ if TYPE_CHECKING:
     )
     from rotkehlchen.chain.ethereum.manager import EthereumManager
     from rotkehlchen.db.dbhandler import DBHandler
+
+
+log = logging.getLogger(__name__)
 
 
 class YearnV2Vaults(EthereumModule):
@@ -109,7 +113,7 @@ class YearnV2Vaults(EthereumModule):
     def get_vaults_history(
             self,
             defi_balances: List['DefiProtocolBalances'],
-            address: ChecksumEthAddress,
+            addresses: ChecksumEthAddress,
             from_block: int,
             to_block: int,
     ) -> Optional[Dict[str, YearnVaultHistory]]:
@@ -117,67 +121,80 @@ class YearnV2Vaults(EthereumModule):
         if self.graph_inquirer is None:
             return None
 
-        new_events = self.graph_inquirer.get_all_events(
-            address=EthAddress(address.lower()),
+        query_addresses = [EthAddress(address.lower()) for address in addresses]
+
+        new_events_addresses = self.graph_inquirer.get_all_events(
+            addresses=query_addresses,
             from_block=from_block,
             to_block=to_block,
         )
+        log.debug(new_events_addresses)
+        vaults_histories_per_address: Dict[ChecksumEthAddress, Dict[str, YearnVaultHistory]] = {}
 
-        # Dict that stores vault token symbol and their events + total pnl
-        vaults: Dict[str, Dict[str, List[YearnVaultEvent]]] = defaultdict(
-            lambda: defaultdict(list),
-        )
+        for address, new_events in new_events_addresses.items():
+            defi_balance=defi_balances.get(address)
 
-        # Vaults histories
-        vaults_histories: Dict[str, YearnVaultHistory] = {}
+            # Vaults histories
+            vaults_histories: Dict[str, YearnVaultHistory] = {}
 
-        # Flattern the data into an unique list
-        events = list(new_events['deposits'])
-        events.extend(new_events['withdrawals'])
-
-        for event in events:
-            if event.event_type == 'deposit':
-                vault_token_symbol = event.to_asset.identifier
-                underlying_token = event.from_asset
-            else:
-                vault_token_symbol = event.from_asset.identifier
-                underlying_token = event.to_asset
-
-            vaults[vault_token_symbol]['events'].append(event)
-
-        # Sort events in each vault
-        for key in vaults.keys():
-            vaults[key]['events'].sort(key=lambda x: x.timestamp)
-            total_pnl = self._process_vault_events(vaults[key]['events'])
-
-            current_balance = None
-            for balance in defi_balances:
-                found_balance = (
-                    balance.protocol.name == 'yearn.finance • Vaults' and
-                    balance.base_balance.token_symbol == vault_token_symbol
-                )
-                if found_balance:
-                    current_balance = balance.underlying_balances[0].balance
-                    total_pnl += current_balance
-                    break
-
-                # Due to the way we calculate usd prices for vaults we need to get the current
-                # usd price of the actual pnl amount at this point
-                if total_pnl.amount != ZERO:
-                    usd_price = get_usd_price_zero_if_error(
-                        asset=underlying_token,
-                        time=ts_now(),
-                        location='yearn vault history',
-                        msg_aggregator=self.msg_aggregator,
-                    )
-                    total_pnl.usd_value = usd_price * total_pnl.amount
-
-            vaults_histories[key] = YearnVaultHistory(
-                events=vaults[key]['events'],
-                profit_loss=total_pnl,
+            # Dict that stores vault token symbol and their events + total pnl
+            vaults: Dict[str, Dict[str, List[YearnVaultEvent]]] = defaultdict(
+                lambda: defaultdict(list),
             )
 
-        return vaults_histories
+            # Flattern the data into an unique list
+            events = list(new_events['deposits'])
+            events.extend(new_events['withdrawals'])
+
+            for event in events:
+                if event.event_type == 'deposit':
+                    vault_token_symbol = event.to_asset.identifier
+                    underlying_token = event.from_asset
+                else:
+                    vault_token_symbol = event.from_asset.identifier
+                    underlying_token = event.to_asset
+
+                vaults[vault_token_symbol]['events'].append(event)
+
+            # Sort events in each vault
+            for key in vaults.keys():
+                vaults[key]['events'].sort(key=lambda x: x.timestamp)
+                total_pnl = self._process_vault_events(vaults[key]['events'])
+
+                current_balance = None
+                for balance in defi_balances:
+                    found_balance = (
+                        balance.protocol.name == 'yearn.finance • Vaults' and
+                        balance.base_balance.token_symbol == vault_token_symbol
+                    )
+                    if found_balance:
+                        current_balance = balance.underlying_balances[0].balance
+                        total_pnl += current_balance
+                        break
+
+                    # Due to the way we calculate usd prices for vaults we 
+                    # need to get the current usd price of the actual pnl 
+                    # amount at this point
+                    if total_pnl.amount != ZERO:
+                        usd_price = get_usd_price_zero_if_error(
+                            asset=underlying_token,
+                            time=ts_now(),
+                            location='yearn vault history',
+                            msg_aggregator=self.msg_aggregator,
+                        )
+                        total_pnl.usd_value = usd_price * total_pnl.amount
+
+                vaults_histories[key] = YearnVaultHistory(
+                    events=vaults[key]['events'],
+                    profit_loss=total_pnl,
+                )
+            vaults_histories_per_address[address] = vaults_histories
+        for address in addresses:
+            address_lowered = address.lower()
+            if len(vaults_histories_per_address[address_lowered]) == 0:
+                del vaults_histories_per_address[address_lowered]
+
+        return vaults_histories_per_address
 
     def get_history(
             self,
@@ -205,23 +222,13 @@ class YearnV2Vaults(EthereumModule):
             to_block = self.ethereum.get_blocknumber_by_time(to_timestamp)
             history: Dict[ChecksumEthAddress, Dict[str, YearnVaultHistory]] = {}
 
-            for address in addresses:
-                history[address] = {}
-                vaults_histories = self.get_vaults_history(
-                    defi_balances=defi_balances.get(address, []),
-                    address=address,
-                    from_block=from_block,
-                    to_block=to_block,
-                )
+            return self.get_vaults_history(
+                defi_balances=defi_balances,
+                addresses=addresses,
+                from_block=from_block,
+                to_block=to_block,
+            )
 
-                if vaults_histories is not None:
-                    for vault_name, vault_history in vaults_histories.items():
-                        history[address][vault_name] = vault_history
-
-                if len(history[address]) == 0:
-                    del history[address]
-
-            return history
 
     # -- Methods following the EthereumModule interface -- #
     def on_startup(self) -> None:

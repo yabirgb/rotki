@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rotkehlchen.accounting.structures import Balance
 from rotkehlchen.assets.asset import Asset, EthereumToken
-from rotkehlchen.chain.ethereum.graph import Graph
+from rotkehlchen.chain.ethereum.graph import Graph, format_query_indentation
 from rotkehlchen.chain.ethereum.structures import YearnVaultEvent
 from rotkehlchen.chain.ethereum.utils import token_normalized_value
 from rotkehlchen.chain.ethereum.modules.yearn.vaults import get_usd_price_zero_if_error
@@ -22,7 +22,12 @@ log = logging.getLogger(__name__)
 QUERY_USER_DEPOSITS = (
     """
     {{
-    deposits(where: {{account: "{address}"{block_filter}}}) {
+    deposits(
+        where: {{
+            account_in: $addresses,
+            timestamp_gte: $from_block,
+            timestamp_lte: $to_block,
+        }}) {{
         id
         blockNumber
         timestamp
@@ -50,7 +55,12 @@ QUERY_USER_DEPOSITS = (
 QUERY_USER_WITHDRAWLS = (
     """
     {{
-    withdrawals(where: {{account: "{address}"{block_filter}}}) {{
+    withdrawals(
+        where: {{
+            account_in: $addresses,
+            timestamp_gte: $from_block,
+            timestamp_lte: $to_block,
+        }}) {{
         id
         tokenAmount
         sharesBurnt
@@ -77,44 +87,50 @@ QUERY_USER_WITHDRAWLS = (
 
 QUERY_USER_EVENTS = (
     """
-    {{
-    accounts(where: {{id: "{account}"}}) {{
-        id
-        deposits(where:{{blockNumber_gt:{from_block}, blockNumber_lt: {to_block}}}){{
-        id
-        blockNumber
-        timestamp
-        tokenAmount
-        sharesMinted
-        vault {{
-            shareToken {{
+    accounts(
+        where: {{
+            id_in: $addresses
+        }}) {{
             id
-            symbol
+            deposits(where:{{blockNumber_gte: $from_block, blockNumber_lte: $to_block }}){{
+                id
+                blockNumber
+                timestamp
+                tokenAmount
+                sharesMinted
+                vault {{
+                    shareToken {{
+                        id
+                        symbol
+                        name
+                    }}
+                    token {{
+                        id
+                        symbol
+                        name
+                    }}
+                }}
             }}
-            token {{
-            id
-            symbol
+            withdrawals(where:{{blockNumber_gte: $from_block, blockNumber_lte: $to_block }}) {{
+                id
+                blockNumber
+                timestamp
+                tokenAmount
+                sharesBurnt
+                vault {{
+                    shareToken {{
+                        id
+                        symbol
+                        name
+                    }}
+                    token {{
+                        id
+                        symbol
+                        name
+                    }}
+                }}
             }}
         }}
-        }}
-        withdrawals(where:{{blockNumber_gt:{from_block}, blockNumber_lt: {to_block}}}) {{
-        id
-        blockNumber
-        timestamp
-        tokenAmount
-        sharesBurnt
-        vault {{
-            shareToken {{
-            id
-            symbol
-            }}
-            token {{
-            id
-            symbol
-            }}
-        }}
-        }}
-    }}
     }}
     """
 )
@@ -294,45 +310,81 @@ class YearnV2Inquirer:
 
     def get_deposit_events(
         self,
-        address: EthAddress,
+        addresses: EthAddress,
         from_block: int,
         to_block: int,
     ) -> List[YearnVaultEvent]:
-        block_filter = f', blockNumber_gt: {from_block}, blockNumber_lt: {to_block}'
+        param_types = {
+            '$from_block': 'BigInt!',
+            '$to_block': 'BigInt!',
+            '$addresses': '[Bytes!]',
+        }
+
+        param_values = {
+            'from_block': from_block,
+            'to_block': to_block,
+            'addresses': addresses,
+        }
         query = self.graph.query(
-            querystr=QUERY_USER_DEPOSITS.format(address=address, block_filter=block_filter),
+            querystr=QUERY_USER_DEPOSITS,
+            param_types=param_types,
+            param_values=param_values,
         )
         return self._process_deposits(query["deposits"])
 
     def get_withdraw_events(
         self,
-        address: EthAddress,
+        addresses: EthAddress,
         from_block: int,
         to_block: int,
     ) -> List[YearnVaultEvent]:
-        block_filter = f', blockNumber_gt: {from_block}, blockNumber_lt: {to_block}'
+        param_types = {
+            '$from_block': 'BigInt!',
+            '$to_block': 'BigInt!',
+            '$addresses': '[Bytes!]',
+        }
+        param_values = {
+            'from_block': from_block,
+            'to_block': to_block,
+            'addresses': addresses,
+        }
         query = self.graph.query(
-            querystr=QUERY_USER_DEPOSITS.format(address=address, block_filter=block_filter),
+            querystr=QUERY_USER_WITHDRAWLS,
+            param_types=param_types,
+            param_values=param_values,
         )
         return self._process_withdrawals(query["withdrawals"])
 
     def get_all_events(
         self,
-        address: EthAddress,
+        addresses: List[EthAddress],
         from_block: int,
         to_block: int,
     ) -> Dict[str, List[YearnVaultEvent]]:
 
+        param_types = {
+            '$from_block': 'BigInt!',
+            '$to_block': 'BigInt!',
+            '$addresses': '[Bytes!]',
+        }
+        param_values = {
+            'from_block': from_block,
+            'to_block': to_block,
+            'addresses': addresses,
+        }
+        #  TODO: need to paginate correctly this query
+        querystr = format_query_indentation(QUERY_USER_EVENTS.format())
         query = self.graph.query(
-            querystr=QUERY_USER_EVENTS.format(
-                account=address,
-                from_block=from_block,
-                to_block=to_block,
-            ),
+            querystr=querystr,
+            param_types=param_types,
+            param_values=param_values,
         )
         result = {}
 
-        result['deposits'] = self._process_deposits(query['accounts'][0]['deposits'])
-        result['withdrawals'] = self._process_withdrawals(query['accounts'][0]['withdrawals'])
+        for account in query['accounts']:
+            account_id = account['id']
+            result[account_id] = {}
+            result[account_id]['deposits'] = self._process_deposits(account['deposits'])
+            result[account_id]['withdrawals'] = self._process_withdrawals(account['withdrawals'])
 
         return result
