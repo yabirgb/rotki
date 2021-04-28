@@ -8,6 +8,7 @@ import {
   axiosSnakeCaseTransformer,
   setupTransformer
 } from '@/services/axios-tranformers';
+import { basicAxiosTransformer } from '@/services/consts';
 import {
   ActionResult,
   PendingTask,
@@ -221,6 +222,15 @@ export class AssetApi {
       .post<ActionResult<PendingTask>>('/assets/updates', data, {
         validateStatus: validWithoutSessionStatus,
         transformResponse: this.baseTransformer
+      })
+      .then(handleResponse);
+  }
+
+  restoreAssetsDatabase(): Promise<boolean> {
+    return this.axios
+      .delete<ActionResult<boolean>>('/assets/updates', {
+        validateStatus: validStatus,
+        transformResponse: basicAxiosTransformer
       })
       .then(handleResponse);
   }
