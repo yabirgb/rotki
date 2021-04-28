@@ -1048,3 +1048,35 @@ class GlobalDBHandler():
              'from_timestamp': entry[2],
              'to_timestamp': entry[3],
              } for entry in query]
+
+    @staticmethod
+    def rebuild_assets_list() -> Tuple[bool, str]:
+        """
+        Delete current information about assets and repopulate with the last
+        builtin version
+        """
+        root_dir = Path(__file__).resolve().parent.parent
+        builtin_database = root_dir / 'data' / 'global.db'
+        drop_assets = 'PRAGMA foreign_keys = OFF; DELETE FROM ethereum_tokens; DELETE FROM assets; PRAGMA foreign_keys = ON;'  # noqa: E501
+        atach_datbase = f'ATTACH DATABASE "{builtin_database}" AS clean_db;'
+        check_version = 'SELECT value from clean_db.settings WHERE name=="version";'
+        insert_assets = 'INSERT INTO assets SELECT * FROM clean_db.assets; INSERT INTO ethereum_tokens SELECT * FROM clean_db.ethereum_tokens;'  # noqa: E501
+        detach_database = 'DETACH DATABASE "clean_db";'
+
+        connection = GlobalDBHandler()._conn
+        cursor = connection.cursor()
+        # Atach the clean db packaged with rotki
+        cursor.execute(atach_datbase)
+        # Check that versions match
+        query = cursor.execute(check_version)
+        version = query.fetchone()
+        if int(version[0]) != _get_setting_value(cursor, 'version', GLOBAL_DB_VERSION):
+            return False, 'Database is not updated to the latest version'
+        # If versions match drop tables
+        cursor.executescript(drop_assets)
+        # Copy assets
+        cursor.executescript(insert_assets)
+        cursor.execute(detach_database)
+        connection.commit()
+
+        return True, ''
