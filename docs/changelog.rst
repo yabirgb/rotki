@@ -2,6 +2,7 @@
 Changelog
 =========
 
+* :bug:`2888` Now ledger actions selected to be ignored in the profit and loss report will be correctly ignored.
 * :feature:`1549` Rotki premium users will now be able to switch to a dark mode and change the theme colors.
 * :feature:`1674` Add experimental support for BlockFi imports using CSV files.
 * :feature:`2224` Add experimental support for Nexo imports using CSV files.
