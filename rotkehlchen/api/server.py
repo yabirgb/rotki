@@ -60,6 +60,7 @@ from rotkehlchen.api.v1.resources import (
     IgnoredActionsResource,
     IgnoredAssetsResource,
     InfoResource,
+    KnownLocations,
     LedgerActionsResource,
     LoopringBalancesResource,
     MakerdaoDSRBalanceResource,
@@ -138,6 +139,7 @@ URLS_V1: URLS = [
     ('/tags', TagsResource),
     ('/exchanges/data/', ExchangesDataResource),
     ('/exchanges/data/<string:location>', ExchangesDataResource, 'named_exchanges_data_resource'),
+    ('/exchanges/connected/', KnownLocations),
     ('/balances/blockchains', BlockchainBalancesResource),
     (
         '/balances/blockchains/<string:blockchain>',

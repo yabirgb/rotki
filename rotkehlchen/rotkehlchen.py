@@ -653,7 +653,13 @@ class Rotkehlchen():
         else:
             trades = self.query_location_trades(from_ts, to_ts, Location.EXTERNAL, only_cache)
             # Look for trades that might be imported from CSV files
-            for csv_location in EXTERNAL_EXCHANGES:
+
+            # Connected exchanges via API keys
+            exchanges = self.exchange_manager.connected_exchanges.keys()
+            # Exchanges added by importing from CSV file
+            exchanges_csv = self.data.db.get_known_locations()
+            extra_exchanges = set(exchanges_csv) - set(exchanges)
+            for csv_location in extra_exchanges:
                 trades.extend(self.query_location_trades(
                     from_ts=from_ts,
                     to_ts=to_ts,
@@ -885,6 +891,7 @@ class Rotkehlchen():
             only_cache: bool,
     ) -> List[AssetMovement]:
         """Queryies exchange for asset movements and adds it to all_movements"""
+        location: Optional[Location] = None
         if isinstance(exchange, ExchangeInterface):
             location = exchange.location
             # clear the asset movements queried for this exchange
@@ -896,27 +903,31 @@ class Rotkehlchen():
             )
         else:
             assert isinstance(exchange, Location), 'only a location should make it here'
-            assert exchange in EXTERNAL_EXCHANGES, 'only csv supported exchanges should get here'  # noqa : E501
-            location = exchange
-            # We might have no exchange information but CSV imported information
-            self.actions_per_location['asset_movement'][location] = 0
-            location_movements = self.data.db.get_asset_movements(
-                from_ts=from_ts,
-                to_ts=to_ts,
-                location=location,
-            )
-
+            # We get here from locations that have been imported by a CSV file
+            # Ignore the location if the exchange is also connected
+            if exchange not in self.exchange_manager.connected_exchanges.keys():
+                location = exchange
+                # We might have no exchange information but CSV imported information
+                self.actions_per_location['asset_movement'][location] = 0
+                location_movements = self.data.db.get_asset_movements(
+                    from_ts=from_ts,
+                    to_ts=to_ts,
+                    location=location,
+                )
+            else:
+                location = None
         movements: List[AssetMovement] = []
-        if self.premium is None:
-            movements = self._apply_actions_limit(
-                location=location,
-                action_type='asset_movement',
-                location_actions=location_movements,
-                all_actions=all_movements,
-            )
-        else:
-            all_movements.extend(location_movements)
-            movements = all_movements
+        if location is not None:
+            if self.premium is None:
+                movements = self._apply_actions_limit(
+                    location=location,
+                    action_type='asset_movement',
+                    location_actions=location_movements,
+                    all_actions=all_movements,
+                )
+            else:
+                all_movements.extend(location_movements)
+                movements = all_movements
 
         return movements
 
@@ -953,7 +964,6 @@ class Rotkehlchen():
                         f'either not an exchange or not an exchange the user has connected to',
                     )
                     return []
-
                 for exchange in exchanges_list:
                     self._query_and_populate_exchange_asset_movements(
                         from_ts=from_ts,
@@ -964,7 +974,12 @@ class Rotkehlchen():
                     )
         else:
             # we may have DB entries due to csv import from supported locations
-            for external_location in EXTERNAL_EXCHANGES:
+            # Connected exchanges via API keys
+            exchanges = self.exchange_manager.connected_exchanges.keys()
+            # Exchanges added by importing from CSV file
+            exchanges_csv = self.data.db.get_known_locations()
+            extra_exchanges = set(exchanges_csv) - set(exchanges)
+            for external_location in extra_exchanges:
                 movements = self._query_and_populate_exchange_asset_movements(
                     from_ts=from_ts,
                     to_ts=to_ts,

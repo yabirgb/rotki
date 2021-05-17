@@ -15,6 +15,7 @@ Changelog
 * :feature:`2844` Premium users will now be able to fetch their Uniswap v3 swaps.
 * :feature:`2893` Users can now see if any of their addresses have CVX available to claim from the ConvexFinance airdrop.
 * :bug:`2850` User will now see a consistent naming of exchanges across the application.
+* :bug:`1864` Users will correctly see their imported trades from Cointracking for non connected exchanges.
 
 * :release:`1.16.2 <2021-05-08>`
 * :bug:`-` If a DeFi event provides zero amount of an asset to a user the PnL report should now work properly again.
