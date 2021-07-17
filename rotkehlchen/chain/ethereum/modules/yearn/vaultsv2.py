@@ -20,7 +20,7 @@ from rotkehlchen.errors import ModuleInitializationFailure, RemoteError
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import ChecksumEthAddress, EthAddress, Timestamp, YEARN_VAULTS_V2_PROTOCOL
+from rotkehlchen.typing import ChecksumEthAddress, EthAddress, Timestamp, YEARN_VAULTS_V2_PROTOCOL, Price
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 from rotkehlchen.utils.misc import ts_now

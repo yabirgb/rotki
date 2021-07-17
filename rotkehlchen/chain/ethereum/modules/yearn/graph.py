@@ -10,7 +10,7 @@ from rotkehlchen.assets.asset import EthereumToken
 from rotkehlchen.chain.ethereum.graph import Graph, format_query_indentation
 from rotkehlchen.chain.ethereum.structures import YearnVaultEvent
 from rotkehlchen.chain.ethereum.utils import token_normalized_value
-from rotkehlchen.chain.ethereum.modules.yearn.vaults import get_usd_price_zero_if_error
+from rotkehlchen.chain.ethereum.modules.yearn.utils import get_usd_price_yearnv2_zero_if_error
 from rotkehlchen.errors import UnknownAsset
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
@@ -77,6 +77,9 @@ QUERY_USER_DEPOSITS = (
             symbol
         }}
         }}
+        vaultUpdate{{
+          pricePerShare
+        }}
     }}
     }}
     """
@@ -110,6 +113,9 @@ QUERY_USER_WITHDRAWLS = (
             symbol
         }}
         }}
+        vaultUpdate{{
+          pricePerShare
+        }}
     }}
     }}
     """
@@ -141,6 +147,9 @@ QUERY_USER_EVENTS = (
                         name
                     }}
                 }}
+                vaultUpdate{{
+                    pricePerShare
+                }}
             }}
             withdrawals(where:{{blockNumber_gte: $from_block, blockNumber_lte: $to_block }}) {{
                 id
@@ -160,6 +169,9 @@ QUERY_USER_EVENTS = (
                         symbol
                         name
                     }}
+                }}
+                vaultUpdate{{
+                    pricePerShare
                 }}
             }}
         }}
@@ -236,15 +248,17 @@ class YearnVaultsV2Graph:
                 continue
 
             try:
-                from_asset_usd_price = get_usd_price_zero_if_error(
+                from_asset_usd_price = get_usd_price_yearnv2_zero_if_error(
                     asset=from_asset,
                     time=Timestamp(int(entry['timestamp']) // 1000),
+                    price_per_share=int(entry['vaultUpdate']['pricePerShare']),
                     location='yearn vault v2 deposit',
                     msg_aggregator=self.msg_aggregator,
                 )
-                to_asset_usd_price = get_usd_price_zero_if_error(
+                to_asset_usd_price = get_usd_price_yearnv2_zero_if_error(
                     asset=to_asset,
                     time=Timestamp(int(entry['timestamp']) // 1000),
+                    price_per_share=int(entry['vaultUpdate']['pricePerShare']),
                     location='yearn v2 vault deposit',
                     msg_aggregator=self.msg_aggregator,
                 )
