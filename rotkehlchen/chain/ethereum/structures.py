@@ -478,3 +478,15 @@ class YearnVault(NamedTuple):
     contract: EthereumContract
     underlying_token: EthereumToken
     token: EthereumToken
+
+@dataclasses.dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
+class CurveFiEvent:
+    event_type: Literal['add', 'remove']
+    block_number: int
+    timestamp: Timestamp
+    lp_token: EthereumToken
+    tx_hash: str
+    value: Price
+    fees: Price
+    amounts: List[FVal]
+    tokens: List[EthereumToken]
