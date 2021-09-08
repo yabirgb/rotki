@@ -23,7 +23,7 @@ from rotkehlchen.history.price import query_usd_price_zero_if_error
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import ts_now
 
@@ -189,14 +189,14 @@ USER_EVENTS_QUERY_V2 = """
 
 
 class ATokenBalanceHistory(NamedTuple):
-    reserve_address: ChecksumEthAddress
+    reserve_address: ChecksumEvmAddress
     balance: FVal
     tx_hash: str
     timestamp: Timestamp
 
 
 class AaveUserReserve(NamedTuple):
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     symbol: str
 
 
@@ -377,12 +377,12 @@ class AaveGraphInquirer(AaveInquirer):
 
     def get_history_for_addresses(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             to_block: int,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            aave_balances: Dict[ChecksumEthAddress, AaveBalances],
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+            aave_balances: Dict[ChecksumEvmAddress, AaveBalances],
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """
         Queries aave history for a list of addresses.
 
@@ -403,7 +403,7 @@ class AaveGraphInquirer(AaveInquirer):
 
         return result
 
-    def _get_user_reserves(self, address: ChecksumEthAddress) -> List[AaveUserReserve]:
+    def _get_user_reserves(self, address: ChecksumEvmAddress) -> List[AaveUserReserve]:
         query = self.graph.query(
             querystr=USER_RESERVES_QUERY.format(address=address.lower()),
         )
@@ -430,7 +430,7 @@ class AaveGraphInquirer(AaveInquirer):
 
     def _calculate_interest_and_profit(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             user_result: Dict[str, Any],
             actions: List[AaveDepositWithdrawalEvent],
             balances: AaveBalances,
@@ -570,7 +570,7 @@ class AaveGraphInquirer(AaveInquirer):
                 )
                 continue
             principal_balance = self.ethereum.call_contract(
-                contract_address=atoken.ethereum_address,
+                contract_address=atokenevm_address,
                 abi=ATOKEN_ABI,
                 method_name='principalBalanceOf',
                 arguments=[user_address],
@@ -586,7 +586,7 @@ class AaveGraphInquirer(AaveInquirer):
 
     def _process_events(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             user_result: Dict[str, Any],
             from_ts: Timestamp,
             to_ts: Timestamp,
@@ -691,7 +691,7 @@ class AaveGraphInquirer(AaveInquirer):
             self,
             from_ts: Timestamp,
             to_ts: Timestamp,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             balances: AaveBalances,
     ) -> AaveHistory:
         last_query = self.database.get_used_query_range(f'aave_events_{address}')
@@ -1002,7 +1002,7 @@ class AaveGraphInquirer(AaveInquirer):
 
     def get_history_for_address(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             balances: AaveBalances,

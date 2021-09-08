@@ -4,14 +4,16 @@ from functools import total_ordering
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, TypeVar
 
 from rotkehlchen.constants.resolver import (
+    ChainID,
     ETHEREUM_DIRECTIVE,
     ETHEREUM_DIRECTIVE_LENGTH,
+    EvmTokenKind,
     ethaddress_to_identifier,
     strethaddress_to_identifier,
 )
 from rotkehlchen.errors import DeserializationError, UnknownAsset, UnsupportedAsset
 from rotkehlchen.fval import FVal
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 
 from .typing import AssetType
 
@@ -25,7 +27,7 @@ class UnderlyingToken(NamedTuple):
 
     Is used for pool tokens, tokensets etc.
     """
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     weight: FVal  # Floating percentage from 0 to 1
 
     def serialize(self) -> Dict[str, Any]:
@@ -461,12 +463,12 @@ class Asset():
     def is_fiat(self) -> bool:
         return self.asset_type == AssetType.FIAT
 
-    def is_eth_token(self) -> bool:
-        return self.asset_type == AssetType.ETHEREUM_TOKEN
+    def is_evm_token(self) -> bool:
+        return AssetType.is_evm_compatible(self.asset_type)
 
     def __str__(self) -> str:
-        if self.is_eth_token():
-            token = EthereumToken.from_asset(self)
+        if self.is_evm_token():
+            token = EvmToken.from_asset(self)
             assert token, 'Token should exist here'
             return str(token)
         return f'{self.symbol}({self.name})'
@@ -582,20 +584,24 @@ EthereumTokenDBTuple = Tuple[
     Optional[str],        # coingecko
     Optional[str],        # cryptocompare
     Optional[str],        # protocol
+    Optional[int],        # chain
+    Optional[int],        # token_type
 ]
 
 
-# Create a generic variable that can be 'HasEthereumToken', or any subclass.
-Y = TypeVar('Y', bound='HasEthereumToken')
+# Create a generic variable that can be 'HasEvmToken', or any subclass.
+Y = TypeVar('Y', bound='HasEvmToken')
 
 
 @dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
-class HasEthereumToken(Asset):
-    """ Marker to denote assets having an Ethereum token address """
-    ethereum_address: ChecksumEthAddress = field(init=False)
+class HasEvmToken(Asset):
+    """ Marker to denote assets having an evm token address """
+    evm_address: ChecksumEvmAddress = field(init=False)
     decimals: int = field(init=False)
     protocol: str = field(init=False)
     underlying_tokens: List[UnderlyingToken] = field(init=False)
+    chain: ChainID = field(init=False)
+    token_type: EvmTokenKind = field(init=False)
 
     def __post_init__(
             self,
@@ -613,14 +619,16 @@ class HasEthereumToken(Asset):
 
         data = AssetResolver().get_asset_data(self.identifier)  # pylint: disable=no-member
 
-        if not data.ethereum_address:
+        if not data.evm_address:
             raise DeserializationError(
                 'Tried to initialize a non EVM token asset as an EVM Token',
             )
 
-        object.__setattr__(self, 'ethereum_address', data.ethereum_address)
+        object.__setattr__(self, 'evm_address', data.evm_address)
         object.__setattr__(self, 'decimals', data.decimals)
         object.__setattr__(self, 'protocol', data.protocol)
+        object.__setattr__(self, 'chain', data.chain)
+        object.__setattr__(self, 'token_type', data.token_type)
 
         underlying_tokens = GlobalDBHandler().fetch_underlying_tokens(data.identifier)
         object.__setattr__(self, 'underlying_tokens', underlying_tokens)
@@ -629,7 +637,7 @@ class HasEthereumToken(Asset):
         underlying_tokens = [x.serialize() for x in self.underlying_tokens] if self.underlying_tokens is not None else None  # noqa: E501
         return {
             'identifier': self.identifier,
-            'address': self.ethereum_address,
+            'evm_address': self.evm_address,
             'decimals': self.decimals,
             'name': self.name,
             'symbol': self.symbol,
@@ -639,12 +647,13 @@ class HasEthereumToken(Asset):
             'cryptocompare': self.cryptocompare,
             'protocol': self.protocol,
             'underlying_tokens': underlying_tokens,
+            'chain': self.chain,
         }
 
     @classmethod
     def initialize(  # type: ignore  # figure out a way to make mypy happy
             cls: Type[Y],
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             decimals: Optional[int] = None,
             name: Optional[str] = None,
             symbol: Optional[str] = None,
@@ -655,6 +664,8 @@ class HasEthereumToken(Asset):
             cryptocompare: Optional[str] = '',
             protocol: Optional[str] = None,
             underlying_tokens: Optional[List[UnderlyingToken]] = None,
+            chain: ChainID = None,
+            token_type: EvmTokenKind = None,
     ) -> Y:
         """Initialize a token from fields"""
         token = cls('whatever', direct_field_initialization=True)
@@ -667,10 +678,12 @@ class HasEthereumToken(Asset):
         object.__setattr__(token, 'swapped_for', swapped_for)
         object.__setattr__(token, 'cryptocompare', cryptocompare)
         object.__setattr__(token, 'coingecko', coingecko)
-        object.__setattr__(token, 'ethereum_address', address)
+        object.__setattr__(token, 'evm_address', address)
         object.__setattr__(token, 'decimals', decimals)
         object.__setattr__(token, 'protocol', protocol)
         object.__setattr__(token, 'underlying_tokens', underlying_tokens)
+        object.__setattr__(token, 'chain', chain)
+        object.__setattr__(token, 'token_type', token_type)
         return token
 
     @classmethod
@@ -695,18 +708,19 @@ class HasEthereumToken(Asset):
             cryptocompare=entry[8],
             protocol=entry[9],
             underlying_tokens=underlying_tokens,
+            chain=entry[10],
         )
 
 
-# Create a generic variable that can be 'EthereumToken', or any subclass.
-T = TypeVar('T', bound='EthereumToken')
+# Create a generic variable that can be 'EvmToken', or any subclass.
+T = TypeVar('T', bound='EvmToken')
 
 
 @dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
-class EthereumToken(HasEthereumToken):
+class EvmToken(HasEvmToken):
 
     def __str__(self) -> str:
-        return f'{self.symbol}({self.ethereum_address})'
+        return f'{self.symbol}({selfevm_address})'
 
     @classmethod
     def from_asset(
@@ -714,7 +728,7 @@ class EthereumToken(HasEthereumToken):
             asset: Asset,
             form_with_incomplete_data: bool = True,
     ) -> Optional[T]:
-        """Attempts to turn an asset into an EthereumToken. If it fails returns None"""
+        """Attempts to turn an asset into an EvmToken. If it fails returns None"""
         return cls.from_identifier(
             identifier=asset.identifier,
             form_with_incomplete_data=form_with_incomplete_data,
@@ -726,14 +740,25 @@ class EthereumToken(HasEthereumToken):
             identifier: str,
             form_with_incomplete_data: bool = True,
     ) -> Optional[T]:
-        """Attempts to turn an asset into an EthereumToken. If it fails returns None"""
-        if not identifier.startswith(ETHEREUM_DIRECTIVE):
-            return None
+        """Attempts to turn an asset into an EvmToken. If it fails returns None"""
+        # TODO assets: Figure out if something like this makes sense now
+        #if not identifier.startswith(ETHEREUM_DIRECTIVE):
+        #    return None
 
         try:
             return cls(
-                identifier[ETHEREUM_DIRECTIVE_LENGTH:],
+                identifier,
                 form_with_incomplete_data=form_with_incomplete_data,
             )
         except DeserializationError:
             return None
+
+    def serialize_for_db(self):
+        return (
+            self.identifier,
+            self.token_type,
+            self.chain,
+            self.evm_address,
+            self.decimals,
+            self.protocol,
+        )

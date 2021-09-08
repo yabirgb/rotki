@@ -32,7 +32,7 @@ from web3.exceptions import BadFunctionCallOutput
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures import ActionType, Balance, BalanceType
 from rotkehlchen.api.v1.encoding import TradeSchema
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.balances.manual import (
@@ -92,7 +92,7 @@ from rotkehlchen.typing import (
     ApiSecret,
     AssetAmount,
     BlockchainAccountData,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     EthereumTransaction,
     ExternalService,
     ExternalServiceApiCredentials,
@@ -1409,9 +1409,9 @@ class RestAPI():
         return api_response(OK_RESULT, status_code=HTTPStatus.OK)
 
     @staticmethod
-    def get_custom_ethereum_tokens(address: Optional[ChecksumEthAddress]) -> Response:
+    def get_custom_ethereum_tokens(address: Optional[ChecksumEvmAddress]) -> Response:
         if address is not None:
-            token = GlobalDBHandler().get_ethereum_token(address)
+            token = GlobalDBHandler().get_evm_token(address)
             if token is None:
                 result = wrap_in_fail_result(f'Custom token with address {address} not found')
                 status_code = HTTPStatus.NOT_FOUND
@@ -1422,7 +1422,7 @@ class RestAPI():
             return api_response(result, status_code)
 
         # else return all custom tokens
-        tokens = GlobalDBHandler().get_ethereum_tokens()
+        tokens = GlobalDBHandler().get_evm_tokens()
         return api_response(
             _wrap_in_ok_result([x.serialize_all_info() for x in tokens]),
             status_code=HTTPStatus.OK,
@@ -1430,8 +1430,8 @@ class RestAPI():
         )
 
     @require_loggedin_user()
-    def add_custom_ethereum_token(self, token: EthereumToken) -> Response:
-        identifier = ethaddress_to_identifier(token.ethereum_address)
+    def add_custom_ethereum_token(self, token: EvmToken) -> Response:
+        identifier = ethaddress_to_identifier(evm_token_address)
         try:
             GlobalDBHandler().add_asset(
                 asset_id=identifier,
@@ -1451,9 +1451,9 @@ class RestAPI():
         )
 
     @staticmethod
-    def edit_custom_ethereum_token(token: EthereumToken) -> Response:
+    def edit_custom_ethereum_token(token: EvmToken) -> Response:
         try:
-            identifier = GlobalDBHandler().edit_ethereum_token(token)
+            identifier = GlobalDBHandler().edit_evm_token(token)
         except InputError as e:
             return api_response(wrap_in_fail_result(str(e)), status_code=HTTPStatus.CONFLICT)
 
@@ -1466,7 +1466,7 @@ class RestAPI():
         )
 
     @require_loggedin_user()
-    def delete_custom_ethereum_token(self, address: ChecksumEthAddress) -> Response:
+    def delete_custom_ethereum_token(self, address: ChecksumEvmAddress) -> Response:
         # Before deleting, also make sure we have up to date global DB owned data
         self.rotkehlchen.data.db.update_owned_assets_in_globaldb()
 
@@ -2009,7 +2009,7 @@ class RestAPI():
     def add_queried_address_per_module(
             self,
             module: ModuleName,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
     ) -> Response:
         try:
             QueriedAddresses(self.rotkehlchen.data.db).add_queried_address_for_module(module, address)  # noqa: E501
@@ -2022,7 +2022,7 @@ class RestAPI():
     def remove_queried_address_per_module(
             self,
             module: ModuleName,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
     ) -> Response:
         try:
             QueriedAddresses(self.rotkehlchen.data.db).remove_queried_address_for_module(module, address)  # noqa: E501
@@ -2725,7 +2725,7 @@ class RestAPI():
 
     def _get_ethereum_transactions(
             self,
-            address: Optional[ChecksumEthAddress],
+            address: Optional[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             only_cache: bool,
@@ -2771,7 +2771,7 @@ class RestAPI():
     def get_ethereum_transactions(
             self,
             async_query: bool,
-            address: Optional[ChecksumEthAddress],
+            address: Optional[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             only_cache: bool,
@@ -3073,7 +3073,7 @@ class RestAPI():
         result_dict = _wrap_in_ok_result(data)
         return api_response(result_dict, status_code=HTTPStatus.OK)
 
-    def _get_token_info(self, address: ChecksumEthAddress) -> Dict[str, Any]:
+    def _get_token_info(self, address: ChecksumEvmAddress) -> Dict[str, Any]:
         eth_manager = self.rotkehlchen.chain_manager.ethereum
         try:
             info = eth_manager.get_basic_contract_info(address=address)
@@ -3087,7 +3087,7 @@ class RestAPI():
     @require_loggedin_user()
     def get_token_information(
         self,
-        token_address: ChecksumEthAddress,
+        token_address: ChecksumEvmAddress,
         async_query: bool,
     ) -> Response:
 
@@ -3352,7 +3352,7 @@ class RestAPI():
 
     def _get_avalanche_transactions(
         self,
-        address: ChecksumEthAddress,
+        address: ChecksumEvmAddress,
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
     ) -> Dict[str, Any]:
@@ -3380,7 +3380,7 @@ class RestAPI():
     def get_avalanche_transactions(
         self,
         async_query: bool,
-        address: ChecksumEthAddress,
+        address: ChecksumEvmAddress,
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
     ) -> Response:
@@ -3412,7 +3412,7 @@ class RestAPI():
         result_dict = _wrap_in_result(result, msg)
         return api_response(process_result(result_dict), status_code=status_code)
 
-    def _get_avax_token_info(self, address: ChecksumEthAddress) -> Dict[str, Any]:
+    def _get_avax_token_info(self, address: ChecksumEvmAddress) -> Dict[str, Any]:
         avax_manager = self.rotkehlchen.chain_manager.avalanche
         try:
             info = avax_manager.get_basic_contract_info(address=address)
@@ -3426,7 +3426,7 @@ class RestAPI():
     @require_loggedin_user()
     def get_avax_token_information(
         self,
-        token_address: ChecksumEthAddress,
+        token_address: ChecksumEvmAddress,
         async_query: bool,
     ) -> Response:
 

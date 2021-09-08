@@ -93,7 +93,7 @@ from rotkehlchen.api.v1.encoding import (
     XpubPatchSchema,
 )
 from rotkehlchen.api.v1.parser import resource_parser
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
 from rotkehlchen.chain.bitcoin.xpub import XpubData
@@ -105,7 +105,7 @@ from rotkehlchen.typing import (
     ApiSecret,
     AssetAmount,
     BlockchainAccountData,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     ExternalService,
     ExternalServiceApiCredentials,
     Fee,
@@ -319,7 +319,7 @@ class EthereumTransactionsResource(BaseResource):
     def get(
             self,
             async_query: bool,
-            address: Optional[ChecksumEthAddress],
+            address: Optional[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             only_cache: bool,
@@ -457,19 +457,19 @@ class EthereumAssetsResource(BaseResource):
         )
 
     @use_kwargs(get_schema, location='json_and_query')
-    def get(self, address: Optional[ChecksumEthAddress]) -> Response:
+    def get(self, address: Optional[ChecksumEvmAddress]) -> Response:
         return self.rest_api.get_custom_ethereum_tokens(address=address)
 
     @resource_parser.use_kwargs(make_edit_schema, location='json')
-    def put(self, token: EthereumToken) -> Response:
+    def put(self, token: EvmToken) -> Response:
         return self.rest_api.add_custom_ethereum_token(token=token)
 
     @resource_parser.use_kwargs(make_edit_schema, location='json')
-    def patch(self, token: EthereumToken) -> Response:
+    def patch(self, token: EvmToken) -> Response:
         return self.rest_api.edit_custom_ethereum_token(token=token)
 
     @use_kwargs(delete_schema, location='json')
-    def delete(self, address: ChecksumEthAddress) -> Response:
+    def delete(self, address: ChecksumEvmAddress) -> Response:
         return self.rest_api.delete_custom_ethereum_token(address)
 
 
@@ -1109,11 +1109,11 @@ class QueriedAddressesResource(BaseResource):
         return self.rest_api.get_queried_addresses_per_module()
 
     @use_kwargs(modify_schema, location='json')
-    def put(self, module: ModuleName, address: ChecksumEthAddress) -> Response:
+    def put(self, module: ModuleName, address: ChecksumEvmAddress) -> Response:
         return self.rest_api.add_queried_address_per_module(module=module, address=address)
 
     @use_kwargs(modify_schema, location='json')
-    def delete(self, module: ModuleName, address: ChecksumEthAddress) -> Response:
+    def delete(self, module: ModuleName, address: ChecksumEvmAddress) -> Response:
         return self.rest_api.remove_queried_address_per_module(module=module, address=address)
 
 
@@ -1759,7 +1759,7 @@ class ERC20TokenInfo(BaseResource):
     get_schema = ERC20InfoSchema()
 
     @use_kwargs(get_schema, location='json_and_query')
-    def get(self, address: ChecksumEthAddress, async_query: bool) -> Response:
+    def get(self, address: ChecksumEvmAddress, async_query: bool) -> Response:
         return self.rest_api.get_token_information(address, async_query)
 
 
@@ -1829,7 +1829,7 @@ class AvalancheTransactionsResource(BaseResource):
     def get(
         self,
         async_query: bool,
-        address: Optional[ChecksumEthAddress],
+        address: Optional[ChecksumEvmAddress],
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
     ) -> Response:
@@ -1845,7 +1845,7 @@ class ERC20TokenInfoAVAX(BaseResource):
     get_schema = ERC20InfoSchema()
 
     @use_kwargs(get_schema, location='json_and_query')
-    def get(self, address: ChecksumEthAddress, async_query: bool) -> Response:
+    def get(self, address: ChecksumEvmAddress, async_query: bool) -> Response:
         return self.rest_api.get_avax_token_information(address, async_query)
 
 

@@ -14,7 +14,7 @@ from rotkehlchen.chain.substrate.utils import is_valid_polkadot_address
 from rotkehlchen.typing import (
     BlockchainAccountData,
     BTCAddress,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     HexColorCode,
     ListOfBlockchainAddresses,
     SupportedBlockchain,
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
 
 
 class BlockchainAccounts(NamedTuple):
-    eth: List[ChecksumEthAddress]
+    eth: List[ChecksumEvmAddress]
     btc: List[BTCAddress]
     ksm: List[KusamaAddress]
     dot: List[PolkadotAddress]
-    avax: List[ChecksumEthAddress]
+    avax: List[ChecksumEvmAddress]
 
     def get(self, blockchain: SupportedBlockchain) -> ListOfBlockchainAddresses:
         if blockchain == SupportedBlockchain.BITCOIN:

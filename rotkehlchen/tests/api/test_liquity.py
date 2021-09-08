@@ -4,7 +4,7 @@ import random
 import requests
 
 from rotkehlchen.constants.assets import A_LUSD, A_ETH, A_LQTY
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.fval import FVal
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.tests.utils.api import (
@@ -14,7 +14,7 @@ from rotkehlchen.tests.utils.api import (
     wait_for_async_task_with_result,
 )
 
-LQTY_ADDR = string_to_ethereum_address('0x063c26fF1592688B73d8e2A18BA4C23654e2792E')
+LQTY_ADDR = string_to_evm_address('0x063c26fF1592688B73d8e2A18BA4C23654e2792E')
 liquity_mocked_historical_prices = {
     A_ETH: {
         'USD': {

@@ -6,8 +6,8 @@ from typing import Optional
 from eth_utils.address import to_checksum_address
 
 from rotkehlchen.fval import FVal
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
-from rotkehlchen.typing import ApiKey, ApiSecret, ChecksumEthAddress, Timestamp
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
+from rotkehlchen.typing import ApiKey, ApiSecret, ChecksumEvmAddress, Timestamp
 from rotkehlchen.utils.misc import ts_now
 
 DEFAULT_START_TS = Timestamp(1451606400)
@@ -48,7 +48,7 @@ def make_api_secret() -> ApiSecret:
     return ApiSecret(base64.b64encode(make_random_b64bytes(128)))
 
 
-def make_ethereum_address() -> ChecksumEthAddress:
+def make_ethereum_address() -> ChecksumEvmAddress:
     return to_checksum_address('0x' + make_random_bytes(20).hex())
 
 
@@ -56,4 +56,4 @@ UNIT_BTC_ADDRESS1 = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'
 UNIT_BTC_ADDRESS2 = '1CounterpartyXXXXXXXXXXXXXXXUWLpVr'
 UNIT_BTC_ADDRESS3 = '18ddjB7HWTVxzvTbLp1nWvaBxU3U2oTZF2'
 
-ZERO_ETH_ADDRESS = string_to_ethereum_address('0x' + '0' * 40)
+ZERO_ETH_ADDRESS = string_to_evm_address('0x' + '0' * 40)

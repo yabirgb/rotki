@@ -33,7 +33,7 @@ from rotkehlchen.history.price import query_usd_price_or_use_default, PriceHisto
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import AssetAmount, ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import AssetAmount, ChecksumEvmAddress, Timestamp
 from rotkehlchen.utils.interfaces import EthereumModule
 from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
 from rotkehlchen.user_messages import MessagesAggregator
@@ -210,8 +210,8 @@ class Liquity(EthereumModule):
 
     def get_positions(
         self,
-        addresses: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, Dict[str, Union[Trove, StakePosition]]]:
+        addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, Dict[str, Union[Trove, StakePosition]]]:
         contract = EthereumContract(
             address=LIQUITY_TROVE_MANAGER.address,
             abi=LIQUITY_TROVE_MANAGER.abi,
@@ -227,7 +227,7 @@ class Liquity(EthereumModule):
             calls=calls,
         )
 
-        data: Dict[ChecksumEthAddress, Dict[str, Union[Trove, StakePosition]]] = {}
+        data: Dict[ChecksumEvmAddress, Dict[str, Union[Trove, StakePosition]]] = {}
         eth_price = Inquirer().find_usd_price(A_ETH)
         lusd_price = Inquirer().find_usd_price(A_LUSD)
         lqty_price = Inquirer().find_usd_price(A_LQTY)
@@ -423,7 +423,7 @@ class Liquity(EthereumModule):
 
     def _get_raw_history(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
         query_for: Literal['stake', 'trove'],
     ) -> Dict[str, Any]:
         param_types = {
@@ -444,10 +444,10 @@ class Liquity(EthereumModule):
 
     def get_history(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
-    ) -> Dict[ChecksumEthAddress, Dict[str, List[LiquityEvent]]]:
+    ) -> Dict[ChecksumEvmAddress, Dict[str, List[LiquityEvent]]]:
         try:
             query = self._get_raw_history(addresses, 'trove')
         except RemoteError as e:
@@ -459,7 +459,7 @@ class Liquity(EthereumModule):
             log.error(f'Failed to query stake graph events for liquity. {str(e)}')
             staked = {}
 
-        result: Dict[ChecksumEthAddress, Dict[str, List[LiquityEvent]]] = defaultdict(lambda: defaultdict(list))  # noqa: E501
+        result: Dict[ChecksumEvmAddress, Dict[str, List[LiquityEvent]]] = defaultdict(lambda: defaultdict(list))  # noqa: E501
         for trove in query.get('troves', []):
             owner = to_checksum_address(trove['owner']['id'])
             for change in trove['changes']:
@@ -607,7 +607,7 @@ class Liquity(EthereumModule):
         self,
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
     ) -> List[DefiEvent]:
         query = self._get_raw_history(addresses, 'trove')
         result = []
@@ -621,11 +621,11 @@ class Liquity(EthereumModule):
     def on_startup(self) -> None:
         pass
 
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> Optional[List['AssetBalance']]:
         info = self.get_positions([address])
         return [info[address]['trove'].collateral, info[address]['stake'].staked]  # type: ignore
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

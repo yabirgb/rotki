@@ -8,7 +8,7 @@ import requests
 from eth_utils import to_checksum_address
 
 from rotkehlchen.accounting.ledger_actions import GitcoinEventData, LedgerAction, LedgerActionType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.utils import get_asset_by_symbol
 from rotkehlchen.chain.ethereum.gitcoin.constants import GITCOIN_GRANTS_PREFIX
 from rotkehlchen.chain.ethereum.gitcoin.utils import process_gitcoin_txid
@@ -48,7 +48,7 @@ def get_gitcoin_asset(symbol: str, token_address: str) -> Asset:
     """
     if token_address != NO_ADDRESS:
         try:
-            return EthereumToken(to_checksum_address(token_address))
+            return EvmToken(to_checksum_address(token_address))
         except (UnknownAsset, ValueError):
             pass  # let's try by symbol
 

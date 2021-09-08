@@ -4,10 +4,10 @@ from shutil import copyfile
 
 import pytest
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.typing import AssetData, AssetType
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.assets import A_BAT
 from rotkehlchen.constants.resolver import ethaddress_to_identifier
 from rotkehlchen.errors import InputError
@@ -18,7 +18,7 @@ from rotkehlchen.tests.utils.factories import make_ethereum_address
 from rotkehlchen.tests.utils.globaldb import INITIAL_TOKENS
 from rotkehlchen.typing import Timestamp
 
-selfkey_address = string_to_ethereum_address('0x4CC19356f2D37338b9802aa8E8fc58B0373296E7')
+selfkey_address = string_to_evm_address('0x4CC19356f2D37338b9802aa8E8fc58B0373296E7')
 selfkey_id = ethaddress_to_identifier(selfkey_address)
 selfkey_asset_data = AssetData(
     identifier=selfkey_id,
@@ -52,10 +52,10 @@ bidr_asset_data = AssetData(
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
 @pytest.mark.parametrize('custom_ethereum_tokens', [INITIAL_TOKENS])
-def test_get_ethereum_token_identifier(globaldb):
-    assert globaldb.get_ethereum_token_identifier('0xnotexistingaddress') is None
-    token_0_id = globaldb.get_ethereum_token_identifier(INITIAL_TOKENS[0].ethereum_address)
-    assert token_0_id == ethaddress_to_identifier(INITIAL_TOKENS[0].ethereum_address)
+def test_get_evm_token_identifier(globaldb):
+    assert globaldb.get_evm_token_identifier('0xnotexistingaddress') is None
+    token_0_id = globaldb.get_evm_token_identifier(INITIAL_TOKENS[0]evm_address)
+    assert token_0_id == ethaddress_to_identifier(INITIAL_TOKENS[0]evm_address)
 
 
 def test_open_new_globaldb_with_old_rotki(tmpdir_factory):
@@ -88,9 +88,9 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
     """
     # To unit test it we need to even hack it a bit. Make a new token, add it in the DB
     # then delete it and then try to add a new one referencing the old one. Since we
-    # need to obtain a valid EthereumToken object
+    # need to obtain a valid EvmToken object
     address_to_delete = make_ethereum_address()
-    token_to_delete = EthereumToken.initialize(
+    token_to_delete = EvmToken.initialize(
         address=address_to_delete,
         decimals=18,
         name='willdell',
@@ -110,16 +110,16 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
         globaldb.add_asset(
             asset_id='NEWID',
             asset_type=AssetType.ETHEREUM_TOKEN,
-            data=EthereumToken.initialize(
+            data=EvmToken.initialize(
                 address=make_ethereum_address(),
                 swapped_for=asset_to_delete,
             ),
         )
 
     # now edit a new token with swapped_for pointing to a non existing token in the DB
-    bat_custom = globaldb.get_ethereum_token(A_BAT.ethereum_address)
-    bat_custom = EthereumToken.initialize(
-        address=A_BAT.ethereum_address,
+    bat_custom = globaldb.get_evm_token(A_BATevm_address)
+    bat_custom = EvmToken.initialize(
+        address=A_BATevm_address,
         decimals=A_BAT.decimals,
         name=A_BAT.name,
         symbol=A_BAT.symbol,
@@ -131,7 +131,7 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
         underlying_tokens=None,
     )
     with pytest.raises(InputError):
-        globaldb.edit_ethereum_token(bat_custom)
+        globaldb.edit_evm_token(bat_custom)
 
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
@@ -186,9 +186,9 @@ def test_check_asset_exists(globaldb):
 def test_get_asset_with_symbol(globaldb):
     # both categories of assets
     asset_data = globaldb.get_assets_with_symbol('KEY')
-    bihukey_address = string_to_ethereum_address('0x4Cd988AfBad37289BAAf53C13e98E2BD46aAEa8c')
-    aave_address = string_to_ethereum_address('0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9')
-    renbtc_address = string_to_ethereum_address('0xEB4C2781e4ebA804CE9a9803C67d0893436bB27D')
+    bihukey_address = string_to_evm_address('0x4Cd988AfBad37289BAAf53C13e98E2BD46aAEa8c')
+    aave_address = string_to_evm_address('0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9')
+    renbtc_address = string_to_evm_address('0xEB4C2781e4ebA804CE9a9803C67d0893436bB27D')
     assert asset_data == [
         selfkey_asset_data,
         AssetData(

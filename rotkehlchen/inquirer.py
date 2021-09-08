@@ -5,7 +5,7 @@ import operator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.ethereum.contracts import EthereumContract
 from rotkehlchen.chain.ethereum.defi.curve_pools import get_curve_pools
 from rotkehlchen.chain.ethereum.defi.price import handle_defi_price_query
@@ -132,7 +132,7 @@ DEFAULT_CURRENT_PRICE_ORACLES_ORDER = [
 ]
 
 
-def get_underlying_asset_price(token: EthereumToken) -> Optional[Price]:
+def get_underlying_asset_price(token: EvmToken) -> Optional[Price]:
     """Gets the underlying asset price for the given ethereum token
 
     TODO: This should be eventually pulled from the assets DB. All of these
@@ -168,11 +168,11 @@ def get_underlying_asset_price(token: EthereumToken) -> Optional[Price]:
     elif token in ASSETS_UNDERLYING_BTC:
         price = Inquirer().find_usd_price(A_BTC)
 
-    custom_token = GlobalDBHandler().get_ethereum_token(token.ethereum_address)
+    custom_token = GlobalDBHandler().get_evm_token(evm_token_address)
     if custom_token and custom_token.underlying_tokens is not None:
         usd_price = ZERO
         for underlying_token in custom_token.underlying_tokens:
-            token = EthereumToken(underlying_token.address)
+            token = EvmToken(underlying_token.address)
             usd_price += Inquirer().find_usd_price(token) * underlying_token.weight
         if usd_price != Price(ZERO):
             price = Price(usd_price)
@@ -220,7 +220,7 @@ class Inquirer():
     _ethereum: Optional['EthereumManager'] = None
     _oracles: Optional[List[CurrentPriceOracle]] = None
     _oracle_instances: Optional[List[CurrentPriceOracleInstance]] = None
-    special_tokens: List[EthereumToken]
+    special_tokens: List[EvmToken]
 
     def __new__(
             cls,
@@ -392,12 +392,12 @@ class Inquirer():
         is_known_protocol = False
         underlying_tokens = None
         try:
-            token = EthereumToken.from_asset(asset)
+            token = EvmToken.from_asset(asset)
             if token is not None:
                 if token.protocol is not None:
                     is_known_protocol = token.protocol in KnownProtocolsAssets
-                underlying_tokens = GlobalDBHandler().get_ethereum_token(  # type: ignore
-                    token.ethereum_address,
+                underlying_tokens = GlobalDBHandler().get_evm_token(  # type: ignore
+                    evm_token_address,
                 ).underlying_tokens
         except UnknownAsset:
             pass
@@ -442,7 +442,7 @@ class Inquirer():
 
     def find_uniswap_v2_lp_price(
         self,
-        token: EthereumToken,
+        token: EvmToken,
     ) -> Optional[Price]:
         """
         Calculate the price for a uniswap v2 LP token. That is
@@ -456,7 +456,7 @@ class Inquirer():
         """
         assert self._ethereum is not None, 'Inquirer ethereum manager should have been initialized'  # noqa: E501
 
-        address = token.ethereum_address
+        address = evm_token_address
         contract = EthereumContract(address=address, abi=UNISWAP_V2_LP_ABI, deployed_block=0)
         methods = ['token0', 'token1', 'totalSupply', 'getReserves', 'decimals']
         try:
@@ -468,7 +468,7 @@ class Inquirer():
         except RemoteError as e:
             log.error(
                 f'Remote error calling multicall contract for uniswap v2 lp '
-                f'token {token.ethereum_address} properties: {str(e)}',
+                f'token {evm_token_address} properties: {str(e)}',
             )
             return None
 
@@ -485,13 +485,13 @@ class Inquirer():
             else:
                 log.debug(
                     f'Multicall to Uniswap V2 LP failed to fetch field {method_name} '
-                    f'for token {token.ethereum_address}',
+                    f'for token {evm_token_address}',
                 )
                 return None
 
         try:
-            token0 = EthereumToken(decoded[0])
-            token1 = EthereumToken(decoded[1])
+            token0 = EvmToken(decoded[0])
+            token1 = EvmToken(decoded[1])
         except UnknownAsset:
             return None
 
@@ -519,7 +519,7 @@ class Inquirer():
 
     def find_curve_pool_price(
         self,
-        lp_token: EthereumToken,
+        lp_token: EvmToken,
     ) -> Optional[Price]:
         """
         1. Obtain the pool for this token
@@ -533,9 +533,9 @@ class Inquirer():
         assert self._ethereum is not None, 'Inquirer ethereum manager should have been initialized'  # noqa: E501
 
         pools = get_curve_pools()
-        if lp_token.ethereum_address not in pools:
+        if lp_tokenevm_address not in pools:
             return None
-        pool = pools[lp_token.ethereum_address]
+        pool = pools[lp_tokenevm_address]
         tokens = []
         # Translate addresses to tokens
         try:
@@ -543,7 +543,7 @@ class Inquirer():
                 if asset == '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE':
                     tokens.append(A_WETH)
                 else:
-                    tokens.append(EthereumToken(asset))
+                    tokens.append(EvmToken(asset))
         except UnknownAsset:
             return None
 
@@ -627,7 +627,7 @@ class Inquirer():
 
     def find_yearn_price(
         self,
-        token: EthereumToken,
+        token: EvmToken,
     ) -> Optional[Price]:
         """
         Query price for a yearn vault v2 token using the pricePerShare method
@@ -635,23 +635,23 @@ class Inquirer():
         """
         assert self._ethereum is not None, 'Inquirer ethereum manager should have been initialized'  # noqa: E501
 
-        maybe_underlying_token = GlobalDBHandler().fetch_underlying_tokens(token.ethereum_address)
+        maybe_underlying_token = GlobalDBHandler().fetch_underlying_tokens(evm_token_address)
         if maybe_underlying_token is None or len(maybe_underlying_token) != 1:
             log.error(f'Yearn vault token {token} without an underlying asset')
             return None
 
-        underlying_token = EthereumToken(maybe_underlying_token[0].address)
+        underlying_token = EvmToken(maybe_underlying_token[0].address)
         underlying_token_price = self.find_usd_price(underlying_token)
         # Get the price per share from the yearn contract
         contract = EthereumContract(
-            address=token.ethereum_address,
+            address=evm_token_address,
             abi=YEARN_VAULT_V2_ABI,
             deployed_block=0,
         )
         output = multicall_2(
             ethereum=self._ethereum,
             require_success=True,
-            calls=[(token.ethereum_address, contract.encode(method_name='pricePerShare'))],
+            calls=[(evm_token_address, contract.encode(method_name='pricePerShare'))],
         )
         if isinstance(output, list) and len(output) != 0 and output[0][0] is True:
             # https://github.com/PyCQA/pylint/issues/4739

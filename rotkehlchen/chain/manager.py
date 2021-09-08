@@ -31,7 +31,7 @@ from rotkehlchen.accounting.structures import (
     DefiEvent,
     DefiEventType,
 )
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.bitcoin import get_bitcoin_addresses_balances
 from rotkehlchen.chain.ethereum.defi.chad import DefiChad
 from rotkehlchen.chain.ethereum.defi.structures import DefiProtocolBalances
@@ -52,7 +52,7 @@ from rotkehlchen.chain.ethereum.modules import (
 )
 from rotkehlchen.chain.ethereum.nft import NFTManager
 from rotkehlchen.chain.ethereum.tokens import EthTokens
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.chain.substrate.manager import wait_until_a_node_is_available
 from rotkehlchen.chain.substrate.typing import KusamaAddress, PolkadotAddress
 from rotkehlchen.chain.substrate.utils import (
@@ -78,7 +78,7 @@ from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.typing import (
     BTCAddress,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     ListOfBlockchainAddresses,
     ModuleName,
     Price,
@@ -157,11 +157,11 @@ class AccountAction(Enum):
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
 class BlockchainBalances:
     db: 'DBHandler'  # Need this to serialize BTC accounts with xpub mappings
-    eth: DefaultDict[ChecksumEthAddress, BalanceSheet] = field(init=False)
+    eth: DefaultDict[ChecksumEvmAddress, BalanceSheet] = field(init=False)
     btc: Dict[BTCAddress, Balance] = field(init=False)
     ksm: Dict[KusamaAddress, BalanceSheet] = field(init=False)
     dot: Dict[PolkadotAddress, BalanceSheet] = field(init=False)
-    avax: DefaultDict[ChecksumEthAddress, BalanceSheet] = field(init=False)
+    avax: DefaultDict[ChecksumEvmAddress, BalanceSheet] = field(init=False)
 
     def copy(self) -> 'BlockchainBalances':
         balances = BlockchainBalances(db=self.db)
@@ -251,7 +251,7 @@ class BlockchainBalances:
     def account_exists(
             self,
             blockchain: SupportedBlockchain,
-            account: Union[BTCAddress, ChecksumEthAddress, KusamaAddress, PolkadotAddress],
+            account: Union[BTCAddress, ChecksumEvmAddress, KusamaAddress, PolkadotAddress],
     ) -> bool:
         if blockchain == SupportedBlockchain.ETHEREUM:
             return account in self.eth
@@ -310,7 +310,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
         self.beaconchain = beaconchain
         self.btc_derivation_gap_limit = btc_derivation_gap_limit
         self.defi_balances_last_query_ts = Timestamp(0)
-        self.defi_balances: Dict[ChecksumEthAddress, List[DefiProtocolBalances]] = {}
+        self.defi_balances: Dict[ChecksumEvmAddress, List[DefiProtocolBalances]] = {}
 
         self.eth2_details: List['ValidatorDetails'] = []
 
@@ -375,7 +375,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
         for name, module in self.eth_modules.items():
             yield name, module
 
-    def queried_addresses_for_module(self, module: ModuleName) -> List[ChecksumEthAddress]:
+    def queried_addresses_for_module(self, module: ModuleName) -> List[ChecksumEvmAddress]:
         """Returns the addresses to query for the given module/protocol"""
         result = QueriedAddresses(self.database).get_queried_addresses_for_module(module)
         return result if result is not None else self.accounts.eth
@@ -739,7 +739,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
 
     def modify_eth_account(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             append_or_remove: str,
     ) -> None:
         """Either appends or removes an ETH acccount.
@@ -846,7 +846,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
 
     def modify_avalanche_account(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             append_or_remove: Literal['append', 'remove'],
     ) -> None:
         """Either appends or removes a kusama acccount.
@@ -1077,7 +1077,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
                     # when the API adds or removes an address, the deserialize function at
                     # EthereumAddressField is called, so we expect from the addresses retrieved by
                     # this function to be already checksumed.
-                    address = string_to_ethereum_address(account)
+                    address = string_to_evm_address(account)
                     try:
                         self.modify_eth_account(
                             account=address,
@@ -1156,7 +1156,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
                 self.flush_cache('query_balances', arguments_matter=True)
                 self.flush_cache('query_balances', arguments_matter=True, blockchain=SupportedBlockchain.AVALANCHE)  # noqa: E501
                 for account in accounts:
-                    address = string_to_ethereum_address(account)
+                    address = string_to_evm_address(account)
                     self.modify_avalanche_account(
                         account=address,
                         append_or_remove=append_or_remove,
@@ -1173,10 +1173,10 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
     def _update_balances_after_token_query(
             self,
             action: AccountAction,
-            balance_result: Dict[ChecksumEthAddress, Dict[EthereumToken, FVal]],
-            token_usd_price: Dict[EthereumToken, Price],
+            balance_result: Dict[ChecksumEvmAddress, Dict[EvmToken, FVal]],
+            token_usd_price: Dict[EvmToken, Price],
     ) -> None:
-        token_totals: Dict[EthereumToken, FVal] = defaultdict(FVal)
+        token_totals: Dict[EvmToken, FVal] = defaultdict(FVal)
         # Update the per account token balance and usd value
         eth_balances = self.balances.eth
         for account, token_balances in balance_result.items():
@@ -1209,7 +1209,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
     def _query_ethereum_tokens(
             self,
             action: AccountAction,
-            given_accounts: Optional[List[ChecksumEthAddress]] = None,
+            given_accounts: Optional[List[ChecksumEvmAddress]] = None,
             force_detection: bool = False,
     ) -> None:
         """Queries ethereum token balance via either etherscan or ethereum node
@@ -1259,14 +1259,14 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
         client and the chain is not synced
         """
         # Clear out all previous token balances
-        for token in [x for x, _ in self.totals.assets.items() if x.is_eth_token()]:
+        for token in [x for x, _ in self.totals.assets.items() if x.is_evm_token()]:
             del self.totals.assets[token]
-        for token in [x for x, _ in self.totals.liabilities.items() if x.is_eth_token()]:
+        for token in [x for x, _ in self.totals.liabilities.items() if x.is_evm_token()]:
             del self.totals.liabilities[token]
 
         self._query_ethereum_tokens(action=AccountAction.QUERY, force_detection=force_detection)
 
-    def query_defi_balances(self) -> Dict[ChecksumEthAddress, List[DefiProtocolBalances]]:
+    def query_defi_balances(self) -> Dict[ChecksumEvmAddress, List[DefiProtocolBalances]]:
         """Queries DeFi balances from Zerion contract and updates the state
 
         - RemoteError if an external service such as Etherscan or cryptocompare
@@ -1399,7 +1399,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
 
     def _add_account_defi_balances_to_token_and_totals(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             balances: List[DefiProtocolBalances],
     ) -> None:
         """Add a single account's defi balances to per account and totals"""
@@ -1425,7 +1425,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
                 continue
 
             try:
-                token = EthereumToken(entry.base_balance.token_address)
+                token = EvmToken(entry.base_balance.token_address)
             except UnknownAsset:
                 log.warning(
                     f'Found unknown asset {entry.base_balance.token_symbol} in DeFi '
@@ -1460,7 +1460,7 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
 
     def account_for_staked_eth2_balances(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> None:
         eth2 = self.get_module('eth2')
         if eth2 is None:

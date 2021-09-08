@@ -7,7 +7,7 @@ import gevent
 import requests
 from eth_utils import to_checksum_address
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.misc import ZERO
@@ -16,7 +16,7 @@ from rotkehlchen.db.dbhandler import DBHandler
 from rotkehlchen.errors import DeserializationError, RemoteError, UnknownAsset
 from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
 from rotkehlchen.fval import FVal
-from rotkehlchen.typing import ChecksumEthAddress, ExternalService
+from rotkehlchen.typing import ChecksumEvmAddress, ExternalService
 from rotkehlchen.user_messages import MessagesAggregator
 
 MAX_LIMIT = 50  # according to opensea docs
@@ -64,7 +64,7 @@ class NFT(NamedTuple):
                 if last_sale['payment_token']['symbol'] == 'ETH':
                     payment_token = A_ETH
                 else:
-                    payment_token = EthereumToken(
+                    payment_token = EvmToken(
                         to_checksum_address(last_sale['payment_token']['symbol']),
                     )
 
@@ -157,7 +157,7 @@ class Opensea(ExternalServiceWithApiKey):
 
         return json_ret
 
-    def get_account_nfts(self, account: ChecksumEthAddress) -> List[NFT]:
+    def get_account_nfts(self, account: ChecksumEvmAddress) -> List[NFT]:
         """May raise RemoteError"""
         offset = 0
         options = {'order_direction': 'desc', 'offset': offset, 'limit': MAX_LIMIT, 'owner': account}  # noqa: E501

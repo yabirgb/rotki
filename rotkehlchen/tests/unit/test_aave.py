@@ -19,5 +19,5 @@ def test_aave_reserve_mapping():
             assert asset_to_aave_reserve(underlying_asset) == AAVE_ETH_RESERVE_ADDRESS
             continue
 
-        assert aave_reserve_to_asset(underlying_asset.ethereum_address) == underlying_asset
-        assert asset_to_aave_reserve(underlying_asset) == underlying_asset.ethereum_address
+        assert aave_reserve_to_asset(underlying_assetevm_address) == underlying_asset
+        assert asset_to_aave_reserve(underlying_asset) == underlying_assetevm_address

@@ -80,8 +80,8 @@ class ContextManager():
                 f'at constants asset generation yet. Can implement when needed.',
             )
         generated_text += (
-            f'{var_name} = EthereumToken.initialize(\n'
-            f'    address=string_to_ethereum_address(\'{address}\'),\n'
+            f'{var_name} = EvmToken.initialize(\n'
+            f'    address=string_to_evm_address(\'{address}\'),\n'
             f'    decimals={token.decimals},\n'
             f'    name={name},\n'
             f'    symbol={symbol},\n'
@@ -124,8 +124,8 @@ def main() -> None:
                 generated_text += ctx.add_asset_initialization(var_name, identifier)
                 continue
 
-            if 'EthereumToken(\'' in line:
-                initial_split = line.split(' = EthereumToken(\'')
+            if 'EvmToken(\'' in line:
+                initial_split = line.split(' = EvmToken(\'')
                 var_name = initial_split[0]
                 identifier = initial_split[1].split('\'')[0]
                 generated_text += ctx.add_ethtoken_initialization(var_name, identifier)

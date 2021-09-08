@@ -13,7 +13,7 @@ from rotkehlchen.chain.ethereum.typing import (
     ValidatorDailyStats,
     ValidatorDetails,
     ValidatorPerformance,
-    string_to_ethereum_address,
+    string_to_evm_address,
 )
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.fval import FVal
@@ -27,9 +27,9 @@ from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.typing import Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 
-ADDR1 = string_to_ethereum_address('0xfeF0E7635281eF8E3B705e9C5B86e1d3B0eAb397')
-ADDR2 = string_to_ethereum_address('0x00F8a0D8EE1c21151BCcB416bCa1C152f9952D19')
-ADDR3 = string_to_ethereum_address('0x3266F3546a1e5Dc6A15588f3324741A0E20a3B6c')
+ADDR1 = string_to_evm_address('0xfeF0E7635281eF8E3B705e9C5B86e1d3B0eAb397')
+ADDR2 = string_to_evm_address('0x00F8a0D8EE1c21151BCcB416bCa1C152f9952D19')
+ADDR3 = string_to_evm_address('0x3266F3546a1e5Dc6A15588f3324741A0E20a3B6c')
 
 # List of ADDR1, ADDR2 and ADDR3 deposit events from 1604506685 to 1605044577
 # sorted by (timestamp, log_index).

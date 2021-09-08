@@ -1,7 +1,7 @@
 import pytest
 
 from rotkehlchen.assets.typing import AssetData, AssetType
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.errors import DeserializationError
 from rotkehlchen.globaldb.updates import AssetsUpdater
 from rotkehlchen.typing import Timestamp
@@ -31,7 +31,7 @@ def fixture_assets_updater(messages_aggregator):
             started=Timestamp(123),
             forked=None,
             swapped_for=None,
-            ethereum_address=string_to_ethereum_address('0xD178b20c6007572bD1FD01D205cC20D32B4A6015'),  # noqa: E501
+            ethereum_address=string_to_evm_address('0xD178b20c6007572bD1FD01D205cC20D32B4A6015'),  # noqa: E501
             decimals=18,
             cryptocompare='AIDU',
             coingecko=None,
@@ -84,7 +84,7 @@ def fixture_assets_updater(messages_aggregator):
             started=Timestamp(123),
             forked=None,
             swapped_for='_ceth_0xD178b20c6007572bD1FD01D205cC20D32B4A6015',
-            ethereum_address=string_to_ethereum_address('0x76dc5F01A1977F37b483F2C5b06618ed8FcA898C'),  # noqa: E501
+            ethereum_address=string_to_evm_address('0x76dc5F01A1977F37b483F2C5b06618ed8FcA898C'),  # noqa: E501
             decimals=18,
             cryptocompare='',
             coingecko='test-token',
@@ -111,7 +111,7 @@ def fixture_assets_updater(messages_aggregator):
             started=Timestamp(123),
             forked=None,
             swapped_for='_ceth_0xD178b20c6007572bD1FD01D205cC20D32B4A6015',
-            ethereum_address=string_to_ethereum_address('0x76dc5F01A1977F37b483F2C5b06618ed8FcA898C'),  # noqa: E501
+            ethereum_address=string_to_evm_address('0x76dc5F01A1977F37b483F2C5b06618ed8FcA898C'),  # noqa: E501
             decimals=18,
             cryptocompare='',
             coingecko='test-token',

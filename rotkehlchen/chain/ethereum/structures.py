@@ -6,7 +6,7 @@ from typing import Any, Dict, NamedTuple, Optional, Tuple
 from typing_extensions import Literal
 
 from rotkehlchen.accounting.structures import Balance
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.constants.ethereum import EthereumContract
 from rotkehlchen.errors import DeserializationError, UnknownAsset
 from rotkehlchen.fval import FVal
@@ -14,11 +14,11 @@ from rotkehlchen.serialization.deserialize import (
     deserialize_optional_fval,
     deserialize_timestamp,
 )
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 
 AAVE_EVENT_TYPE = Literal['deposit', 'withdrawal', 'interest', 'borrow', 'repay', 'liquidation']
 AAVE_EVENT_DB_TUPLE = Tuple[
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     AAVE_EVENT_TYPE,
     int,  # block_number
     Timestamp,
@@ -34,7 +34,7 @@ AAVE_EVENT_DB_TUPLE = Tuple[
 ]
 
 YEARN_EVENT_DB_TUPLE = Tuple[
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     Literal['deposit', 'withdraw'],  # event_type
     str,  # from_asset identifier
     str,  # from_value amount
@@ -70,8 +70,8 @@ class AaveEvent:
     def serialize(self) -> Dict[str, Any]:
         return dataclasses.asdict(self)
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> Tuple[
-        ChecksumEthAddress,
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> Tuple[
+        ChecksumEvmAddress,
         AAVE_EVENT_TYPE,
         int,
         Timestamp,
@@ -109,7 +109,7 @@ class AaveInterestEvent(AaveEvent):
         result['asset'] = self.asset.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.asset.identifier,
@@ -127,7 +127,7 @@ class AaveDepositWithdrawalEvent(AaveEvent):
     """A deposit or withdrawal in the aave protocol"""
     asset: Asset
     value: Balance
-    atoken: EthereumToken
+    atoken: EvmToken
 
     def serialize(self) -> Dict[str, Any]:
         result = super().serialize()
@@ -135,7 +135,7 @@ class AaveDepositWithdrawalEvent(AaveEvent):
         result['atoken'] = self.atoken.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.asset.identifier,
@@ -155,7 +155,7 @@ class AaveBorrowEvent(AaveInterestEvent):
     borrow_rate: FVal
     accrued_borrow_interest: FVal
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = AaveEvent.to_db_tuple(self, address)
         return base_tuple + (
             self.asset.identifier,
@@ -173,7 +173,7 @@ class AaveRepayEvent(AaveInterestEvent):
     """A repay event of the Aave protocol"""
     fee: Balance
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = AaveEvent.to_db_tuple(self, address)
         return base_tuple + (
             self.asset.identifier,
@@ -200,7 +200,7 @@ class AaveLiquidationEvent(AaveEvent):
         result['principal_asset'] = self.principal_asset.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.collateral_asset.identifier,
@@ -251,7 +251,7 @@ def aave_event_from_db(event_tuple: AAVE_EVENT_DB_TUPLE) -> AaveEvent:
             tx_hash=tx_hash,
             log_index=log_index,
             asset=asset1,
-            atoken=EthereumToken.from_asset(asset2),  # type: ignore # should be a token
+            atoken=EvmToken.from_asset(asset2),  # type: ignore # should be a token
             value=Balance(amount=asset1_amount, usd_value=asset1_usd_value),
         )
     if event_type == 'interest':
@@ -379,7 +379,7 @@ class YearnVaultEvent:
             'log_index': self.log_index,
         }
 
-    def serialize_for_db(self, address: ChecksumEthAddress) -> YEARN_EVENT_DB_TUPLE:
+    def serialize_for_db(self, address: ChecksumEvmAddress) -> YEARN_EVENT_DB_TUPLE:
         pnl_amount = None
         pnl_usd_value = None
         if self.realized_pnl:
@@ -476,5 +476,5 @@ class YearnVaultEvent:
 class YearnVault(NamedTuple):
     name: str
     contract: EthereumContract
-    underlying_token: EthereumToken
-    token: EthereumToken
+    underlying_token: EvmToken
+    token: EvmToken

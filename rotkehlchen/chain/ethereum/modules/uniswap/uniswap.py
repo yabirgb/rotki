@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, List, Optional, Set
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.assets.utils import get_or_create_ethereum_token
 from rotkehlchen.chain.ethereum.graph import GRAPH_QUERY_LIMIT, Graph, format_query_indentation
 from rotkehlchen.chain.ethereum.interfaces.ammswap.ammswap import AMMSwapPlatform
@@ -29,7 +29,7 @@ from rotkehlchen.serialization.deserialize import (
 )
 from rotkehlchen.typing import (
     AssetAmount,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     Location,
     Timestamp,
 )
@@ -88,10 +88,10 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
             graph=self.graph,
         )
 
-    def get_balances_chain(self, addresses: List[ChecksumEthAddress]) -> ProtocolBalance:
+    def get_balances_chain(self, addresses: List[ChecksumEvmAddress]) -> ProtocolBalance:
         """Get the addresses' pools data via chain queries."""
-        known_assets: Set[EthereumToken] = set()
-        unknown_assets: Set[EthereumToken] = set()
+        known_assets: Set[EvmToken] = set()
+        unknown_assets: Set[EvmToken] = set()
         lp_addresses = get_latest_lp_addresses(self.data_directory)
 
         address_mapping = {}
@@ -116,7 +116,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def _get_events_balances(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
     ) -> AddressEventsBalances:
@@ -128,8 +128,8 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
         address_events_balances: AddressEventsBalances = {}
         address_events: DDAddressEvents = defaultdict(list)
         db_address_events: AddressEvents = {}
-        new_addresses: List[ChecksumEthAddress] = []
-        existing_addresses: List[ChecksumEthAddress] = []
+        new_addresses: List[ChecksumEvmAddress] = []
+        existing_addresses: List[ChecksumEvmAddress] = []
         min_end_ts: Timestamp = to_timestamp
 
         # Get addresses' last used query range for Uniswap events
@@ -229,7 +229,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def _get_trades(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             only_cache: bool,
@@ -239,8 +239,8 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
         DB and finally all DB trades are read and returned.
         """
         address_amm_trades: AddressTrades = {}
-        new_addresses: List[ChecksumEthAddress] = []
-        existing_addresses: List[ChecksumEthAddress] = []
+        new_addresses: List[ChecksumEvmAddress] = []
+        existing_addresses: List[ChecksumEvmAddress] = []
         min_end_ts: Timestamp = to_timestamp
 
         if only_cache:
@@ -306,7 +306,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def _get_trades_graph_for_address(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> List[AMMTrade]:
@@ -329,7 +329,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def _get_trades_graph_v3_for_address(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> List[AMMTrade]:
@@ -475,7 +475,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def get_balances(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
     ) -> AddressToLPBalances:
         """Get the addresses' balances in the Uniswap protocol
 
@@ -509,7 +509,7 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
 
     def get_trades_history(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
         reset_db_data: bool,
         from_timestamp: Timestamp,
         to_timestamp: Timestamp,
@@ -538,8 +538,8 @@ class Uniswap(AMMSwapPlatform, EthereumModule):
     def on_startup(self) -> None:
         pass
 
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> Optional[List['AssetBalance']]:
         pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass

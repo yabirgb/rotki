@@ -11,7 +11,7 @@ from rotkehlchen.chain.ethereum.typing import ValidatorID, ValidatorPerformance
 from rotkehlchen.constants.timing import QUERY_RETRY_TIMES
 from rotkehlchen.errors import RemoteError
 from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
-from rotkehlchen.typing import ChecksumEthAddress, ExternalService
+from rotkehlchen.typing import ChecksumEvmAddress, ExternalService
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import get_chunks
 from rotkehlchen.utils.serialization import jsonloads_dict
@@ -252,7 +252,7 @@ class BeaconChain(ExternalServiceWithApiKey):
 
         return performance
 
-    def get_eth1_address_validators(self, address: ChecksumEthAddress) -> List[ValidatorID]:
+    def get_eth1_address_validators(self, address: ChecksumEvmAddress) -> List[ValidatorID]:
         """Get a list of Validators that are associated with the given eth1 address
 
         May raise:

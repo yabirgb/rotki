@@ -5,7 +5,7 @@ from typing_extensions import Literal
 from web3 import Web3
 from web3._utils.abi import get_abi_output_types
 
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 
 if TYPE_CHECKING:
     from rotkehlchen.chain.ethereum.manager import EthereumManager, NodeName
@@ -14,7 +14,7 @@ WEB3 = Web3()
 
 
 class EthereumContract(NamedTuple):
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     abi: List[Dict[str, Any]]
     deployed_block: int
 

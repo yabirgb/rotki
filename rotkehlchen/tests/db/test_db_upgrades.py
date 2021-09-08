@@ -9,7 +9,7 @@ import pytest
 from pysqlcipher3 import dbapi2 as sqlcipher
 
 from rotkehlchen.accounting.structures import BalanceType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.data_handler import DataHandler
 from rotkehlchen.db.dbhandler import DBHandler
@@ -34,7 +34,7 @@ from rotkehlchen.tests.utils.database import (
     mock_dbhandler_update_owned_assets,
 )
 from rotkehlchen.tests.utils.factories import make_ethereum_address
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 from rotkehlchen.user_messages import MessagesAggregator
 
 creation_patch = patch(
@@ -1789,8 +1789,8 @@ def test_upgrade_db_25_to_26(globaldb, user_data_dir, have_kraken, have_kraken_s
     globaldb.add_asset(
         asset_id='_ceth_0x48Fb253446873234F2fEBbF9BdeAA72d9d387f94',
         asset_type=AssetType.ETHEREUM_TOKEN,
-        data=EthereumToken.initialize(
-            address=ChecksumEthAddress('0x48Fb253446873234F2fEBbF9BdeAA72d9d387f94'),
+        data=EvmToken.initialize(
+            address=ChecksumEvmAddress('0x48Fb253446873234F2fEBbF9BdeAA72d9d387f94'),
             decimals=18,
             name='foo',
             symbol='FOO',

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, cast
 from gevent.lock import Semaphore
 
 from rotkehlchen.accounting.structures import AssetBalance, Balance, DefiEvent, DefiEventType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.ethereum.defi.structures import GIVEN_DEFI_BALANCES
 from rotkehlchen.chain.ethereum.modules.makerdao.constants import RAY
 from rotkehlchen.chain.ethereum.structures import (
@@ -20,7 +20,7 @@ from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.errors import RemoteError, UnknownAsset
 from rotkehlchen.fval import FVal
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 
@@ -97,14 +97,14 @@ class Aave(EthereumModule):
     def get_balances(
             self,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveBalances]:
+    ) -> Dict[ChecksumEvmAddress, AaveBalances]:
         with self.balances_lock:
             return self._get_balances(given_defi_balances)
 
     def _get_balances(
             self,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveBalances]:
+    ) -> Dict[ChecksumEvmAddress, AaveBalances]:
         """Retrieves the aave balances
 
         Receives the defi balances from zerion as an argument. They can either be directly given
@@ -138,7 +138,7 @@ class Aave(EthereumModule):
                     balance = balance_entry.base_balance.balance
 
                 try:
-                    token = EthereumToken(token_address)
+                    token = EvmToken(token_address)
                 except UnknownAsset:
                     log.warning('Found aave DeFi balance for unknown token {token_address}. Skipping')  # noqa: E501
                     continue
@@ -194,12 +194,12 @@ class Aave(EthereumModule):
 
     def get_history(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             reset_db_data: bool,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """Detects aave historical data for the given addresses"""
         latest_block = self.ethereum.get_latest_block_number()
         with self.history_lock:
@@ -235,7 +235,7 @@ class Aave(EthereumModule):
             self,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[DefiEvent]:
         if len(addresses) == 0:
             return []
@@ -322,10 +322,10 @@ class Aave(EthereumModule):
     def on_startup(self) -> None:
         pass
 
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> Optional[List['AssetBalance']]:
         pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

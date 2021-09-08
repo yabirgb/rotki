@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.constants.resolver import strethaddress_to_identifier
 from rotkehlchen.errors import UnknownAsset
@@ -23,7 +23,7 @@ from rotkehlchen.tests.utils.api import (
 )
 from rotkehlchen.tests.utils.constants import A_GLM
 from rotkehlchen.tests.utils.mock import MockResponse
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 
 
 def mock_asset_updates(original_requests_get, latest: int, updates: Dict[str, Any], sql_actions: Dict[str, str]):  # noqa: E501
@@ -152,7 +152,7 @@ INSERT INTO assets(identifier,type,name,symbol,started, swapped_for, coingecko, 
 
         assert result is True
         assert globaldb.get_setting_value(ASSETS_VERSION_KEY, None) == 999999995
-        new_token = EthereumToken('0xC2FEC534c461c45533e142f724d0e3930650929c')
+        new_token = EvmToken('0xC2FEC534c461c45533e142f724d0e3930650929c')
         assert new_token.identifier == strethaddress_to_identifier('0xC2FEC534c461c45533e142f724d0e3930650929c')  # noqa: E501
         assert new_token.name == 'AKB token'
         assert new_token.symbol == 'AKB'
@@ -162,7 +162,7 @@ INSERT INTO assets(identifier,type,name,symbol,started, swapped_for, coingecko, 
         assert new_token.swapped_for is None
         assert new_token.coingecko is None
         assert new_token.cryptocompare == 'AIDU'
-        assert new_token.ethereum_address == '0xC2FEC534c461c45533e142f724d0e3930650929c'
+        assert new_tokenevm_address == '0xC2FEC534c461c45533e142f724d0e3930650929c'
         assert new_token.decimals == 18
         assert new_token.protocol is None
 
@@ -197,8 +197,8 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
     globaldb.add_asset(  # add a conflicting token
         asset_id='_ceth_0x1B175474E89094C44Da98b954EedeAC495271d0F',
         asset_type=AssetType.ETHEREUM_TOKEN,
-        data=EthereumToken.initialize(
-            address=ChecksumEthAddress('0x1B175474E89094C44Da98b954EedeAC495271d0F'),
+        data=EvmToken.initialize(
+            address=ChecksumEvmAddress('0x1B175474E89094C44Da98b954EedeAC495271d0F'),
             decimals=12,
             name='Conflicting token',
             symbol='CTK',
@@ -396,7 +396,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         warnings = rotki.msg_aggregator.consume_warnings()
         assert len(errors) == 0, f'Found errors: {errors}'
         assert len(warnings) == 0, f'Found warnings: {warnings}'
-        dai = EthereumToken('0x6B175474E89094C44Da98b954EedeAC495271d0F')
+        dai = EvmToken('0x6B175474E89094C44Da98b954EedeAC495271d0F')
         assert dai.identifier == strethaddress_to_identifier('0x6B175474E89094C44Da98b954EedeAC495271d0F')  # noqa: E501
         assert dai.name == 'New Multi Collateral DAI'
         assert dai.symbol == 'NDAI'
@@ -406,7 +406,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         assert dai.swapped_for is None
         assert dai.coingecko == 'dai'
         assert dai.cryptocompare is None
-        assert dai.ethereum_address == '0x6B175474E89094C44Da98b954EedeAC495271d0F'
+        assert daievm_address == '0x6B175474E89094C44Da98b954EedeAC495271d0F'
         assert dai.decimals == 8
         assert dai.protocol == 'maker'
         # make sure data is in both tables
@@ -439,7 +439,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         assert cursor.execute('SELECT COUNT(*) from common_asset_details WHERE asset_id="121-ada-FADS-as";').fetchone()[0] == 1  # noqa: E501
         assert cursor.execute('SELECT COUNT(*) from assets WHERE identifier="121-ada-FADS-as";').fetchone()[0] == 1  # noqa: E501
 
-        ctk = EthereumToken('0x1B175474E89094C44Da98b954EedeAC495271d0F')
+        ctk = EvmToken('0x1B175474E89094C44Da98b954EedeAC495271d0F')
         assert ctk.name == 'Conflicting token'
         assert ctk.symbol == 'CTK'
         assert ctk.asset_type == AssetType.ETHEREUM_TOKEN
@@ -448,7 +448,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         assert ctk.swapped_for is None
         assert ctk.coingecko == 'ctk'
         assert ctk.cryptocompare is None
-        assert ctk.ethereum_address == '0x1B175474E89094C44Da98b954EedeAC495271d0F'
+        assert ctkevm_address == '0x1B175474E89094C44Da98b954EedeAC495271d0F'
         assert ctk.decimals == 18
         assert ctk.protocol is None
         assert cursor.execute('SELECT COUNT(*) from ethereum_tokens WHERE address="0x1B175474E89094C44Da98b954EedeAC495271d0F";').fetchone()[0] == 1  # noqa: E501
@@ -594,7 +594,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         # inability to do anything with the missing swapped_for
         assert result is True
         assert globaldb.get_setting_value(ASSETS_VERSION_KEY, None) == 999999991
-        gnt = EthereumToken('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')
+        gnt = EvmToken('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')
         assert gnt.identifier == strethaddress_to_identifier('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')  # noqa: E501
         assert gnt.name == 'Golem'
         assert gnt.symbol == 'GNT'
@@ -604,7 +604,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         assert gnt.swapped_for == A_GLM.identifier
         assert gnt.coingecko == 'golem'
         assert gnt.cryptocompare is None
-        assert gnt.ethereum_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
+        assert gntevm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
         assert gnt.decimals == 18
         assert gnt.protocol is None
 
@@ -735,7 +735,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         # inability to do anything with the missing swapped_for
         assert result is True
         assert globaldb.get_setting_value(ASSETS_VERSION_KEY, 0) == 1
-        gnt = EthereumToken('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')
+        gnt = EvmToken('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')
         assert gnt.identifier == strethaddress_to_identifier('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')  # noqa: E501
         assert gnt.name == 'Golem'
         assert gnt.symbol == 'GNT'
@@ -745,7 +745,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         assert gnt.swapped_for == A_GLM.identifier
         assert gnt.coingecko == 'golem'
         assert gnt.cryptocompare is None
-        assert gnt.ethereum_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
+        assert gntevm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
         assert gnt.decimals == 18
         assert gnt.protocol is None
 

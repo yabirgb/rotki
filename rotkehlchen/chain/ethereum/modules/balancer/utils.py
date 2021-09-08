@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 from typing_extensions import Literal
 
 from rotkehlchen.accounting.structures import Balance
-from rotkehlchen.assets.asset import EthereumToken, UnderlyingToken
+from rotkehlchen.assets.asset import EvmToken, UnderlyingToken
 from rotkehlchen.assets.utils import get_or_create_ethereum_token
 from rotkehlchen.chain.ethereum.trades import AMMSwap, AMMTrade
 from rotkehlchen.constants import ZERO
@@ -16,7 +16,7 @@ from rotkehlchen.serialization.deserialize import (
     deserialize_ethereum_address,
     deserialize_timestamp,
 )
-from rotkehlchen.typing import AssetAmount, ChecksumEthAddress, Location, Price, TradeType
+from rotkehlchen.typing import AssetAmount, ChecksumEvmAddress, Location, Price, TradeType
 
 from .typing import (
     BalancerBPTEvent,
@@ -86,7 +86,7 @@ def deserialize_bpt_event(
             decimals=token_decimals,
         )
         underlying_tokens.append(UnderlyingToken(
-            address=token.ethereum_address,
+            address=evm_token_address,
             weight=token_weight / total_weight,
         ))
 
@@ -139,7 +139,7 @@ def deserialize_invest_event(
     user_address = deserialize_ethereum_address(raw_user_address)
     pool_address = deserialize_ethereum_address(raw_pool_address)
     try:
-        pool_address_token = EthereumToken(pool_address)
+        pool_address_token = EvmToken(pool_address)
     except UnknownAsset as e:
         raise DeserializationError(
             f'Balancer pool token with address {pool_address} should have been in the DB',
@@ -162,7 +162,7 @@ def deserialize_invest_event(
 def deserialize_pool_share(
         userdb: 'DBHandler',
         raw_pool_share: Dict[str, Any],
-) -> Tuple[ChecksumEthAddress, BalancerPoolBalance]:
+) -> Tuple[ChecksumEvmAddress, BalancerPoolBalance]:
     """May raise DeserializationError"""
     try:
         raw_user_address = raw_pool_share['userAddress']['id']
@@ -215,11 +215,11 @@ def deserialize_pool_share(
             weight=weight,
         )
         pool_token_balances.append(pool_token_balance)
-        pool_token = UnderlyingToken(address=token.ethereum_address, weight=weight / 100)
+        pool_token = UnderlyingToken(address=evm_token_address, weight=weight / 100)
         pool_tokens.append(pool_token)
 
     pool_tokens.sort(key=lambda x: x.address)
-    pool_token_balances.sort(key=lambda x: x.token.ethereum_address)
+    pool_token_balances.sort(key=lambda x: x.evm_token_address)
     balancer_pool_token = get_or_create_ethereum_token(
         userdb=userdb,
         symbol='BPT',
@@ -340,7 +340,7 @@ def deserialize_swap(userdb: 'DBHandler', raw_swap: Dict[str, Any]) -> AMMSwap:
 
 def deserialize_token_price(
         raw_token_price: Dict[str, Any],
-) -> Tuple[ChecksumEthAddress, Price]:
+) -> Tuple[ChecksumEvmAddress, Price]:
     """May raise DeserializationError"""
     try:
         token_address = raw_token_price['id']
@@ -355,7 +355,7 @@ def deserialize_token_price(
 
 def deserialize_token_day_data(
         raw_token_day_data: Dict[str, Any],
-) -> Tuple[ChecksumEthAddress, Price]:
+) -> Tuple[ChecksumEvmAddress, Price]:
     """May raise DeserializationError"""
     try:
         token_address = raw_token_day_data['token']['id']
@@ -442,7 +442,7 @@ def get_trades_from_tx_swaps(swaps: List[AMMSwap]) -> List[AMMTrade]:
         next_swap = swaps[idx + 1]
         is_not_aggregable = (
             swap.amount1_out != next_swap.amount0_in or
-            swap.token1.ethereum_address != next_swap.token0.ethereum_address
+            swap.token1evm_address != next_swap.token0evm_address
         )
         if is_not_aggregable:
             trade = calculate_trade_from_swaps(swaps=trade_swaps, trade_index=trade_index)

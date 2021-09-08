@@ -4,7 +4,7 @@ from collections import deque
 from typing import Deque, Dict, Tuple, Any, List
 import random
 
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.resolver import (
     ChainID,
     EvmTokenKind,
@@ -21,7 +21,7 @@ from rotkehlchen.globaldb.schema import (
     DB_CREATE_EVM_TOKENS_LIST,
     DB_CREATE_USER_OWNED_ASSETS,
 )
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 
 log = logging.getLogger(__name__)
 
@@ -61,10 +61,10 @@ ASSET_CREATION_TYPE = (
 )
 
 
-def coingecko_hack() -> Dict[str, ChecksumEthAddress]:
+def coingecko_hack() -> Dict[str, ChecksumEvmAddress]:
     """Avoid querying coingecko for now"""
     # TODO assets: This is a hack just for having a fist implementation
-    addr = string_to_ethereum_address(
+    addr = string_to_evm_address(
         '0x' + "".join(random.choices('0123456789ABCDEFabcdef', k=40)),
     )
     return {str(k): addr for k in ChainID}

@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 
 EVM_CHAIN_DIRECTIVE = 'eip155'
 ETHEREUM_DIRECTIVE = '_ceth_'
@@ -52,7 +52,7 @@ VALID_EVM_CHAINS = {
 EVM_CHAINS_TO_DATABASE = {v: k for k, v in VALID_EVM_CHAINS.items()}
 
 
-def ethaddress_to_identifier(address: ChecksumEthAddress) -> str:
+def ethaddress_to_identifier(address: ChecksumEvmAddress) -> str:
     return ETHEREUM_DIRECTIVE + address
 
 

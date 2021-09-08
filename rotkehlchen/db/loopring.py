@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler
@@ -11,7 +11,7 @@ class DBLoopring():
     def __init__(self, database: 'DBHandler') -> None:
         self.db = database
 
-    def add_accountid_mapping(self, address: ChecksumEthAddress, account_id: int) -> None:
+    def add_accountid_mapping(self, address: ChecksumEvmAddress, account_id: int) -> None:
         cursor = self.db.conn.cursor()
         cursor.execute(
             'INSERT INTO multisettings(name, value) VALUES(?, ?)',
@@ -20,7 +20,7 @@ class DBLoopring():
         self.db.conn.commit()
         self.db.update_last_write()
 
-    def remove_accountid_mapping(self, address: ChecksumEthAddress) -> None:
+    def remove_accountid_mapping(self, address: ChecksumEvmAddress) -> None:
         cursor = self.db.conn.cursor()
         cursor.execute(
             'DELETE FROM multisettings WHERE name=?;',
@@ -29,7 +29,7 @@ class DBLoopring():
         self.db.conn.commit()
         self.db.update_last_write()
 
-    def get_accountid_mapping(self, address: ChecksumEthAddress) -> Optional[int]:
+    def get_accountid_mapping(self, address: ChecksumEvmAddress) -> Optional[int]:
         cursor = self.db.conn.cursor()
         query = cursor.execute(
             'SELECT value FROM multisettings WHERE name=?;',

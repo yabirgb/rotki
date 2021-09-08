@@ -2,14 +2,14 @@ from typing import Any, Dict, List, NamedTuple
 
 from rotkehlchen.db.dbhandler import DBHandler
 from rotkehlchen.externalapis.opensea import NFT, Opensea
-from rotkehlchen.typing import ChecksumEthAddress
+from rotkehlchen.typing import ChecksumEvmAddress
 from rotkehlchen.user_messages import MessagesAggregator
 
 FREE_NFT_LIMIT = 5
 
 
 class NFTResult(NamedTuple):
-    addresses: Dict[ChecksumEthAddress, List[NFT]]
+    addresses: Dict[ChecksumEvmAddress, List[NFT]]
     entries_found: int
     entries_limit: int
 
@@ -32,7 +32,7 @@ class NFTManager():
 
     def get_all_nfts(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             has_premium: bool,
     ) -> NFTResult:
         """Gets all NFTs of the given addresses

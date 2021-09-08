@@ -2,7 +2,7 @@ from http import HTTPStatus
 import pytest
 import requests
 
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.tests.utils.api import (
     assert_error_response,
     assert_proper_response_with_result,
@@ -19,7 +19,7 @@ def test_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfo',
         ), json={
-            'address': string_to_ethereum_address('0x6B175474E89094C44Da98b954EedeAC495271d0F'),
+            'address': string_to_evm_address('0x6B175474E89094C44Da98b954EedeAC495271d0F'),
         },
     )
 
@@ -34,7 +34,7 @@ def test_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfo',
         ), json={
-            'address': string_to_ethereum_address('0x7d655c57f71464B6f83811C55D84009Cd9f5221C'),
+            'address': string_to_evm_address('0x7d655c57f71464B6f83811C55D84009Cd9f5221C'),
         },
     )
 
@@ -49,7 +49,7 @@ def test_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfo',
         ), json={
-            'address': string_to_ethereum_address('0x00f195C9ed671173d618e7c03e4A987ef906C739'),
+            'address': string_to_evm_address('0x00f195C9ed671173d618e7c03e4A987ef906C739'),
         },
     )
 
@@ -63,7 +63,7 @@ def test_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfo',
         ), json={
-            'address': string_to_ethereum_address('0x4652D63f4750bCd9d5f5dAds96087485d31554b10F'),
+            'address': string_to_evm_address('0x4652D63f4750bCd9d5f5dAds96087485d31554b10F'),
         },
     )
 
@@ -83,7 +83,7 @@ def test_avax_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfoavax',
         ), json={
-            'address': string_to_ethereum_address('0xba7deebbfc5fa1100fb055a87773e1e99cd3507a'),
+            'address': string_to_evm_address('0xba7deebbfc5fa1100fb055a87773e1e99cd3507a'),
         },
     )
 
@@ -98,7 +98,7 @@ def test_avax_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfoavax',
         ), json={
-            'address': string_to_ethereum_address('0x7d655c57f71464B6f83811C55D84009Cd9f5221C'),
+            'address': string_to_evm_address('0x7d655c57f71464B6f83811C55D84009Cd9f5221C'),
         },
     )
 
@@ -113,7 +113,7 @@ def test_avax_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfoavax',
         ), json={
-            'address': string_to_ethereum_address('0x00f195C9ed671173d618e7c03e4A987ef906C739'),
+            'address': string_to_evm_address('0x00f195C9ed671173d618e7c03e4A987ef906C739'),
         },
     )
 
@@ -127,7 +127,7 @@ def test_avax_query_token_with_info(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'erc20tokeninfoavax',
         ), json={
-            'address': string_to_ethereum_address('0x4652D63f4750bCd9d5f5dAds96087485d31554b10F'),
+            'address': string_to_evm_address('0x4652D63f4750bCd9d5f5dAds96087485d31554b10F'),
         },
     )
 

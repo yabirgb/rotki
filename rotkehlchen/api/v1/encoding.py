@@ -23,7 +23,7 @@ from werkzeug.datastructures import FileStorage
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction, LedgerActionType
 from rotkehlchen.accounting.structures import ActionType
-from rotkehlchen.assets.asset import Asset, EthereumToken, UnderlyingToken
+from rotkehlchen.assets.asset import Asset, EvmToken, UnderlyingToken
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
 from rotkehlchen.chain.bitcoin.hdkey import HDKey, XpubType
@@ -74,7 +74,7 @@ from rotkehlchen.typing import (
     ApiSecret,
     AssetAmount,
     BTCAddress,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     ExternalService,
     ExternalServiceApiCredentials,
     Fee,
@@ -401,7 +401,7 @@ class EthereumAddressField(fields.Field):
 
     @staticmethod
     def _serialize(
-            value: ChecksumEthAddress,
+            value: ChecksumEvmAddress,
             attr: str,  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
@@ -414,7 +414,7 @@ class EthereumAddressField(fields.Field):
             attr: Optional[str],  # pylint: disable=unused-argument
             data: Optional[Mapping[str, Any]],  # pylint: disable=unused-argument
             **_kwargs: Any,
-    ) -> ChecksumEthAddress:
+    ) -> ChecksumEvmAddress:
         # Make sure that given value is an ethereum address
         try:
             address = to_checksum_address(value)
@@ -1447,7 +1447,7 @@ def _transform_btc_address(
 
 
 def _transform_eth_address(
-        ethereum: EthereumManager, given_address: str) -> ChecksumEthAddress:
+        ethereum: EthereumManager, given_address: str) -> ChecksumEvmAddress:
     try:
         address = to_checksum_address(given_address)
     except ValueError:
@@ -1803,7 +1803,7 @@ class EthereumTokenSchema(Schema):
             self,
             data: Dict[str, Any],
             **_kwargs: Any,
-    ) -> EthereumToken:
+    ) -> EvmToken:
         given_underlying_tokens = data.pop('underlying_tokens', None)
         underlying_tokens = None
         if given_underlying_tokens is not None:
@@ -1813,7 +1813,7 @@ class EthereumTokenSchema(Schema):
                     address=entry['address'],
                     weight=entry['weight'],
                 ))
-        return EthereumToken.initialize(**data, underlying_tokens=underlying_tokens)
+        return EvmToken.initialize(**data, underlying_tokens=underlying_tokens)
 
 
 class ModifyEthereumTokenSchema(Schema):

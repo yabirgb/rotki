@@ -16,7 +16,7 @@ from rotkehlchen.tests.utils.api import (
 from rotkehlchen.tests.utils.constants import A_JPY
 from rotkehlchen.tests.utils.factories import make_ethereum_address
 from rotkehlchen.tests.utils.mock import MockWeb3
-from rotkehlchen.typing import ChecksumEthAddress, ModuleName
+from rotkehlchen.typing import ChecksumEvmAddress, ModuleName
 
 
 def test_querying_settings(rotkehlchen_api_server, username):
@@ -439,8 +439,8 @@ def test_set_settings_errors(rotkehlchen_api_server):
 
 
 def assert_queried_addresses_match(
-        result: Dict[ModuleName, List[ChecksumEthAddress]],
-        expected: Dict[ModuleName, List[ChecksumEthAddress]],
+        result: Dict[ModuleName, List[ChecksumEvmAddress]],
+        expected: Dict[ModuleName, List[ChecksumEvmAddress]],
 ) -> None:
     assert len(result) == len(expected)
     for key, value in expected.items():

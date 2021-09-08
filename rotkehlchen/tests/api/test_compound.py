@@ -9,7 +9,7 @@ import requests
 
 from rotkehlchen.accounting.structures import Balance
 from rotkehlchen.chain.ethereum.modules.compound import A_COMP, CompoundEvent
-from rotkehlchen.chain.ethereum.typing import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.assets import A_CDAI, A_CUSDC, A_DAI, A_ETH, A_USDC
 from rotkehlchen.fval import FVal
 from rotkehlchen.serialization.serialize import process_result_list
@@ -170,7 +170,7 @@ TEST_ACCOUNTS = [
 
 EXPECTED_EVENTS = [CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
+    address=string_to_evm_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
     block_number=9443573,
     timestamp=Timestamp(1581184577),
     asset=A_DAI,
@@ -182,7 +182,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=130,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
+    address=string_to_evm_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
     block_number=9533397,
     timestamp=Timestamp(1582378248),
     asset=A_CDAI,
@@ -200,7 +200,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=178,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9772026,
     timestamp=Timestamp(1585558039),
     asset=A_CUSDC,
@@ -212,7 +212,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=80,
 ), CompoundEvent(
     event_type='borrow',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9772043,
     timestamp=Timestamp(1585558230),
     asset=A_ETH,
@@ -224,7 +224,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=95,
 ), CompoundEvent(
     event_type='borrow',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9785337,
     timestamp=Timestamp(1585735112),
     asset=A_ETH,
@@ -236,7 +236,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=65,
 ), CompoundEvent(
     event_type='liquidation',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9789509,
     timestamp=Timestamp(1585790265),
     asset=A_ETH,
@@ -248,7 +248,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=15,
 ), CompoundEvent(
     event_type='borrow',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9791832,
     timestamp=Timestamp(1585820470),
     asset=A_ETH,
@@ -260,7 +260,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=26,
 ), CompoundEvent(
     event_type='liquidation',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9793584,
     timestamp=Timestamp(1585844643),
     asset=A_ETH,
@@ -272,7 +272,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=67,
 ), CompoundEvent(
     event_type='borrow',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9798001,
     timestamp=Timestamp(1585903297),
     asset=A_ETH,
@@ -284,7 +284,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=121,
 ), CompoundEvent(
     event_type='liquidation',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9817257,
     timestamp=Timestamp(1586159213),
     asset=A_ETH,
@@ -296,7 +296,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=35,
 ), CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
+    address=string_to_evm_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
     block_number=9925459,
     timestamp=Timestamp(1587601131),
     asset=A_DAI,
@@ -311,7 +311,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=123,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
+    address=string_to_evm_address('0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'),
     block_number=9937855,
     timestamp=Timestamp(1587766729),
     asset=A_CDAI,
@@ -332,7 +332,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=115,
 ), CompoundEvent(
     event_type='liquidation',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9989623,
     timestamp=Timestamp(1588459991),
     asset=A_ETH,
@@ -344,7 +344,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=75,
 ), CompoundEvent(
     event_type='liquidation',
-    address=string_to_ethereum_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
+    address=string_to_evm_address('0xC440f3C87DC4B6843CABc413916220D4f4FeD117'),
     block_number=9989922,
     timestamp=Timestamp(1588464109),
     asset=A_ETH,
@@ -356,7 +356,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=70,
 ), CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10649153,
     timestamp=Timestamp(1597288823),
     asset=A_DAI,
@@ -371,7 +371,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=216,
 ), CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10655225,
     timestamp=Timestamp(1597369409),
     asset=A_DAI,
@@ -386,7 +386,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=37,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10661485,
     timestamp=Timestamp(1597452580),
     asset=A_CDAI,
@@ -407,7 +407,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=33,
 ), CompoundEvent(
     event_type='comp',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10661485,
     timestamp=Timestamp(1597452580),
     asset=A_COMP,
@@ -425,7 +425,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=25,
 ), CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10699185,
     timestamp=Timestamp(1597954197),
     asset=A_DAI,
@@ -440,7 +440,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=50,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10701348,
     timestamp=Timestamp(1597982781),
     asset=A_CDAI,
@@ -461,7 +461,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=69,
 ), CompoundEvent(
     event_type='mint',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10705474,
     timestamp=Timestamp(1598038125),
     asset=A_DAI,
@@ -476,7 +476,7 @@ EXPECTED_EVENTS = [CompoundEvent(
     log_index=38,
 ), CompoundEvent(
     event_type='redeem',
-    address=string_to_ethereum_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
+    address=string_to_evm_address('0xF59D4937BF1305856C3a267bB07791507a3377Ee'),
     block_number=10712981,
     timestamp=Timestamp(1598138282),
     asset=A_CDAI,

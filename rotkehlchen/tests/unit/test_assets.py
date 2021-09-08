@@ -3,7 +3,7 @@ import warnings as test_warnings
 import pytest
 from eth_utils import is_checksum_address
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.typing import AssetType
 from rotkehlchen.assets.utils import get_or_create_ethereum_token, symbol_to_ethereum_token
@@ -55,13 +55,13 @@ def test_asset_equals():
 
 
 def test_ethereum_tokens():
-    rdn_asset = EthereumToken('0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6')
-    assert rdn_asset.ethereum_address == '0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6'
+    rdn_asset = EvmToken('0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6')
+    assert rdn_assetevm_address == '0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6'
     assert rdn_asset.decimals == 18
-    assert rdn_asset.is_eth_token()
+    assert rdn_asset.is_evm_token()
 
     with pytest.raises(UnknownAsset):
-        EthereumToken('BTC')
+        EvmToken('BTC')
 
 
 def test_cryptocompare_asset_support(cryptocompare):
@@ -149,9 +149,9 @@ def test_all_assets_json_tokens_address_is_checksummed():
 
         msg = (
             f'Ethereum token\'s {asset_data.name} ethereum address '
-            f'is not checksummed {asset_data.ethereum_address}'
+            f'is not checksummed {asset_dataevm_address}'
         )
-        assert is_checksum_address(asset_data.ethereum_address), msg
+        assert is_checksum_address(asset_dataevm_address), msg
 
 
 def test_asset_identifiers_are_unique_all_lowercased():
@@ -383,7 +383,7 @@ def test_get_or_create_ethereum_token(globaldb, database):
     )
     assert cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0] == assets_num + 1
     assert new_token.symbol == 'DAI'
-    assert new_token.ethereum_address == '0xA379B8204A49A72FF9703e18eE61402FAfCCdD60'
+    assert new_tokenevm_address == '0xA379B8204A49A72FF9703e18eE61402FAfCCdD60'
     # Try getting a symbol of normal chain with different address. Should add new token to DB
     new_token = get_or_create_ethereum_token(
         userdb=database,
@@ -391,7 +391,7 @@ def test_get_or_create_ethereum_token(globaldb, database):
         ethereum_address='0xB179B8204A49672FF9703e18eE61402FAfCCdD60',
     )
     assert new_token.symbol == 'DOT'
-    assert new_token.ethereum_address == '0xB179B8204A49672FF9703e18eE61402FAfCCdD60'
+    assert new_tokenevm_address == '0xB179B8204A49672FF9703e18eE61402FAfCCdD60'
     assert cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0] == assets_num + 2
     # Check that token with wrong symbol but existing address is returned
     assert A_USDT == get_or_create_ethereum_token(

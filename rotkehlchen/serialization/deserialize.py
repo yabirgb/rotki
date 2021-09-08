@@ -2,7 +2,7 @@ from typing import Callable, Tuple, TypeVar, Union
 
 from eth_utils import to_checksum_address
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.utils import get_asset_by_symbol
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.errors import (
@@ -15,7 +15,7 @@ from rotkehlchen.fval import AcceptableFValInitInput, FVal
 from rotkehlchen.typing import (
     AssetAmount,
     AssetMovementCategory,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     Fee,
     HexColorCode,
     Optional,
@@ -405,7 +405,7 @@ def deserialize_hex_color_code(symbol: str) -> HexColorCode:
     return HexColorCode(symbol)
 
 
-def deserialize_ethereum_address(symbol: str) -> ChecksumEthAddress:
+def deserialize_ethereum_address(symbol: str) -> ChecksumEvmAddress:
     """Deserialize a symbol, check that it's a valid ethereum address
     and return it checksummed.
 
@@ -485,9 +485,9 @@ def deserialize_int_from_hex_or_int(symbol: Union[str, int], location: str) -> i
     return result
 
 
-def deserialize_ethereum_token_from_db(identifier: str) -> EthereumToken:
-    """Takes an identifier and returns the <EthereumToken>"""
-    ethereum_token = EthereumToken.from_identifier(identifier=identifier)
+def deserialize_ethereum_token_from_db(identifier: str) -> EvmToken:
+    """Takes an identifier and returns the <EvmToken>"""
+    ethereum_token = EvmToken.from_identifier(identifier=identifier)
     if ethereum_token is None:
         raise DeserializationError(
             f'Could not initialize an ethereum token with identifier {identifier}',

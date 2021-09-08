@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple
 from rotkehlchen.utils.mixins.dbenum import DBEnumMixIn
 
 if TYPE_CHECKING:
-    from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+    from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 
 
 class AssetType(DBEnumMixIn):
@@ -52,6 +52,10 @@ class AssetType(DBEnumMixIn):
             AssetType.OPTIMISM_TOKEN,
         )
 
+    @classmethod
+    def is_evm_compatible(cls, asset_type: 'AssetType') -> bool:
+        return asset_type in AssetType.evm_assets()
+
 
 class AssetData(NamedTuple):
     """Data of an asset. Keep in sync with assets/asset.py"""
@@ -64,7 +68,7 @@ class AssetData(NamedTuple):
     started: Optional['Timestamp']
     forked: Optional[str]
     swapped_for: Optional[str]
-    ethereum_address: Optional['ChecksumEthAddress']
+    ethereum_address: Optional['ChecksumEvmAddress']
     decimals: Optional[int]
     # None means, no special mapping. '' means not supported
     cryptocompare: Optional[str]

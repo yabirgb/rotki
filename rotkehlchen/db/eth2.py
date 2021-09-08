@@ -5,7 +5,7 @@ from pysqlcipher3 import dbapi2 as sqlcipher
 
 from rotkehlchen.chain.ethereum.typing import Eth2Deposit, ValidatorDailyStats
 from rotkehlchen.db.utils import form_query_to_filter_timestamps
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler
@@ -57,7 +57,7 @@ class DBEth2():
             self,
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-            address: Optional[ChecksumEthAddress] = None,
+            address: Optional[ChecksumEvmAddress] = None,
     ) -> List[Eth2Deposit]:
         """Returns a list of Eth2Deposit filtered by time and address"""
         cursor = self.db.conn.cursor()

@@ -10,12 +10,12 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 import requests
 from typing_extensions import Literal
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.typing import AssetData, AssetType
 from rotkehlchen.errors import DeserializationError, RemoteError, UnknownAsset
 from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 
 from .handler import GlobalDBHandler, initialize_globaldb
@@ -68,10 +68,10 @@ def _force_remote(cursor: sqlite3.Cursor, local_asset: Asset, full_insert: str) 
     """
     cursor.executescript('PRAGMA foreign_keys = OFF;')
     if local_asset.asset_type == AssetType.ETHEREUM_TOKEN:
-        token = EthereumToken.from_asset(local_asset)
+        token = EvmToken.from_asset(local_asset)
         cursor.execute(
             'DELETE FROM ethereum_tokens WHERE address=?;',
-            (token.ethereum_address,),  # type: ignore  # token != None
+            (evm_token_address,),  # type: ignore  # token != None
         )
     else:
         cursor.execute(
@@ -222,7 +222,7 @@ class AssetsUpdater():
             cryptocompare=self._parse_optional_str(match.group(8), 'cryptocompare', insert_text),
         )
 
-    def _parse_ethereum_token_data(self, insert_text: str) -> Tuple[ChecksumEthAddress, Optional[int], Optional[str]]:  # noqa: E501
+    def _parse_ethereum_token_data(self, insert_text: str) -> Tuple[ChecksumEvmAddress, Optional[int], Optional[str]]:  # noqa: E501
         match = self.ethereum_tokens_re.match(insert_text)
         if match is None:
             raise DeserializationError(

@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from rotkehlchen.accounting.structures import Balance
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.ethereum.structures import (
     AaveDepositWithdrawalEvent,
     AaveEvent,
@@ -18,7 +18,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.history.price import query_usd_price_zero_if_error
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hexstr_to_int
 
@@ -51,12 +51,12 @@ class AaveBlockchainInquirer(AaveInquirer):
 
     def get_history_for_addresses(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             to_block: int,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            aave_balances: Dict[ChecksumEthAddress, AaveBalances],  # pylint: disable=unused-argument  # noqa: E501
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+            aave_balances: Dict[ChecksumEvmAddress, AaveBalances],  # pylint: disable=unused-argument  # noqa: E501
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """
         Queries aave history for a list of addresses.
 
@@ -79,9 +79,9 @@ class AaveBlockchainInquirer(AaveInquirer):
 
     def get_history_for_address(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             to_block: int,
-            atokens_list: Optional[List[EthereumToken]] = None,
+            atokens_list: Optional[List[EvmToken]] = None,
             given_from_block: Optional[int] = None,
     ) -> AaveHistory:
         """
@@ -154,13 +154,13 @@ class AaveBlockchainInquirer(AaveInquirer):
             # TODO: ARCHIVE if to_block is not latest here we should get the balance
             # from the old block. Means using archive node
             balance = self.ethereum.call_contract(
-                contract_address=token.ethereum_address,
+                contract_address=evm_token_address,
                 abi=ATOKEN_ABI,
                 method_name='balanceOf',
                 arguments=[user_address],
             )
             principal_balance = self.ethereum.call_contract(
-                contract_address=token.ethereum_address,
+                contract_address=evm_token_address,
                 abi=ATOKEN_ABI,
                 method_name='principalBalanceOf',
                 arguments=[user_address],
@@ -200,8 +200,8 @@ class AaveBlockchainInquirer(AaveInquirer):
 
     def get_events_for_atoken_and_address(
             self,
-            user_address: ChecksumEthAddress,
-            atoken: EthereumToken,
+            user_address: ChecksumEvmAddress,
+            atoken: EvmToken,
             deposit_events: List[Dict[str, Any]],
             withdraw_events: List[Dict[str, Any]],
             from_block: int,
@@ -214,7 +214,7 @@ class AaveBlockchainInquirer(AaveInquirer):
             'to': user_address,
         }
         mint_events = self.ethereum.get_logs(
-            contract_address=atoken.ethereum_address,
+            contract_address=atokenevm_address,
             abi=ATOKEN_ABI,
             event_name='Transfer',
             argument_filters=argument_filters,

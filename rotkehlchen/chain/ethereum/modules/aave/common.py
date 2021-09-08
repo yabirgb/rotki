@@ -1,14 +1,14 @@
 from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from rotkehlchen.accounting.structures import Balance
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.ethereum.structures import AaveEvent
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.ethereum import AAVE_ETH_RESERVE_ADDRESS
 from rotkehlchen.errors import UnknownAsset
 from rotkehlchen.fval import FVal
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 
 from .constants import ASSET_TO_ATOKENV1
@@ -56,12 +56,12 @@ class AaveBalances(NamedTuple):
     borrowing: Dict[Asset, AaveBorrowingBalance]
 
 
-def aave_reserve_to_asset(address: ChecksumEthAddress) -> Optional[Asset]:
+def aave_reserve_to_asset(address: ChecksumEvmAddress) -> Optional[Asset]:
     if address == AAVE_ETH_RESERVE_ADDRESS:
         return A_ETH
 
     try:
-        asset = EthereumToken(address)
+        asset = EvmToken(address)
     except UnknownAsset:
         return None
 
@@ -71,29 +71,29 @@ def aave_reserve_to_asset(address: ChecksumEthAddress) -> Optional[Asset]:
     return asset
 
 
-def asset_to_aave_reserve(asset: Asset) -> Optional[ChecksumEthAddress]:
+def asset_to_aave_reserve(asset: Asset) -> Optional[ChecksumEvmAddress]:
     if asset == A_ETH:
         return AAVE_ETH_RESERVE_ADDRESS
 
-    token = EthereumToken.from_asset(asset)
+    token = EvmToken.from_asset(asset)
     if token is None:  # should not be called with non token asset except for A_ETH
         return None
 
     if token not in ASSET_TO_ATOKENV1:
         return None
 
-    return token.ethereum_address
+    return evm_token_address
 
 
-def _get_reserve_address_decimals(asset: Asset) -> Tuple[ChecksumEthAddress, int]:
+def _get_reserve_address_decimals(asset: Asset) -> Tuple[ChecksumEvmAddress, int]:
     """Get the reserve address and the number of decimals for symbol"""
     if asset == A_ETH:
         reserve_address = AAVE_ETH_RESERVE_ADDRESS
         decimals = 18
     else:
-        token = EthereumToken.from_asset(asset)
+        token = EvmToken.from_asset(asset)
         assert token, 'should not be a non token asset at this point'
-        reserve_address = token.ethereum_address
+        reserve_address = evm_token_address
         decimals = token.decimals
 
     return reserve_address, decimals
@@ -124,12 +124,12 @@ class AaveInquirer():
 
     def get_history_for_addresses(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             to_block: int,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            aave_balances: Dict[ChecksumEthAddress, AaveBalances],
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+            aave_balances: Dict[ChecksumEvmAddress, AaveBalances],
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """
         Queries aave history for a list of addresses.
 

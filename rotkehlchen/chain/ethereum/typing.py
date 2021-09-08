@@ -6,16 +6,16 @@ from eth_typing import HexAddress, HexStr
 from rotkehlchen.accounting.structures import Balance
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.fval import FVal
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.utils.misc import from_gwei
 
 
-def string_to_ethereum_address(value: str) -> ChecksumEthAddress:
+def string_to_evm_address(value: str) -> ChecksumEvmAddress:
     """This is a conversion without any checks of a string to ethereum address
 
     Is only used for typing.
     """
-    return ChecksumEthAddress(HexAddress(HexStr(value)))
+    return ChecksumEvmAddress(HexAddress(HexStr(value)))
 
 
 class NodeName(Enum):
@@ -267,7 +267,7 @@ Eth2DepositDBTuple = (
 class ValidatorDetails(NamedTuple):
     validator_index: Optional[int]
     public_key: str
-    eth1_depositor: ChecksumEthAddress
+    eth1_depositor: ChecksumEvmAddress
     performance: ValidatorPerformance
     daily_stats: List['ValidatorDailyStats']
 
@@ -282,7 +282,7 @@ class ValidatorDetails(NamedTuple):
 
 
 class Eth2Deposit(NamedTuple):
-    from_address: ChecksumEthAddress
+    from_address: ChecksumEvmAddress
     pubkey: str  # hexstring
     withdrawal_credentials: str  # hexstring
     value: Balance
@@ -313,7 +313,7 @@ class Eth2Deposit(NamedTuple):
         return cls(
             tx_hash=deposit_tuple[0],
             log_index=int(deposit_tuple[1]),
-            from_address=string_to_ethereum_address(deposit_tuple[2]),
+            from_address=string_to_evm_address(deposit_tuple[2]),
             timestamp=Timestamp(int(deposit_tuple[3])),
             pubkey=deposit_tuple[4],
             withdrawal_credentials=deposit_tuple[5],

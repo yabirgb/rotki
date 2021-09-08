@@ -23,7 +23,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.history.price import query_usd_price_zero_if_error
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.typing import ChecksumEthAddress, Timestamp
+from rotkehlchen.typing import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 from rotkehlchen.utils.misc import from_gwei, ts_now
@@ -65,7 +65,7 @@ class Eth2(EthereumModule):
 
     def _get_eth2_staking_deposits_onchain(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             msg_aggregator: MessagesAggregator,
             from_ts: Timestamp,
             to_ts: Timestamp,
@@ -125,7 +125,7 @@ class Eth2(EthereumModule):
 
     def get_staking_deposits(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             msg_aggregator: MessagesAggregator,
             database: 'DBHandler',
     ) -> List[Eth2Deposit]:
@@ -141,8 +141,8 @@ class Eth2(EthereumModule):
         Then write in DB all the new deposits and finally return them all.
         """
         new_deposits: List[Eth2Deposit] = []
-        new_addresses: List[ChecksumEthAddress] = []
-        existing_addresses: List[ChecksumEthAddress] = []
+        new_addresses: List[ChecksumEvmAddress] = []
+        existing_addresses: List[ChecksumEvmAddress] = []
         to_ts = ts_now()
         min_from_ts = to_ts
 
@@ -209,14 +209,14 @@ class Eth2(EthereumModule):
 
     def get_balances(
             self,
-            addresses: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, Balance]:
+            addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, Balance]:
         """May Raise RemoteError from beaconcha.in api"""
         address_to_validators = {}
         index_to_address = {}
         validator_indices = []
         usd_price = Inquirer().find_usd_price(A_ETH)
-        balance_mapping: Dict[ChecksumEthAddress, Balance] = defaultdict(Balance)
+        balance_mapping: Dict[ChecksumEvmAddress, Balance] = defaultdict(Balance)
         # Map eth1 addresses to validators
         for address in addresses:
             validators = self.beaconchain.get_eth1_address_validators(address)
@@ -253,7 +253,7 @@ class Eth2(EthereumModule):
 
     def get_details(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[ValidatorDetails]:
         """Go through the list of eth1 addresses and find all eth2 validators associated
         with them along with their details. Also returns the daily stats for each validator.
@@ -374,7 +374,7 @@ class Eth2(EthereumModule):
     def on_startup(self) -> None:
         pass
 
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> Optional[List['AssetBalance']]:
         try:
             result = self.get_balances([address])
         except RemoteError as e:
@@ -389,7 +389,7 @@ class Eth2(EthereumModule):
 
         return [AssetBalance(asset=A_ETH2, balance=balance)]
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:
