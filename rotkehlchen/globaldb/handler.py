@@ -690,15 +690,23 @@ class GlobalDBHandler():
         """
         connection = GlobalDBHandler()._conn
         cursor = connection.cursor()
+        identifier = None
         try:
             cursor.execute(
-                'DELETE FROM ethereum_tokens WHERE address=?;',
+                'SELECT identifier from evm_tokens where address=?;',
+                (address,),
+            )
+            output = cursor.fetchone()
+            if output != None:
+                identifier = output[0]
+            cursor.execute(
+                'DELETE FROM evm_tokens WHERE address=?;',
                 (address,),
             )
         except sqlite3.IntegrityError as e:
             connection.rollback()
             raise InputError(
-                f'Tried to delete ethereum token with address {address} '
+                f'Tried to delete EVM token with address {address} '
                 f'but its deletion would violate a constraint so deletion '
                 f'failed. Make sure that this token is not already used by '
                 f'other tokens as an underlying or swapped for token or is '
@@ -706,32 +714,20 @@ class GlobalDBHandler():
             ) from e
 
         affected_rows = cursor.rowcount
-        if affected_rows != 1:
+        if affected_rows != 1 or identifier is None:
             raise InputError(
-                f'Tried to delete ethereum token with address {address} '
+                f'Tried to delete EVM token with address {address} '
                 f'but it was not found in the DB',
             )
 
-        # get the rotki identifier of the token
-        query = cursor.execute(
-            'SELECT identifier from assets where details_reference=?;',
-            (address,),
-        )
-        result = query.fetchall()
-        if len(result) == 0:
-            connection.rollback()
-            raise InputError(
-                f'Tried to delete ethereum token with address {address} '
-                f'from the assets table but it was not found in the DB',
-            )
-        rotki_id = result[0][0]
-
-        # finally delete the assets entry
+        # finally delete the information from other tables
         try:
             cursor.execute(
-                'DELETE FROM assets WHERE details_reference=?;',
-                (address,),
-            )
+                'DELETE FROM assets WHERE identifier=?; '
+                'DELETE FROM multiasset_collector WHERE identifier=?; '
+                'DELETE FROM common_asset_details WHERE identifier=?;',
+                (identifier, identifier, identifier),
+            )    
         except sqlite3.IntegrityError as e:
             connection.rollback()
             raise InputError(
@@ -742,7 +738,7 @@ class GlobalDBHandler():
             ) from e
 
         affected_rows = cursor.rowcount
-        if affected_rows != 1:
+        if affected_rows != 3:
             connection.rollback()
             raise InputError(
                 f'Tried to delete ethereum token with address {address} '
@@ -750,7 +746,7 @@ class GlobalDBHandler():
             )
 
         connection.commit()
-        return rotki_id
+        return identifier
 
     @staticmethod
     def edit_custom_asset(data: Dict[str, Any]) -> None:
