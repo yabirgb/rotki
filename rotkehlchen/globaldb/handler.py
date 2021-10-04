@@ -288,7 +288,7 @@ class GlobalDBHandler():
         cursor = GlobalDBHandler()._conn.cursor()
         query = cursor.execute(
             'SELECT A.identifier, A.type, B.name, B.symbol, A.started, A.swapped_for, '
-            'B.coingecko, B.cryptocompare, A.common_details_id from assets AS A JOIN  '
+            'B.coingecko, B.cryptocompare, B.forked from assets AS A JOIN  '
             'common_asset_details AS B ON A.identifier = B.identifier WHERE A.identifier=?;',
             (identifier,),
         )
@@ -309,6 +309,7 @@ class GlobalDBHandler():
         decimals = None
         protocol = None
         evm_address = None
+        forked = result[8]
 
         try:
             asset_type = AssetType.deserialize_from_db(db_serialized_type)
@@ -323,7 +324,7 @@ class GlobalDBHandler():
 
         if asset_type in evm_assets:
             cursor.execute(
-                'SELECT decimals, protocol, address from evm_tokens '
+                'SELECT decimals, protocol, address, token_type from evm_tokens '
                 'WHERE identifier=?', (saved_identifier,),
             )
             result = query.fetchone()
@@ -337,6 +338,7 @@ class GlobalDBHandler():
             decimals = result[0]
             protocol = result[1]
             evm_address = result[2]
+            token_type = result[3]
             missing_basic_data = name is None or symbol is None or decimals is None
             if missing_basic_data and form_with_incomplete_data is False:
                 log.debug(
@@ -344,20 +346,6 @@ class GlobalDBHandler():
                     f'as unknown since its missing either decimals or name or symbol',
                 )
                 return None
-        else:
-            cursor = GlobalDBHandler()._conn.cursor()
-            query = cursor.execute(
-                'SELECT forked FROM common_asset_details WHERE identifier = ?;',
-                (saved_identifier,),
-            )
-            result = query.fetchone()
-            if result is None:
-                log.error(
-                    f'Found asset {saved_identifier} in the DB assets table but not '
-                    f'in the common asset details table.',
-                )
-                return None
-            forked = result[0]
 
         return AssetData(
             identifier=saved_identifier,
@@ -411,7 +399,7 @@ class GlobalDBHandler():
             if asset_id is None:
                 try:  # underlying token does not exist. Track it
                     cursor.execute(
-                        'INSERT INTO ethereum_tokens(address) VALUES(?)',
+                        'INSERT INTO evm_tokens(address) VALUES(?)',
                         (underlying_token.address,),
                     )
                     asset_id = ethaddress_to_identifier(underlying_token.address)
