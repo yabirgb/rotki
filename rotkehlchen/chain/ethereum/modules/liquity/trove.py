@@ -202,7 +202,8 @@ class Liquity(EthereumModule):
         self.history_lock = Semaphore()
         try:
             self.graph = Graph(
-                'https://api.thegraph.com/subgraphs/name/liquity/liquity',
+                urls=['https://api.thegraph.com/subgraphs/name/liquity/liquity'],
+                database=database,
             )
         except RemoteError as e:
             self.msg_aggregator.add_error(

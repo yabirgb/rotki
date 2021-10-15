@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from web3 import HTTPProvider, Web3
 from web3.datastructures import MutableAttributeDict
@@ -19,6 +19,8 @@ from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import from_wei, hex_or_bytes_to_str
 from rotkehlchen.chain.constants import DEFAULT_EVM_RPC_TIMEOUT
 
+if TYPE_CHECKING:
+    from rotkehlchen.db.dbhandler import DBHandler
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -27,7 +29,7 @@ AVAX_ADDRESS = '0x9debca6ea3af87bf422cea9ac955618ceb56efb4'
 WEB3_LOGQUERY_BLOCK_RANGE = 250000
 
 
-class AvalancheManager():
+class AvalancheManager:
     def __init__(
             self,
             avaxrpc_endpoint: str,
@@ -167,7 +169,10 @@ class AvalancheManager():
         return result
 
     @staticmethod
-    def get_basic_contract_info(address: ChecksumEthAddress) -> Dict[str, Any]:
+    def get_basic_contract_info(
+        address: ChecksumEthAddress,
+        database: 'DBHandler',
+    ) -> Dict[str, Any]:
         """
         Query a contract address in pangolin graph node and return basic information as:
         - Decimals
@@ -180,7 +185,10 @@ class AvalancheManager():
         info: Dict[str, Any] = {}
         try:
             # Output contains call status and result
-            graph = Graph('https://api.thegraph.com/subgraphs/name/dasconnor/pangolin-dex')
+            graph = Graph(
+                urls=['https://api.thegraph.com/subgraphs/name/dasconnor/pangolin-dex'],
+                database=database,
+            )
             output = graph.query(
                 f'''{{token(id:"{address.lower()}"){{
                     symbol

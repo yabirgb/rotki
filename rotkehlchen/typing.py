@@ -101,6 +101,7 @@ class ExternalService(SerializableEnumMixin):
     LOOPRING = 3
     OPENSEA = 4
     COVALENT = 5
+    THEGRAPH = 6
 
 
 class ExternalServiceApiCredentials(NamedTuple):

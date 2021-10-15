@@ -91,7 +91,10 @@ class YearnVaultsV2Graph:
         self.database = database
         self.msg_aggregator = msg_aggregator
         self.premium = premium
-        self.graph = Graph('https://api.thegraph.com/subgraphs/name/salazarguille/yearn-vaults-v2-subgraph-mainnet')  # noqa: E501
+        self.graph = Graph(
+            urls=['https://api.thegraph.com/subgraphs/name/salazarguille/yearn-vaults-v2-subgraph-mainnet'],  # noqa: E501
+            database=database,
+        )
 
     def _process_event(
         self,

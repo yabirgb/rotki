@@ -384,8 +384,14 @@ class AaveGraphInquirer(AaveInquirer):
             premium=premium,
             msg_aggregator=msg_aggregator,
         )
-        self.graph = Graph('https://api.thegraph.com/subgraphs/name/aave/protocol-multy-raw')
-        self.graph_v2 = Graph('https://api.thegraph.com/subgraphs/name/aave/protocol-v2')
+        self.graph = Graph(
+            urls=['https://api.thegraph.com/subgraphs/name/aave/protocol-multy-raw'],
+            database=database,
+        )
+        self.graph_v2 = Graph(
+            urls=['https://api.thegraph.com/subgraphs/name/aave/protocol-v2'],
+            database=database,
+        )
 
     def get_history_for_addresses(
             self,

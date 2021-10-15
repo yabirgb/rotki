@@ -242,6 +242,7 @@ class Rotkehlchen():
             etherscan=self.etherscan,
             msg_aggregator=self.msg_aggregator,
             greenlet_manager=self.greenlet_manager,
+            database=self.data.db,
             connect_at_start=ETHEREUM_NODES_TO_CONNECT_AT_START,
         )
         kusama_manager = SubstrateManager(

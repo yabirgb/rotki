@@ -2,7 +2,18 @@ import json
 import logging
 import random
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, overload
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    overload,
+    TYPE_CHECKING,
+)
 from urllib.parse import urlparse
 
 import requests
@@ -57,6 +68,9 @@ from rotkehlchen.utils.network import request_get_dict
 
 from .typing import NodeName
 from .utils import ENS_RESOLVER_ABI_MULTICHAIN_ADDRESS
+
+if TYPE_CHECKING:
+    from rotkehlchen.db.dbhandler import DBHandler
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -200,7 +214,7 @@ OPEN_NODES_WEIGHT_MAP = {  # Probability with which to select each node
 }
 
 
-class EthereumManager():
+class EthereumManager:
     def __init__(
             self,
             ethrpc_endpoint: str,
@@ -208,6 +222,7 @@ class EthereumManager():
             msg_aggregator: MessagesAggregator,
             greenlet_manager: GreenletManager,
             connect_at_start: Sequence[NodeName],
+            database: 'DBHandler',
             eth_rpc_timeout: int = DEFAULT_EVM_RPC_TIMEOUT,
     ) -> None:
         log.debug(f'Initializing Ethereum Manager with own rpc endpoint: {ethrpc_endpoint}')
@@ -228,7 +243,8 @@ class EthereumManager():
                 mainnet_check=True,
             )
         self.blocks_subgraph = Graph(
-            'https://api.thegraph.com/subgraphs/name/blocklytics/ethereum-blocks',
+            urls=['https://api.thegraph.com/subgraphs/name/blocklytics/ethereum-blocks'],
+            database=database,
         )
         # Used by the transactions class. Can't be instantiated there since that is
         # stateless object and thus wouldn't persist.

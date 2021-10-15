@@ -48,7 +48,8 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
     ) -> None:
         try:
             self.graph = Graph(
-                'https://api.thegraph.com/subgraphs/name/sushiswap/exchange',
+                urls=['https://api.thegraph.com/subgraphs/name/sushiswap/exchange'],
+                database=database,
             )
         except RemoteError as e:
             self.msg_aggregator.add_error(

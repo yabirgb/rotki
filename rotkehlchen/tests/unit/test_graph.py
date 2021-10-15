@@ -24,10 +24,10 @@ TEST_QUERY_1 = (
 )
 
 
-def test_exception_retries():
+def test_exception_retries(database):
     """Test an exception raised by Client.execute() triggers the retry logic.
     """
-    graph = Graph(TEST_URL_1)
+    graph = Graph(urls=[TEST_URL_1], database=database)
     param_types = {'$limit': 'Int!'}
     param_values = {'limit': 1}
     querystr = format_query_indentation(TEST_QUERY_1.format())
@@ -55,13 +55,13 @@ def test_exception_retries():
     assert 'No retries left' in str(e.value)
 
 
-def test_success_result():
+def test_success_result(database):
     """Test a successful response returns result as expected and does not
     triggers the retry logic.
     """
     expected_result = {"schema": [{"data1"}, {"data2"}]}
 
-    graph = Graph(TEST_URL_1)
+    graph = Graph(urls=[TEST_URL_1], database=database)
     param_types = {'$limit': 'Int!'}
     param_values = {'limit': 1}
     querystr = format_query_indentation(TEST_QUERY_1.format())

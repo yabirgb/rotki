@@ -3510,7 +3510,10 @@ class RestAPI():
     def _get_avax_token_info(self, address: ChecksumEthAddress) -> Dict[str, Any]:
         avax_manager = self.rotkehlchen.chain_manager.avalanche
         try:
-            info = avax_manager.get_basic_contract_info(address=address)
+            info = avax_manager.get_basic_contract_info(
+                address=address,
+                database=self.rotkehlchen.data.db,
+            )
         except BadFunctionCallOutput:
             return wrap_in_fail_result(
                 f'Address {address} seems to not be a deployed contract',

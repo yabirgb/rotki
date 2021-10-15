@@ -92,7 +92,8 @@ class Adex(EthereumModule):
 
         try:
             self.graph = Graph(
-                'https://api.thegraph.com/subgraphs/name/adexnetwork/adex-protocol-v2',
+                urls=['https://api.thegraph.com/subgraphs/name/adexnetwork/adex-protocol-v2'],
+                database=database,
             )
         except RemoteError as e:
             self.msg_aggregator.add_error(

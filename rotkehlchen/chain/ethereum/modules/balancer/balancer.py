@@ -107,10 +107,12 @@ class Balancer(EthereumModule):
         try:
             # If both fail, let's take the safest approach and consider the module unusable
             self.graph = Graph(
-                'https://api.thegraph.com/subgraphs/name/balancer-labs/balancer',
+                urls=['https://api.thegraph.com/subgraphs/name/balancer-labs/balancer'],
+                database=database,
             )
             self.graph_events = Graph(
-                'https://api.thegraph.com/subgraphs/name/yurycooliq/balancer',
+                urls=['https://api.thegraph.com/subgraphs/name/yurycooliq/balancer'],
+                database=database,
             )
         except RemoteError as e:
             self.msg_aggregator.add_error(
@@ -120,7 +122,8 @@ class Balancer(EthereumModule):
 
         try:
             self.graph_uniswap: Optional[Graph] = Graph(
-                'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v2',
+                urls=['https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v2'],
+                database=database,
             )
         except RemoteError as e:
             self.graph_uniswap = None
