@@ -466,6 +466,9 @@ class Asset():
     def is_evm_token(self) -> bool:
         return AssetType.is_evm_compatible(self.asset_type)
 
+    def is_ethereum_token(self) -> bool:
+        return self.is_evm_token() and self.chain == ChainID.ETHEREUM
+
     def __str__(self) -> str:
         if self.is_evm_token():
             token = EvmToken.from_asset(self)
@@ -696,7 +699,10 @@ class HasEvmToken(Asset):
 
         That error would be bad because it would mean somehow an unknown id made it into the DB
         """
-        swapped_for = Asset(entry[6]) if entry[6] is not None else None
+        # TODO @yabirgb . Until we get to translate correctly the information this data will create a 
+        # infinity recursion because I used the same address here. We need to fix this
+        # swapped_for = Asset(entry[6]) if entry[6] is not None else None
+        swapped_for = None
         return cls.initialize(
             address=entry[1],  # type: ignore
             decimals=entry[2],

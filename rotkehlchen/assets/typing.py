@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional, Tuple
 
+from rotkehlchen.constants.resolver import ChainID, EvmTokenKind
 from rotkehlchen.utils.mixins.dbenum import DBEnumMixIn
 
 if TYPE_CHECKING:
@@ -68,7 +69,9 @@ class AssetData(NamedTuple):
     started: Optional['Timestamp']
     forked: Optional[str]
     swapped_for: Optional[str]
-    ethereum_address: Optional['ChecksumEvmAddress']
+    evm_address: Optional['ChecksumEvmAddress']
+    chain: Optional[ChainID]
+    token_type: Optional[EvmTokenKind]
     decimals: Optional[int]
     # None means, no special mapping. '' means not supported
     cryptocompare: Optional[str]

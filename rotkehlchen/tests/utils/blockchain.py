@@ -407,7 +407,7 @@ def mock_etherscan_query(
                             if given_asset is None:
                                 # not a token
                                 continue
-                            if token_address != given_assetevm_address:
+                            if token_address != given_asset.evm_address:
                                 continue
                             value_to_add = int(value)
                             break
@@ -442,7 +442,7 @@ def mock_etherscan_query(
                             # not a token
                             continue
 
-                        if token_address != given_assetevm_address:
+                        if token_address != given_asset.evm_address:
                             continue
                         value_to_add = int(value)
                         break

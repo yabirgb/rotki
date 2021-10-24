@@ -677,6 +677,7 @@ class EthereumManager():
         web3 = Web3()
         contract = web3.eth.contract(address=contract_address, abi=abi)
         input_data = contract.encodeABI(method_name, args=arguments if arguments else [])
+
         result = self.etherscan.eth_call(
             to_address=contract_address,
             input_data=input_data,

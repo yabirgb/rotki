@@ -9,6 +9,7 @@ from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.chain.ethereum.utils import token_normalized_value
 from rotkehlchen.constants.ethereum import ETH_SCAN
 from rotkehlchen.constants.misc import ZERO
+from rotkehlchen.constants.resolver import ChainID
 from rotkehlchen.db.dbhandler import DBHandler
 from rotkehlchen.errors import RemoteError
 from rotkehlchen.fval import FVal
@@ -17,6 +18,7 @@ from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.typing import ChecksumEvmAddress, Price
 from rotkehlchen.utils.misc import get_chunks, ts_now
+
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -127,10 +129,11 @@ class EthTokens():
         ]
         for asset in ignored_assets:  # don't query for the ignored tokens
             if asset.is_evm_token():  # type ignore since we know asset is a token
-                exceptions.append(EvmToken.from_asset(asset)evm_address)  # type: ignore
+                exceptions.append(EvmToken.from_asset(asset))  # type: ignore
         all_tokens = GlobalDBHandler().get_evm_tokens(
             exceptions=exceptions,
             except_protocols=['balancer'],
+            chain=ChainID.ETHEREUM,
         )
         # With etherscan with chunks > 120, we get request uri too large
         # so the limitation is not in the gas, but in the request uri length
@@ -220,10 +223,11 @@ class EthTokens():
             tokens_num=len(tokens),
         )
         balances: Dict[str, FVal] = {}
+
         result = ETH_SCAN.call(
             ethereum=self.ethereum,
             method_name='tokensBalance',
-            arguments=[account, [xevm_address for x in tokens]],
+            arguments=(account, [x.evm_address for x in tokens]),
             call_order=call_order,
         )
         for tk_idx, token in enumerate(tokens):
@@ -231,7 +235,7 @@ class EthTokens():
             if token_amount != 0:
                 normalized_amount = token_normalized_value(token_amount, token)
                 log.debug(
-                    f'Found {token.symbol}({evm_token_address}) token balance for '
+                    f'Found {token.symbol}({token.evm_address}) token balance for '
                     f'{account} and amount {normalized_amount}',
                 )
                 balances[token.identifier] = normalized_amount

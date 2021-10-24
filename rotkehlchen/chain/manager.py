@@ -1259,9 +1259,9 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
         client and the chain is not synced
         """
         # Clear out all previous token balances
-        for token in [x for x, _ in self.totals.assets.items() if x.is_evm_token()]:
+        for token in [x for x, _ in self.totals.assets.items() if x.is_ethereum_token()]:
             del self.totals.assets[token]
-        for token in [x for x, _ in self.totals.liabilities.items() if x.is_evm_token()]:
+        for token in [x for x, _ in self.totals.liabilities.items() if x.is_ethereum_token()]:
             del self.totals.liabilities[token]
 
         self._query_ethereum_tokens(action=AccountAction.QUERY, force_detection=force_detection)

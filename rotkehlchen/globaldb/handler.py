@@ -10,7 +10,11 @@ from rotkehlchen.assets.asset import Asset, EvmToken, UnderlyingToken
 from rotkehlchen.assets.typing import AssetData, AssetType
 from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.assets import CONSTANT_ASSETS
-from rotkehlchen.constants.resolver import ethaddress_to_identifier, translate_old_format_to_new
+from rotkehlchen.constants.resolver import (
+    ChainID,
+    ethaddress_to_identifier,
+    translate_old_format_to_new,
+)
 from rotkehlchen.errors import DeserializationError, InputError, UnknownAsset
 from rotkehlchen.globaldb.upgrades.v1_v2 import upgrade_ethereum_asset_ids
 from rotkehlchen.globaldb.upgrades.v2_v3 import migrate_to_v3
@@ -231,10 +235,10 @@ class GlobalDBHandler():
         if specific_ids is not None:
             specific_ids_query = f'AND A.identifier in ({",".join("?" * len(specific_ids))})'
         querystr = f"""
-        SELECT A.identifier, A.type, B.address, B.decimals, C.name, C.symbol, A.started, null, A.swapped_for, C.coingecko, C.cryptocompare, B.protocol FROM assets as A JOIN evm_tokens as B
+        SELECT A.identifier, A.type, B.address, B.decimals, C.name, C.symbol, A.started, null, A.swapped_for, C.coingecko, C.cryptocompare, B.protocol, B.chain, B.token_type FROM assets as A JOIN evm_tokens as B
         ON B.identifier = A.identifier JOIN common_asset_details AS C ON C.identifier = B.identifier WHERE A.type=? {specific_ids_query}
         UNION ALL
-        SELECT A.identifier, A.type, null, null, B.name, B.symbol, A.started, B.forked, A.swapped_for, B.coingecko, B.cryptocompare, null from assets as A JOIN common_asset_details as B
+        SELECT A.identifier, A.type, null, null, B.name, B.symbol, A.started, B.forked, A.swapped_for, B.coingecko, B.cryptocompare, null, null, null from assets as A JOIN common_asset_details as B
         ON B.identifier = A.identifier WHERE A.type!=? {specific_ids_query};
         """  # noqa: E501
 
@@ -247,23 +251,25 @@ class GlobalDBHandler():
         query = cursor.execute(querystr, bindings)
         for entry in query:
             asset_type = AssetType.deserialize_from_db(entry[1])
-            ethereum_address: Optional[ChecksumEvmAddress]
+            evm_address: Optional[ChecksumEvmAddress]
             if asset_type == AssetType.ETHEREUM_TOKEN:
-                ethereum_address = string_to_evm_address(entry[2])
+                evm_address = string_to_evm_address(entry[2])
             else:
-                ethereum_address = None
+                evm_address = None
             data = AssetData(
                 identifier=entry[0],
-                asset_type=asset_type,
-                ethereum_address=ethereum_address,
-                decimals=entry[3],
                 name=entry[4],
                 symbol=entry[5],
+                asset_type=asset_type,
                 started=entry[6],
                 forked=entry[7],
                 swapped_for=entry[8],
-                coingecko=entry[9],
+                evm_address=evm_address,
+                chain=entry[12],
+                token_type=entry[13],
+                decimals=entry[3],
                 cryptocompare=entry[10],
+                coingecko=entry[9],
                 protocol=entry[11],
             )
             if mapping:
@@ -309,6 +315,8 @@ class GlobalDBHandler():
         decimals = None
         protocol = None
         evm_address = None
+        chain = None
+        token_type = None
         forked = result[8]
 
         try:
@@ -324,7 +332,7 @@ class GlobalDBHandler():
 
         if asset_type in evm_assets:
             cursor.execute(
-                'SELECT decimals, protocol, address, token_type from evm_tokens '
+                'SELECT decimals, protocol, address, chain, token_type from evm_tokens '
                 'WHERE identifier=?', (saved_identifier,),
             )
             result = query.fetchone()
@@ -338,7 +346,8 @@ class GlobalDBHandler():
             decimals = result[0]
             protocol = result[1]
             evm_address = result[2]
-            token_type = result[3]
+            chain = result[3]
+            token_type = result[4]
             missing_basic_data = name is None or symbol is None or decimals is None
             if missing_basic_data and form_with_incomplete_data is False:
                 log.debug(
@@ -355,7 +364,9 @@ class GlobalDBHandler():
             started=started,
             forked=forked,
             swapped_for=swapped_for,
-            ethereum_address=evm_address,
+            evm_address=evm_address,
+            chain=chain,
+            token_type=token_type,
             decimals=decimals,
             coingecko=coingecko,
             cryptocompare=cryptocompare,
@@ -509,19 +520,21 @@ class GlobalDBHandler():
             exceptions: Optional[List[ChecksumEvmAddress]] = None,
             except_protocols: Optional[List[str]] = None,
             protocol: Optional[str] = None,
+            chain: Optional[ChainID] = None,
     ) -> List[EvmToken]:
         """Gets all ethereum tokens from the DB
 
         Can also accept filtering parameters.
         - List of addresses to ignore via exceptions
         - Protocol for which to return tokens
+        - Chain to filter
         """
         cursor = GlobalDBHandler()._conn.cursor()
         querystr = (
-            'SELECT A.identifier, B.address, B.decimals, A.name, A.symbol, A.started, '
-            'A.swapped_for, A.coingecko, A.cryptocompare, B.protocol, B.chain, B.token_type'
-            'FROM ethereum_tokens as B LEFT OUTER JOIN '
-            'assets AS A on B.address = A.details_reference '
+            'SELECT A.identifier, B.address, B.decimals, C.name, C.symbol, A.started, '
+            'A.swapped_for, C.coingecko, C.cryptocompare, B.protocol, B.chain, B.token_type '
+            'FROM evm_tokens as B LEFT OUTER JOIN '
+            'assets AS A on B.identifier = A.identifier JOIN common_asset_details AS C ON C.identifier = B.identifier '
         )
         if exceptions is not None or protocol is not None or except_protocols is not None:
             bindings_list: List[Union[str, ChecksumEvmAddress]] = []
@@ -538,6 +551,10 @@ class GlobalDBHandler():
                 questionmarks = '?' * len(except_protocols)
                 querystr_additions.append(f'(B.protocol NOT IN ({",".join(questionmarks)}) OR B.protocol IS NULL) ')  # noqa: E501
                 bindings_list.extend(except_protocols)
+
+            if chain is not None:
+                querystr_additions.append('B.chain=?')
+                bindings_list.append(chain.value)
 
             querystr += 'WHERE ' + 'AND '.join(querystr_additions) + ';'
             bindings = tuple(bindings_list)
@@ -614,7 +631,7 @@ class GlobalDBHandler():
                     entry.name,
                     entry.symbol,
                     entry.coingecko,
-                    entry.cryptocompare
+                    entry.cryptocompare,
                     entry.forked.identifier if entry.forked else None,
                     entry.identifier,
                 ),
@@ -926,25 +943,27 @@ class GlobalDBHandler():
             asset_type_check = ''
             query_tuples = (symbol, eth_token_type, symbol, eth_token_type)
         querystr = f"""
-        SELECT A.identifier, A.type, B.address, B.decimals, A.name, A.symbol, A.started, null, A.swapped_for, A.coingecko, A.cryptocompare, B.protocol from assets as A LEFT OUTER JOIN ethereum_tokens as B
-        ON B.address = A.details_reference WHERE A.symbol=? COLLATE NOCASE AND A.type=?
+        SELECT A.identifier, A.type, B.address, B.decimals, C.name, C.symbol, A.started, null, A.swapped_for, C.coingecko, C.cryptocompare, B.protocol, B.chain, B.token_type from assets as A LEFT OUTER JOIN evm_tokens as B
+        ON B.identifier = A.identifier JOIN common_asset_details AS C ON C.identifier = B.identifier WHERE C.symbol=? COLLATE NOCASE AND A.type=?
         UNION ALL
-        SELECT A.identifier, A.type, null, null, A.name, A.symbol, A.started, B.forked, A.swapped_for, A.coingecko, A.cryptocompare, null from assets as A LEFT OUTER JOIN common_asset_details as B
-        ON B.asset_id = A.identifier WHERE A.symbol=? COLLATE NOCASE AND A.type!=?{asset_type_check};
+        SELECT A.identifier, A.type, null, null, B.name, B.symbol, A.started, B.forked, A.swapped_for, B.coingecko, B.cryptocompare, null, null, null from assets as A JOIN common_asset_details as B
+        ON B.identifier = A.identifier WHERE B.symbol=? COLLATE NOCASE AND A.type!=?{asset_type_check};
         """  # noqa: E501
         query = cursor.execute(querystr, query_tuples)
         assets = []
         for entry in query:
             asset_type = AssetType.deserialize_from_db(entry[1])
-            ethereum_address: Optional[ChecksumEvmAddress]
+            evm_address: Optional[ChecksumEvmAddress]
             if asset_type == AssetType.ETHEREUM_TOKEN:
-                ethereum_address = string_to_evm_address(entry[2])
+                evm_address = string_to_evm_address(entry[2])
             else:
-                ethereum_address = None
+                evm_address = None
             assets.append(AssetData(
                 identifier=entry[0],
                 asset_type=asset_type,
-                ethereum_address=ethereum_address,
+                evm_address=evm_address,
+                chain=entry[12],
+                token_type=entry[13],
                 decimals=entry[3],
                 name=entry[4],
                 symbol=entry[5],
@@ -1242,7 +1261,7 @@ def _reload_constant_assets(globaldb: GlobalDBHandler) -> None:
             object.__setattr__(entry, 'swapped_for', swapped_for)
             object.__setattr__(entry, 'cryptocompare', db_entry.cryptocompare)
             object.__setattr__(entry, 'coingecko', db_entry.coingecko)
-            object.__setattr__(entry, 'ethereum_address', db_entry.evm_address)
+            object.__setattr__(entry, 'evm_address', db_entry.evm_address)
             object.__setattr__(entry, 'decimals', db_entry.decimals)
             object.__setattr__(entry, 'protocol', db_entry.protocol)
             # TODO: Not changing underlying tokens at the moment since none
