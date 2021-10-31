@@ -153,3 +153,7 @@ LIQUITY_TROVE_MANAGER = EthereumConstants().contract('TROVE_MANAGER')
 
 PICKLE_DILL_REWARDS = EthereumConstants().contract('DILL_REWARDS')
 PICKLE_DILL = EthereumConstants().contract('DILL')
+
+LUSD_CONVEC_REWARDS = EthereumConstants().contract('LUSD_CONVEX_REWARD')
+
+CURVE_LUSD_FACTORY = EthereumConstants().contract('CURVE_FACTORY_LUSD')

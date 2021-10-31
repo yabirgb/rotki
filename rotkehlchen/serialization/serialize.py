@@ -28,6 +28,7 @@ from rotkehlchen.chain.ethereum.modules.balancer import (
     BalancerPoolTokenBalance,
 )
 from rotkehlchen.chain.ethereum.modules.compound import CompoundBalance, CompoundEvent
+from rotkehlchen.chain.ethereum.modules.convex.convex import ConvexBalance, ConvexEvent
 from rotkehlchen.chain.ethereum.modules.liquity.trove import (
     LiquityStakeEvent,
     LiquityStakeEventType,
@@ -147,6 +148,8 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             StakePosition,
             DillBalance,
             NFTResult,
+            ConvexBalance,
+            ConvexEvent,
     )):
         return process_result(entry.serialize())
     if isinstance(entry, (

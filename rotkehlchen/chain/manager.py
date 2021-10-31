@@ -40,6 +40,7 @@ from rotkehlchen.chain.ethereum.modules import (
     Adex,
     Balancer,
     Compound,
+    Convex,
     Eth2,
     Liquity,
     Loopring,
@@ -463,6 +464,10 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
 
     @overload
     def get_module(self, module_name: Literal['compound']) -> Optional[Compound]:
+        ...
+
+    @overload
+    def get_module(self, module_name: Literal['convex']) -> Optional[Convex]:
         ...
 
     @overload

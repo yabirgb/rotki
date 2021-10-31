@@ -1572,6 +1572,14 @@ class PickleDillResource(BaseResource):
         return self.rest_api.get_dill_balance(async_query=async_query)
 
 
+class ConvexBalancesResource(BaseResource):
+    get_schema = AsyncQueryArgumentSchema()
+
+    @use_kwargs(get_schema, location='json_and_query')
+    def get(self, async_query: bool) -> Response:
+        return self.rest_api.get_convex_balances(async_query=async_query) 
+
+
 class BalancerBalancesResource(BaseResource):
 
     get_schema = AsyncQueryArgumentSchema()

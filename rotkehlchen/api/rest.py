@@ -2715,6 +2715,16 @@ class RestAPI():
             addresses=addresses,
         )
 
+    def get_convex_balances(self, async_query: bool) -> Response:
+        addresses = self.rotkehlchen.chain_manager.queried_addresses_for_module('convex')
+        return self._api_query_for_eth_module(
+            async_query=async_query,
+            module_name='convex',
+            method='get_balances',
+            query_specific_balances_before=[''],
+            addresses=addresses,
+        )
+
     def get_liquity_troves(self, async_query: bool) -> Response:
         return self._api_query_for_eth_module(
             async_query=async_query,

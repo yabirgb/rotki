@@ -3,6 +3,7 @@ __all__ = [
     'Adex',
     'Balancer',
     'Compound',
+    'Convex'
     'Loopring',
     'MakerdaoDsr',
     'MakerdaoVaults',
@@ -20,6 +21,7 @@ from .aave.aave import Aave
 from .adex.adex import Adex
 from .balancer.balancer import Balancer
 from .compound import Compound
+from .convex import Convex
 from .eth2 import Eth2
 from .l2.loopring import Loopring
 from .liquity.trove import Liquity

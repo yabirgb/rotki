@@ -15,6 +15,7 @@ ModuleName = Literal[
     'makerdao_vaults',
     'aave',
     'compound',
+    'convex',
     'yearn_vaults',
     'yearn_vaults_v2',
     'uniswap',
