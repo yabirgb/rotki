@@ -213,7 +213,7 @@ class Compound(EthereumModule):
                         continue
 
                 unclaimed_comp_rewards = (
-                    entry.token_address == A_COMPevm_address and
+                    entry.token_address == A_COMP.evm_address and
                     balance_entry.protocol.name == 'Compound Governance'
                 )
                 if unclaimed_comp_rewards:
@@ -257,7 +257,7 @@ class Compound(EthereumModule):
                     borrowing_map[asset] = CompoundBalance(
                         balance_type=BalanceType.LIABILITY,
                         balance=entry.balance,
-                        apy=self._get_apy(ctokenevm_address, supply=False),
+                        apy=self._get_apy(ctoken.evm_address, supply=False),
                     )
 
             if lending_map == {} and borrowing_map == {} and rewards_map == {}:
@@ -532,7 +532,7 @@ class Compound(EthereumModule):
             'to': address,
         }
         comp_events = self.ethereum.get_logs(
-            contract_address=A_COMPevm_address,
+            contract_address=A_COMP.evm_address,
             abi=ERC20TOKEN_ABI,
             event_name='Transfer',
             argument_filters=argument_filters,

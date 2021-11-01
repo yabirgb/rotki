@@ -1263,7 +1263,6 @@ class ChainManager(CacheableMixIn, LockableQueryMixIn):
             del self.totals.assets[token]
         for token in [x for x, _ in self.totals.liabilities.items() if x.is_ethereum_token()]:
             del self.totals.liabilities[token]
-
         self._query_ethereum_tokens(action=AccountAction.QUERY, force_detection=force_detection)
 
     def query_defi_balances(self) -> Dict[ChecksumEvmAddress, List[DefiProtocolBalances]]:

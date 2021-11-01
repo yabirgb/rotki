@@ -693,7 +693,7 @@ def test_get_events_history_1(
     pool_event_balances = [
         pool_events_balance
         for pool_events_balance in address_pool_events_balances
-        if pool_events_balance['pool_address'] == BALANCER_TEST_ADDR3_POOL1evm_address
+        if pool_events_balance['pool_address'] == BALANCER_TEST_ADDR3_POOL1.evm_address
     ]
 
     assert len(pool_event_balances) == 1
@@ -747,7 +747,7 @@ def test_get_events_history_2(
     pool_event_balances = [
         pool_events_balance
         for pool_events_balance in address_pool_events_balances
-        if pool_events_balance['pool_address'] == BALANCER_TEST_ADDR3_POOL2evm_address
+        if pool_events_balance['pool_address'] == BALANCER_TEST_ADDR3_POOL2.evm_address
     ]
 
     assert len(pool_event_balances) == 1

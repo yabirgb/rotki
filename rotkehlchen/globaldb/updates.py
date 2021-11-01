@@ -71,7 +71,7 @@ def _force_remote(cursor: sqlite3.Cursor, local_asset: Asset, full_insert: str) 
         token = EvmToken.from_asset(local_asset)
         cursor.execute(
             'DELETE FROM ethereum_tokens WHERE address=?;',
-            (evm_token_address,),  # type: ignore  # token != None
+            (token.evm_address,),  # type: ignore  # token != None
         )
     else:
         cursor.execute(

@@ -301,9 +301,9 @@ class Adex(EthereumModule):
                 'Failed to deserialize an AdEx channel withdraw event. Check logs for more details',  # noqa: E501
             )
 
-        if token_address == A_ADXevm_address:
+        if token_address == A_ADX.evm_address:
             token = A_ADX
-        elif token_address == A_DAIevm_address:
+        elif token_address == A_DAI.evm_address:
             token = A_DAI
         else:
             log.error(

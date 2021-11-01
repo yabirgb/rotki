@@ -229,7 +229,7 @@ class AMMSwapPlatform(metaclass=abc.ABCMeta):
             asset_usd_price = Inquirer().find_usd_price(known_asset)
 
             if asset_usd_price != Price(ZERO):
-                asset_price[known_assetevm_address] = asset_usd_price
+                asset_price[known_asset.evm_address] = asset_usd_price
             else:
                 unknown_assets.add(known_asset)
 
@@ -330,7 +330,7 @@ class AMMSwapPlatform(metaclass=abc.ABCMeta):
                 # Otherwise keep existing price (zero)
                 total_user_balance = ZERO
                 for asset in lp.assets:
-                    asset_ethereum_address = asset.assetevm_address
+                    asset_ethereum_address = asset.asset.evm_address
                     asset_usd_price = known_asset_price.get(
                         asset_ethereum_address,
                         unknown_asset_price.get(asset_ethereum_address, Price(ZERO)),
@@ -734,7 +734,7 @@ class AMMSwapPlatform(metaclass=abc.ABCMeta):
         asset_price: AssetToPrice = {}
 
         unknown_assets_addresses = (
-            [assetevm_address.lower() for asset in unknown_assets]
+            [asset.evm_address.lower() for asset in unknown_assets]
         )
         querystr = format_query_indentation(TOKEN_DAY_DATAS_QUERY.format())
         today_epoch = int(

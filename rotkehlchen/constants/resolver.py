@@ -32,6 +32,10 @@ class ChainID(Enum):
 
         raise RuntimeError(f'Unknown chain {chain}')
 
+    @classmethod
+    def deserialize_from_db(cls, chain: int) -> 'ChainID':
+        return cls(chain)
+
 
 class EvmTokenKind(Enum):
     ERC20 = 1
@@ -52,12 +56,8 @@ VALID_EVM_CHAINS = {
 EVM_CHAINS_TO_DATABASE = {v: k for k, v in VALID_EVM_CHAINS.items()}
 
 
-def ethaddress_to_identifier(address: ChecksumEvmAddress) -> str:
-    return ETHEREUM_DIRECTIVE + address
-
-
 def strethaddress_to_identifier(address: str) -> str:
-    return ETHEREUM_DIRECTIVE + address
+    return address
 
 
 def evm_address_to_identifier(
@@ -67,7 +67,7 @@ def evm_address_to_identifier(
     collectible_id: Optional[str] = None,
 ) -> str:
     """Format an EVM token information into the CAIPs identifier format"""
-    ident = f'{EVM_CHAIN_DIRECTIVE}:{chain.value}/{token_type.value}:{address}'
+    ident = f'{EVM_CHAIN_DIRECTIVE}:{chain.value}/{str(token_type)}:{address}'
     if collectible_id is not None:
         return ident + f'/{collectible_id}'
     return ident
@@ -85,3 +85,11 @@ def translate_old_format_to_new(identifier: str) -> str:
             EvmTokenKind.ERC20,
         )
     return identifier
+
+
+def ethaddress_to_identifier(address: ChecksumEvmAddress) -> str:
+    return evm_address_to_identifier(
+        address,
+        ChainID.ETHEREUM,
+        EvmTokenKind.ERC20,
+    )

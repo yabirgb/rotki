@@ -162,7 +162,7 @@ INSERT INTO assets(identifier,type,name,symbol,started, swapped_for, coingecko, 
         assert new_token.swapped_for is None
         assert new_token.coingecko is None
         assert new_token.cryptocompare == 'AIDU'
-        assert new_tokenevm_address == '0xC2FEC534c461c45533e142f724d0e3930650929c'
+        assert new_token.evm_address == '0xC2FEC534c461c45533e142f724d0e3930650929c'
         assert new_token.decimals == 18
         assert new_token.protocol is None
 
@@ -406,7 +406,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         assert dai.swapped_for is None
         assert dai.coingecko == 'dai'
         assert dai.cryptocompare is None
-        assert daievm_address == '0x6B175474E89094C44Da98b954EedeAC495271d0F'
+        assert dai.evm_address == '0x6B175474E89094C44Da98b954EedeAC495271d0F'
         assert dai.decimals == 8
         assert dai.protocol == 'maker'
         # make sure data is in both tables
@@ -448,7 +448,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0x1B175474E8909
         assert ctk.swapped_for is None
         assert ctk.coingecko == 'ctk'
         assert ctk.cryptocompare is None
-        assert ctkevm_address == '0x1B175474E89094C44Da98b954EedeAC495271d0F'
+        assert ctk.evm_address == '0x1B175474E89094C44Da98b954EedeAC495271d0F'
         assert ctk.decimals == 18
         assert ctk.protocol is None
         assert cursor.execute('SELECT COUNT(*) from ethereum_tokens WHERE address="0x1B175474E89094C44Da98b954EedeAC495271d0F";').fetchone()[0] == 1  # noqa: E501
@@ -604,7 +604,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         assert gnt.swapped_for == A_GLM.identifier
         assert gnt.coingecko == 'golem'
         assert gnt.cryptocompare is None
-        assert gntevm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
+        assert gnt.evm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
         assert gnt.decimals == 18
         assert gnt.protocol is None
 
@@ -745,7 +745,7 @@ INSERT INTO ethereum_tokens(address, decimals, protocol) VALUES("0xa74476443119A
         assert gnt.swapped_for == A_GLM.identifier
         assert gnt.coingecko == 'golem'
         assert gnt.cryptocompare is None
-        assert gntevm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
+        assert gnt.evm_address == '0xa74476443119A942dE498590Fe1f2454d7D4aC0d'
         assert gnt.decimals == 18
         assert gnt.protocol is None
 

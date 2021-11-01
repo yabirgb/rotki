@@ -843,7 +843,7 @@ class Balancer(EthereumModule):
                     pool_addr_to_token_addr_to_index[bpt_event.pool_address_token] = token_addr_to_index  # noqa: E501
                     underlying_tokens = [
                         UnderlyingToken(
-                            address=x.evm_token_address,
+                            address=x.token.evm_address,
                             weight=x.weight / FVal(100),
                         ) for x in bpt_event.pool_tokens
                     ]
@@ -876,7 +876,7 @@ class Balancer(EthereumModule):
                             self.msg_aggregator.add_error(
                                 f"Failed to request the USD price of {token.identifier} at "
                                 f"timestamp {invest_event.timestamp}. The USD price of the "
-                                f"Balancer {event_type} for the pool {bpt_event.pool_address_tokenevm_address} "  # noqa: E501
+                                f"Balancer {event_type} for the pool {bpt_event.pool_address_token.evm_address} "  # noqa: E501
                                 f"at transaction {bpt_event.tx_hash} can't be calculated and "
                                 f"it will be set to zero.",
                             )
@@ -908,7 +908,7 @@ class Balancer(EthereumModule):
                 )
                 continue
 
-            token_to_prices[evm_token_address] = usd_price
+            token_to_prices[token.evm_address] = usd_price
         return token_to_prices
 
     def _get_protocol_balance_graph(
@@ -1013,7 +1013,7 @@ class Balancer(EthereumModule):
             token_to_prices = {}
             try:
                 token_to_prices = self._get_unknown_token_to_prices_uniswap_graph(
-                    unknown_token_addresses={evm_token_address},
+                    unknown_token_addresses={token.evm_address},
                     timestamp=timestamp,
                 )
             except RemoteError:
@@ -1022,7 +1022,7 @@ class Balancer(EthereumModule):
                 # same way, so in case of an error we should know.
                 pass
 
-            usd_price = token_to_prices.get(evm_token_address, Price(ZERO))
+            usd_price = token_to_prices.get(token.evm_address, Price(ZERO))
 
         return usd_price
 
@@ -1129,7 +1129,7 @@ class Balancer(EthereumModule):
 
         May raise RemoteError
         """
-        unknown_token_addresses = {evm_token_address for token in unknown_tokens}
+        unknown_token_addresses = {token.evm_address for token in unknown_tokens}
         token_to_prices_bal = self._get_unknown_token_to_prices_balancer_graph(unknown_token_addresses)  # noqa: E501
         token_to_prices = dict(token_to_prices_bal)
         still_unknown_token_addresses = unknown_token_addresses - set(token_to_prices_bal.keys())
@@ -1148,7 +1148,7 @@ class Balancer(EthereumModule):
             token_to_prices = {**token_to_prices, **token_to_prices_uni}
 
         for unknown_token in unknown_tokens:
-            if unknown_tokenevm_address not in token_to_prices:
+            if unknown_token.evm_address not in token_to_prices:
                 self.msg_aggregator.add_error(
                     f"Failed to request the USD price of {unknown_token.identifier}. "
                     f"Balances of the balancer pools that have this token won't be accurate.",
@@ -1245,7 +1245,7 @@ class Balancer(EthereumModule):
             for pool_balance in balancer_pool_balances:
                 total_usd_value = ZERO
                 for pool_token_balance in pool_balance.underlying_tokens_balance:
-                    token_ethereum_address = pool_token_balance.evm_token_address
+                    token_ethereum_address = pool_token_balance.token.evm_address
                     usd_price = known_token_to_prices.get(
                         token_ethereum_address,
                         unknown_token_to_prices.get(token_ethereum_address, Price(ZERO)),

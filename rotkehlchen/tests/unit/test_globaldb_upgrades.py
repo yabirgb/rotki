@@ -15,7 +15,7 @@ def test_upgrade_v1_v2(globaldb):
 
     for identifier, entry in globaldb.get_all_asset_data(mapping=True, serialized=False).items():
         if entry.asset_type == AssetType.ETHEREUM_TOKEN:
-            assert identifier == ethaddress_to_identifier(entryevm_address)
+            assert identifier == ethaddress_to_identifier(entry.evm_address)
 
         swapped_for = entry.swapped_for
 

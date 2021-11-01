@@ -155,7 +155,7 @@ def handle_underlying_price_harvest_vault(
         underlying_asset_price: Price,
 ) -> FVal:
     price_per_full_share = ethereum.call_contract(
-        contract_address=evm_token_address,
+        contract_address=token.evm_address,
         abi=FARM_ASSET_ABI,
         method_name='getPricePerFullShare',
         arguments=[],
@@ -234,7 +234,7 @@ def handle_defi_price_query(
     elif token == A_CRV_3CRV:
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_3POOLSWAP, token.decimals, ONE)
     # a3CRV: Comparing address since constant won't be found if user has not updated their DB
-    elif evm_token_address == '0xFd2a8fA60Abd58Efe3EeE34dd494cD491dC14900':
+    elif token.evm_address == '0xFd2a8fA60Abd58Efe3EeE34dd494cD491dC14900':
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_A3CRVSWAP, token.decimals, ONE)
     elif token == A_CRV_GUSD:
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_GUSDC3CRVSWAP, token.decimals, ONE)

@@ -302,9 +302,9 @@ def test_price_underlying_tokens(inquirer, globaldb):
         name='Test',
         symbol='YAB',
         underlying_tokens=[
-            UnderlyingToken(address=A_AAVEevm_address, weight=aave_weight),
-            UnderlyingToken(address=A_LINKevm_address, weight=link_weight),
-            UnderlyingToken(address=A_CRVevm_address, weight=crv_weight),
+            UnderlyingToken(address=A_AAVE.evm_address, weight=aave_weight),
+            UnderlyingToken(address=A_LINK.evm_address, weight=link_weight),
+            UnderlyingToken(address=A_CRV.evm_address, weight=crv_weight),
         ],
     )
     globaldb.add_asset(

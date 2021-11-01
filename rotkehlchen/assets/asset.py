@@ -5,11 +5,9 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, TypeVar
 
 from rotkehlchen.constants.resolver import (
     ChainID,
-    ETHEREUM_DIRECTIVE,
-    ETHEREUM_DIRECTIVE_LENGTH,
     EvmTokenKind,
-    ethaddress_to_identifier,
     strethaddress_to_identifier,
+    evm_address_to_identifier,
 )
 from rotkehlchen.errors import DeserializationError, UnknownAsset, UnsupportedAsset
 from rotkehlchen.fval import FVal
@@ -425,10 +423,8 @@ class Asset():
             raise DeserializationError(
                 'Tried to initialize an asset out of a non-string identifier',
             )
-
         if direct_field_initialization:
             return
-
         # TODO: figure out a way to move this out. Moved in here due to cyclic imports
         from rotkehlchen.assets.resolver import AssetResolver  # isort:skip  # noqa: E501  # pylint: disable=import-outside-toplevel
         data = AssetResolver().get_asset_data(self.identifier, form_with_incomplete_data)
@@ -564,6 +560,7 @@ class Asset():
     ) -> Z:
         """Initialize an asset from fields"""
         asset = cls('whatever', direct_field_initialization=True)
+
         object.__setattr__(asset, 'identifier', identifier)
         object.__setattr__(asset, 'name', name)
         object.__setattr__(asset, 'symbol', symbol)
@@ -614,7 +611,7 @@ class HasEvmToken(Asset):
         if direct_field_initialization:
             return
 
-        object.__setattr__(self, 'identifier', ETHEREUM_DIRECTIVE + self.identifier)
+        object.__setattr__(self, 'identifier', self.identifier)
         super().__post_init__(form_with_incomplete_data)
         # TODO: figure out a way to move this out. Moved in here due to cyclic imports
         from rotkehlchen.assets.resolver import AssetResolver  # isort:skip  # noqa: E501  # pylint: disable=import-outside-toplevel
@@ -672,7 +669,22 @@ class HasEvmToken(Asset):
     ) -> Y:
         """Initialize a token from fields"""
         token = cls('whatever', direct_field_initialization=True)
-        object.__setattr__(token, 'identifier', ethaddress_to_identifier(address))
+        if chain is not None:
+            identifier = evm_address_to_identifier(
+                address=address,
+                chain=ChainID.deserialize_from_db(chain),
+                token_type=EvmTokenKind.ERC20,
+                collectible_id=None,
+            )
+        else:
+            identifier = evm_address_to_identifier(
+                address=address,
+                chain=ChainID.ETHEREUM,
+                token_type=EvmTokenKind.ERC20,
+                collectible_id=None,
+            )
+
+        object.__setattr__(token, 'identifier', identifier)
         object.__setattr__(token, 'name', name)
         object.__setattr__(token, 'symbol', symbol)
         object.__setattr__(token, 'asset_type', AssetType.ETHEREUM_TOKEN)
@@ -699,8 +711,8 @@ class HasEvmToken(Asset):
 
         That error would be bad because it would mean somehow an unknown id made it into the DB
         """
-        # TODO @yabirgb . Until we get to translate correctly the information this data will create a 
-        # infinity recursion because I used the same address here. We need to fix this
+        # TODO @yabirgb . Until we get to translate correctly the information this data will
+        # create a infinity recursion because I used the same address here. We need to fix this
         # swapped_for = Asset(entry[6]) if entry[6] is not None else None
         swapped_for = None
         return cls.initialize(
@@ -726,7 +738,7 @@ T = TypeVar('T', bound='EvmToken')
 class EvmToken(HasEvmToken):
 
     def __str__(self) -> str:
-        return f'{self.symbol}({selfevm_address})'
+        return f'{self.symbol}({self.evm_address})'
 
     @classmethod
     def from_asset(
@@ -748,9 +760,8 @@ class EvmToken(HasEvmToken):
     ) -> Optional[T]:
         """Attempts to turn an asset into an EvmToken. If it fails returns None"""
         # TODO assets: Figure out if something like this makes sense now
-        #if not identifier.startswith(ETHEREUM_DIRECTIVE):
-        #    return None
-
+        # if not identifier.startswith(ETHEREUM_DIRECTIVE):
+        # return None
         try:
             return cls(
                 identifier,

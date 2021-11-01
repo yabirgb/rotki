@@ -78,7 +78,7 @@ class YearnVaultsV2(EthereumModule):
         """
         now_block_number = self.ethereum.get_latest_block_number()
         price_per_full_share = self.ethereum.call_contract(
-            contract_address=vaultevm_address,
+            contract_address=vault.evm_address,
             abi=YEARN_VAULT_V2_ABI,  # Any vault ABI will do
             method_name='pricePerShare',
         )
@@ -95,12 +95,12 @@ class YearnVaultsV2(EthereumModule):
         result = {}
         for asset, balance in defi_balances.items():
             if isinstance(asset, EvmToken) and asset.protocol == YEARN_VAULTS_V2_PROTOCOL:
-                underlying = GlobalDBHandler().fetch_underlying_tokens(assetevm_address)
+                underlying = GlobalDBHandler().fetch_underlying_tokens(asset.evm_address)
                 if underlying is None:
                     log.error(f'Found yearn asset {asset} without underlying asset')
                     continue
                 underlying_token = EvmToken(underlying[0].address)
-                vault_address = assetevm_address
+                vault_address = asset.evm_address
 
                 roi = roi_cache.get(vault_address, None)
                 pps = pps_cache.get(vault_address, None)
@@ -113,7 +113,7 @@ class YearnVaultsV2(EthereumModule):
                     amount=balance.amount * FVal(pps * 10**-asset.decimals),
                     usd_value=balance.usd_value,
                 )
-                result[assetevm_address] = YearnVaultBalance(
+                result[asset.evm_address] = YearnVaultBalance(
                     underlying_token=underlying_token,
                     vault_token=asset,
                     underlying_value=underlying_balance,

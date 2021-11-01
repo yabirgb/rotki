@@ -82,7 +82,7 @@ def asset_to_aave_reserve(asset: Asset) -> Optional[ChecksumEvmAddress]:
     if token not in ASSET_TO_ATOKENV1:
         return None
 
-    return evm_token_address
+    return token.evm_address
 
 
 def _get_reserve_address_decimals(asset: Asset) -> Tuple[ChecksumEvmAddress, int]:
@@ -93,7 +93,7 @@ def _get_reserve_address_decimals(asset: Asset) -> Tuple[ChecksumEvmAddress, int
     else:
         token = EvmToken.from_asset(asset)
         assert token, 'should not be a non token asset at this point'
-        reserve_address = evm_token_address
+        reserve_address = token.evm_address
         decimals = token.decimals
 
     return reserve_address, decimals

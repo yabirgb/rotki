@@ -1431,7 +1431,7 @@ class RestAPI():
 
     @require_loggedin_user()
     def add_custom_ethereum_token(self, token: EvmToken) -> Response:
-        identifier = ethaddress_to_identifier(evm_token_address)
+        identifier = ethaddress_to_identifier(token.evm_address)
         try:
             GlobalDBHandler().add_asset(
                 asset_id=identifier,

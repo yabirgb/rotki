@@ -160,12 +160,12 @@ EXP_UNKNOWN_ASSETS_2 = {A_CAR}
 # Method: `_get_unknown_asset_price_graph`
 # 'tokenDayDatas' subgraph response data for SHL
 TOKEN_DAY_DATA_SHL = {
-    'token': {'id': A_SHLevm_address},
+    'token': {'id': A_SHL.evm_address},
     'priceUSD': '0.2373897544244518146892192714786454',
 }
 # 'tokenDayDatas' subgraph response data for CAR
 TOKEN_DAY_DATA_CAR = {
-    'token': {'id': A_CARevm_address},
+    'token': {'id': A_CAR.evm_address},
     'priceUSD': '0.2635575008126147388714187358722384',
 }
 

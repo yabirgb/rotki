@@ -28,7 +28,7 @@ def add_ethereum_token_to_db(token_data: EvmToken) -> EvmToken:
         data=token_data,
     )
     # This can, but should not raise UnknownAsset, DeserializationError
-    return EvmToken(token_dataevm_address, form_with_incomplete_data=True)
+    return EvmToken(token_data.evm_address, form_with_incomplete_data=True)
 
 
 def get_or_create_ethereum_token(

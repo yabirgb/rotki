@@ -86,7 +86,7 @@ def deserialize_bpt_event(
             decimals=token_decimals,
         )
         underlying_tokens.append(UnderlyingToken(
-            address=evm_token_address,
+            address=token.evm_address,
             weight=token_weight / total_weight,
         ))
 
@@ -215,11 +215,11 @@ def deserialize_pool_share(
             weight=weight,
         )
         pool_token_balances.append(pool_token_balance)
-        pool_token = UnderlyingToken(address=evm_token_address, weight=weight / 100)
+        pool_token = UnderlyingToken(address=token.evm_address, weight=weight / 100)
         pool_tokens.append(pool_token)
 
     pool_tokens.sort(key=lambda x: x.address)
-    pool_token_balances.sort(key=lambda x: x.evm_token_address)
+    pool_token_balances.sort(key=lambda x: x.token.evm_address)
     balancer_pool_token = get_or_create_ethereum_token(
         userdb=userdb,
         symbol='BPT',
@@ -442,7 +442,7 @@ def get_trades_from_tx_swaps(swaps: List[AMMSwap]) -> List[AMMTrade]:
         next_swap = swaps[idx + 1]
         is_not_aggregable = (
             swap.amount1_out != next_swap.amount0_in or
-            swap.token1evm_address != next_swap.token0evm_address
+            swap.token1.evm_address != next_swap.token0.evm_address
         )
         if is_not_aggregable:
             trade = calculate_trade_from_swaps(swaps=trade_swaps, trade_index=trade_index)

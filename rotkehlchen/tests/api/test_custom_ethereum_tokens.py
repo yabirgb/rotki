@@ -105,7 +105,7 @@ def test_adding_custom_tokens(rotkehlchen_api_server):
         json={'token': serialized_token},
     )
     result = assert_proper_response_with_result(response)
-    assert result == {'identifier': ETHEREUM_DIRECTIVE + CUSTOM_TOKEN3evm_address}
+    assert result == {'identifier': ETHEREUM_DIRECTIVE + CUSTOM_TOKEN3.evm_address}
 
     response = requests.get(
         api_url_for(
@@ -132,7 +132,7 @@ def test_adding_custom_tokens(rotkehlchen_api_server):
         json={'token': serialized_token},
     )
     expected_msg = (
-        f'Ethereum token with address {INITIAL_TOKENS[1]evm_address} already '
+        f'Ethereum token with address {INITIAL_TOKENS[1].evm_address} already '
         f'exists in the DB',
     )
     assert_error_response(
@@ -175,7 +175,7 @@ def test_adding_custom_tokens(rotkehlchen_api_server):
         json={'token': serialized_token},
     )
     expected_msg = (
-        f'The sum of underlying token weights for {bad_tokenevm_address} is '
+        f'The sum of underlying token weights for {bad_token.evm_address} is '
         f'121.1000 and exceeds 100%'
     )
     assert_error_response(
@@ -204,7 +204,7 @@ def test_adding_custom_tokens(rotkehlchen_api_server):
         json={'token': serialized_token},
     )
     expected_msg = (
-        f'The sum of underlying token weights for {bad_tokenevm_address} is '
+        f'The sum of underlying token weights for {bad_token.evm_address} is '
         f'31.1000 and does not add up to 100%'
     )
     assert_error_response(
@@ -231,7 +231,7 @@ def test_adding_custom_tokens(rotkehlchen_api_server):
         json={'token': serialized_bad_token},
     )
     expected_msg = (
-        f'Gave an empty list for underlying tokens of {bad_tokenevm_address}'
+        f'Gave an empty list for underlying tokens of {bad_token.evm_address}'
     )
     assert_error_response(
         response=response,
@@ -299,7 +299,8 @@ def test_editing_custom_tokens(rotkehlchen_api_server):
         json={'token': new_token1},
     )
     result = assert_proper_response_with_result(response)
-    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0]evm_address
+    # TODO yabir: review this test
+    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0].evm_address
     assert result == {'identifier': token0_id}
 
     response = requests.get(
@@ -379,8 +380,8 @@ def test_editing_custom_tokens(rotkehlchen_api_server):
 @pytest.mark.parametrize('custom_ethereum_tokens', [INITIAL_TOKENS])
 def test_deleting_custom_tokens(rotkehlchen_api_server):
     """Test that the endpoint for deleting a custom ethereum token works"""
-    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0]evm_address
-    token1_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[1]evm_address
+    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0].evm_address
+    token1_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[1].evm_address
     underlying1_id = ETHEREUM_DIRECTIVE + underlying_address1
     underlying2_id = ETHEREUM_DIRECTIVE + underlying_address2
     underlying3_id = ETHEREUM_DIRECTIVE + underlying_address3
@@ -398,7 +399,7 @@ def test_deleting_custom_tokens(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'ethereumassetsresource',
         ),
-        json={'address': INITIAL_TOKENS[1]evm_address},
+        json={'address': INITIAL_TOKENS[1].evm_address},
     )
     result = assert_proper_response_with_result(response)
     assert result == {'identifier': token1_id}
@@ -463,7 +464,7 @@ def test_deleting_custom_tokens(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'ethereumassetsresource',
         ),
-        json={'address': INITIAL_TOKENS[0]evm_address},
+        json={'address': INITIAL_TOKENS[0].evm_address},
     )
     result = assert_proper_response_with_result(response)
     assert result['swapped_for'] == A_MKR.identifier
@@ -476,10 +477,10 @@ def test_deleting_custom_tokens(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'ethereumassetsresource',
         ),
-        json={'address': A_MKRevm_address},
+        json={'address': A_MKR.evm_address},
     )
     expected_msg = (
-        f'Tried to delete ethereum token with address {A_MKRevm_address} '
+        f'Tried to delete ethereum token with address {A_MKR.evm_address} '
         f'but its deletion would violate a constraint so deletion failed'
     )
     assert_error_response(
@@ -494,7 +495,7 @@ def test_deleting_custom_tokens(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'ethereumassetsresource',
         ),
-        json={'address': INITIAL_TOKENS[0]evm_address},
+        json={'address': INITIAL_TOKENS[0].evm_address},
     )
     result = assert_proper_response_with_result(response)
     assert result == {'identifier': token0_id}
@@ -525,7 +526,7 @@ def test_deleting_custom_tokens(rotkehlchen_api_server):
 def test_custom_tokens_delete_guard(rotkehlchen_api_server):
     """Test that deleting an owned ethereum token is guarded against"""
     user_db = rotkehlchen_api_server.rest_api.rotkehlchen.data.db
-    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0]evm_address
+    token0_id = ETHEREUM_DIRECTIVE + INITIAL_TOKENS[0].evm_address
     user_db.add_manually_tracked_balances([ManuallyTrackedBalance(
         asset=Asset(token0_id),
         label='manual1',
@@ -540,7 +541,7 @@ def test_custom_tokens_delete_guard(rotkehlchen_api_server):
             rotkehlchen_api_server,
             'ethereumassetsresource',
         ),
-        json={'address': INITIAL_TOKENS[0]evm_address},
+        json={'address': INITIAL_TOKENS[0].evm_address},
     )
     expected_msg = 'Failed to delete asset with id'
     assert_error_response(

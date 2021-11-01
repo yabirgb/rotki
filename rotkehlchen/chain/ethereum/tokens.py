@@ -182,6 +182,7 @@ class EthTokens():
             account=address,
             call_order=call_order,
         )
+
         for token_identifier, value in ret.items():
             token = EvmToken.from_identifier(token_identifier)
             if token is None:  # should not happen
@@ -223,7 +224,6 @@ class EthTokens():
             tokens_num=len(tokens),
         )
         balances: Dict[str, FVal] = {}
-
         result = ETH_SCAN.call(
             ethereum=self.ethereum,
             method_name='tokensBalance',

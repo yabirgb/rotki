@@ -143,8 +143,8 @@ class GlobalDBHandler():
         details_id: Union[str, ChecksumEvmAddress]
         if AssetType.is_evm_compatible(asset_type):
             token = cast(EvmToken, data)
-            GlobalDBHandler().add_ethereum_token_data(token)
-            details_id = evm_token_address
+            GlobalDBHandler().add_evm_token_data(token)
+            details_id = token.evm_address
             name = token.name
             symbol = token.symbol
             started = token.started
@@ -534,7 +534,8 @@ class GlobalDBHandler():
             'SELECT A.identifier, B.address, B.decimals, C.name, C.symbol, A.started, '
             'A.swapped_for, C.coingecko, C.cryptocompare, B.protocol, B.chain, B.token_type '
             'FROM evm_tokens as B LEFT OUTER JOIN '
-            'assets AS A on B.identifier = A.identifier JOIN common_asset_details AS C ON C.identifier = B.identifier '
+            'assets AS A on B.identifier = A.identifier JOIN common_asset_details AS C ON '
+            'C.identifier = B.identifier '
         )
         if exceptions is not None or protocol is not None or except_protocols is not None:
             bindings_list: List[Union[str, ChecksumEvmAddress]] = []
@@ -649,7 +650,13 @@ class GlobalDBHandler():
             cursor.execute(
                 'UPDATE evm_tokens SET token_type=?, address=?, decimals=?, protocol=? '
                 ' WHERE identifier = ?',
-                (entry.token_type, entry.address, entry.decimals, entry.protocol, entry.identifier),
+                (
+                    entry.token_type,
+                    entry.address,
+                    entry.decimals,
+                    entry.protocol,
+                    entry.identifier,
+                ),
             )
         except sqlite3.IntegrityError as e:
             raise InputError(
@@ -670,7 +677,7 @@ class GlobalDBHandler():
         if entry.underlying_tokens is not None:  # and now add any if needed
             GlobalDBHandler()._add_underlying_tokens(
                 connection=connection,
-                parent_token_address=entryevm_address,
+                parent_token_address=entry.evm_address,
                 underlying_tokens=entry.underlying_tokens,
             )
 
@@ -702,7 +709,7 @@ class GlobalDBHandler():
                 (address,),
             )
             output = cursor.fetchone()
-            if output != None:
+            if output is not None:
                 identifier = output[0]
             cursor.execute(
                 'DELETE FROM evm_tokens WHERE address=?;',
@@ -732,7 +739,7 @@ class GlobalDBHandler():
                 'DELETE FROM multiasset_collector WHERE identifier=?; '
                 'DELETE FROM common_asset_details WHERE identifier=?;',
                 (identifier, identifier, identifier),
-            )    
+            )
         except sqlite3.IntegrityError as e:
             connection.rollback()
             raise InputError(

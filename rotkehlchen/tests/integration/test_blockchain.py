@@ -60,13 +60,13 @@ def test_multiple_concurrent_ethereum_blockchain_queries(blockchain):
                 protocol=DefiProtocol('a', 'b', 'c', 1),
                 balance_type='Asset',
                 base_balance=DefiBalance(
-                    token_address=A_DAIevm_address,
+                    token_address=A_DAI.evm_address,
                     token_name='DAI',
                     token_symbol='DAI',
                     balance=Balance(amount=FVal(1), usd_value=(1)),
                 ),
                 underlying_balances=[DefiBalance(
-                    token_address=A_DAIevm_address,
+                    token_address=A_DAI.evm_address,
                     token_name='DAI',
                     token_symbol='DAI',
                     balance=Balance(amount=FVal(1), usd_value=(1)),

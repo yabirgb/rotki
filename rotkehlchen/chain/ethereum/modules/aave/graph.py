@@ -570,7 +570,7 @@ class AaveGraphInquirer(AaveInquirer):
                 )
                 continue
             principal_balance = self.ethereum.call_contract(
-                contract_address=atokenevm_address,
+                contract_address=atoken.evm_address,
                 abi=ATOKEN_ABI,
                 method_name='principalBalanceOf',
                 arguments=[user_address],

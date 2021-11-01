@@ -50,7 +50,7 @@ class BalancerPoolBalance:
     def serialize(self) -> Dict[str, Any]:
 
         return {
-            'address': self.pool_tokenevm_address,
+            'address': self.pool_token.evm_address,
             'tokens': [token.serialize() for token in self.underlying_tokens_balance],
             'total_amount': self.total_amount,
             'user_balance': self.user_balance.serialize(),
@@ -299,7 +299,7 @@ class BalancerPoolEventsBalance(NamedTuple):
             })
 
         return {
-            'pool_address': self.pool_address_tokenevm_address,
+            'pool_address': self.pool_address_token.evm_address,
             'pool_tokens': tokens_and_weights,
             'events': [event.serialize(pool_tokens=self.pool_address_token.underlying_tokens) for event in self.events],  # noqa: E501
             'profit_loss_amounts': profit_loss_amounts,

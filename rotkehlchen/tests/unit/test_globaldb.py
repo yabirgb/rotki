@@ -9,7 +9,7 @@ from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.typing import AssetData, AssetType
 from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.assets import A_BAT
-from rotkehlchen.constants.resolver import ethaddress_to_identifier
+from rotkehlchen.constants.resolver import ethaddress_to_identifier, ChainID, EvmTokenKind
 from rotkehlchen.errors import InputError
 from rotkehlchen.globaldb.handler import GLOBAL_DB_VERSION
 from rotkehlchen.history.typing import HistoricalPriceOracle
@@ -28,11 +28,13 @@ selfkey_asset_data = AssetData(
     started=Timestamp(1508803200),
     forked=None,
     swapped_for=None,
-    ethereum_address=selfkey_address,
+    evm_address=selfkey_address,
     decimals=18,
     cryptocompare=None,
     coingecko='selfkey',
     protocol=None,
+    chain=ChainID.ETHEREUM,
+    token_type=EvmTokenKind.ERC20,
 )
 bidr_asset_data = AssetData(
     identifier='BIDR',
@@ -42,11 +44,13 @@ bidr_asset_data = AssetData(
     started=Timestamp(1593475200),
     forked=None,
     swapped_for=None,
-    ethereum_address=None,
+    evm_address=None,
     decimals=None,
     cryptocompare=None,
     coingecko='binanceidr',
     protocol=None,
+    chain=ChainID.ETHEREUM,
+    token_type=EvmTokenKind.ERC20,
 )
 
 
@@ -54,8 +58,8 @@ bidr_asset_data = AssetData(
 @pytest.mark.parametrize('custom_ethereum_tokens', [INITIAL_TOKENS])
 def test_get_evm_token_identifier(globaldb):
     assert globaldb.get_evm_token_identifier('0xnotexistingaddress') is None
-    token_0_id = globaldb.get_evm_token_identifier(INITIAL_TOKENS[0]evm_address)
-    assert token_0_id == ethaddress_to_identifier(INITIAL_TOKENS[0]evm_address)
+    token_0_id = globaldb.get_evm_token_identifier(INITIAL_TOKENS[0].evm_address)
+    assert token_0_id == ethaddress_to_identifier(INITIAL_TOKENS[0].evm_address)
 
 
 def test_open_new_globaldb_with_old_rotki(tmpdir_factory):
@@ -117,9 +121,9 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
         )
 
     # now edit a new token with swapped_for pointing to a non existing token in the DB
-    bat_custom = globaldb.get_evm_token(A_BATevm_address)
+    bat_custom = globaldb.get_evm_token(A_BAT.evm_address)
     bat_custom = EvmToken.initialize(
-        address=A_BATevm_address,
+        address=A_BAT.evm_address,
         decimals=A_BAT.decimals,
         name=A_BAT.name,
         symbol=A_BAT.symbol,
@@ -129,6 +133,8 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
         cryptocompare=A_BAT.cryptocompare,
         protocol=None,
         underlying_tokens=None,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )
     with pytest.raises(InputError):
         globaldb.edit_evm_token(bat_custom)
@@ -199,11 +205,13 @@ def test_get_asset_with_symbol(globaldb):
             started=1507822985,
             forked=None,
             swapped_for=None,
-            ethereum_address=bihukey_address,
+            evm_address=bihukey_address,
             decimals=18,
             cryptocompare='BIHU',
             coingecko='key',
             protocol=None,
+            chain=ChainID.ETHEREUM,
+            token_type=EvmTokenKind.ERC20,
         ), AssetData(
             identifier='KEY-3',
             name='KeyCoin',
@@ -212,11 +220,13 @@ def test_get_asset_with_symbol(globaldb):
             started=1405382400,
             forked=None,
             swapped_for=None,
-            ethereum_address=None,
+            evm_address=None,
             decimals=None,
             cryptocompare='KEYC',
             coingecko='',
             protocol=None,
+            chain=ChainID.ETHEREUM,
+            token_type=EvmTokenKind.ERC20,
         )]
     # only non-ethereum token
     assert globaldb.get_assets_with_symbol('BIDR') == [bidr_asset_data]
@@ -229,11 +239,13 @@ def test_get_asset_with_symbol(globaldb):
         started=1600970788,
         forked=None,
         swapped_for=None,
-        ethereum_address=aave_address,
+        evm_address=aave_address,
         decimals=18,
         cryptocompare=None,
         coingecko='aave',
         protocol=None,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )]
     # finally non existing asset
     assert globaldb.get_assets_with_symbol('DASDSADSDSDSAD') == []
@@ -247,11 +259,13 @@ def test_get_asset_with_symbol(globaldb):
         started=1585090944,
         forked=None,
         swapped_for=None,
-        ethereum_address=renbtc_address,
+        evm_address=renbtc_address,
         decimals=8,
         cryptocompare=None,
         coingecko='renbtc',
         protocol=None,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )]
     for x in itertools.product(('ReNbTc', 'renbtc', 'RENBTC', 'rEnBTc'), (None, AssetType.ETHEREUM_TOKEN)):  # noqa: E501
         assert globaldb.get_assets_with_symbol(*x) == expected_renbtc
@@ -284,11 +298,13 @@ def test_get_all_asset_data_specific_ids(globaldb):
         started=Timestamp(1231006505),
         forked=None,
         swapped_for=None,
-        ethereum_address=None,
+        evm_address=None,
         decimals=None,
         cryptocompare=None,
         coingecko='bitcoin',
         protocol=None,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )
     eth_asset_data = AssetData(
         identifier='ETH',
@@ -298,11 +314,13 @@ def test_get_all_asset_data_specific_ids(globaldb):
         started=Timestamp(1438214400),
         forked=None,
         swapped_for=None,
-        ethereum_address=None,
+        evm_address=None,
         decimals=None,
         cryptocompare=None,
         coingecko='ethereum',
         protocol=None,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )
 
     asset_data = globaldb.get_all_asset_data(
