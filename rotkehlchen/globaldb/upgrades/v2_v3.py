@@ -193,7 +193,6 @@ def upgrade_other_assets(connection: sqlite3.Connection) -> ASSET_CREATION_TYPE:
 
     assets_tuple = []
     common_asset_details = []
-
     for entry in result:
         assets_tuple.append((
             entry[0],  # identifier
@@ -206,9 +205,9 @@ def upgrade_other_assets(connection: sqlite3.Connection) -> ASSET_CREATION_TYPE:
             entry[0],  # identifier
             entry[2],  # name
             entry[3],  # symbol
-            entry[5],  # coingecko
-            entry[6],  # cryptocompare
-            None,  # forked TODO: Add the forked field
+            entry[6],  # coingecko
+            entry[7],  # cryptocompare
+            None,  # TODO @yabirgb: Add the forked field
         ))
 
     return (
@@ -323,7 +322,9 @@ def migrate_to_v3(connection: sqlite3.Connection) -> None:
     cursor.execute(DB_CREATE_USER_OWNED_ASSETS)
 
     cursor.executemany(COMMON_ASSETS_INSERT, common_asset_details)
+    cursor.executescript('PRAGMA foreign_keys=off;')
     cursor.executemany(ASSETS_INSERT, assets_tuple)
+    cursor.executescript('PRAGMA foreign_keys=on;')
     cursor.executemany(EVM_TOKEN_INSERT, evm_tuples)
     cursor.executemany(UNDERLYING_TOKEN_INSERT, mappings)
     cursor.executemany(OWNED_ASSETS_INSERT, owned_assets)

@@ -773,8 +773,8 @@ class EvmToken(HasEvmToken):
     def serialize_for_db(self):
         return (
             self.identifier,
-            self.token_type,
-            self.chain,
+            self.token_type.value,
+            self.chain.value,
             self.evm_address,
             self.decimals,
             self.protocol,

@@ -36,15 +36,18 @@ selfkey_asset_data = AssetData(
     chain=ChainID.ETHEREUM,
     token_type=EvmTokenKind.ERC20,
 )
+# TODO @yabirgb: Fix this address. Atm we reandomly create addresses and this
+# makes the test fail
+bidr_identifier = 'eip155:56/ERC20:0x1F47FA9dcB19F62a8EDB4930a3cCffD2f262DF8d'
 bidr_asset_data = AssetData(
-    identifier='BIDR',
+    identifier=bidr_identifier,
     name='Binance IDR Stable Coin',
     symbol='BIDR',
     asset_type=AssetType.BINANCE_TOKEN,
     started=Timestamp(1593475200),
     forked=None,
     swapped_for=None,
-    evm_address=None,
+    evm_address='bnb1v7hlk89x4t6wtfx89wrvhxj5wcv7sxjrve6dav',
     decimals=None,
     cryptocompare=None,
     coingecko='binanceidr',
@@ -99,25 +102,30 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
         decimals=18,
         name='willdell',
         symbol='DELME',
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
     )
-    token_to_delete_id = 'DELMEID1'
+    token_to_delete_id = token_to_delete.identifier
     globaldb.add_asset(
         asset_id=token_to_delete_id,
         asset_type=AssetType.ETHEREUM_TOKEN,
         data=token_to_delete,
     )
     asset_to_delete = Asset(token_to_delete_id)
-    assert globaldb.delete_ethereum_token(address_to_delete) == token_to_delete_id
+    assert globaldb.delete_evm_token(address_to_delete) == token_to_delete_id
 
     # now try to add a new token with swapped_for pointing to a non existing token in the DB
+    new_token = EvmToken.initialize(
+        address=make_ethereum_address(),
+        swapped_for=asset_to_delete,
+        chain=ChainID.ETHEREUM,
+        token_type=EvmTokenKind.ERC20,
+    )
     with pytest.raises(InputError):
         globaldb.add_asset(
-            asset_id='NEWID',
+            asset_id=new_token.identifier,
             asset_type=AssetType.ETHEREUM_TOKEN,
-            data=EvmToken.initialize(
-                address=make_ethereum_address(),
-                swapped_for=asset_to_delete,
-            ),
+            data=new_token,
         )
 
     # now edit a new token with swapped_for pointing to a non existing token in the DB
@@ -225,8 +233,8 @@ def test_get_asset_with_symbol(globaldb):
             cryptocompare='KEYC',
             coingecko='',
             protocol=None,
-            chain=ChainID.ETHEREUM,
-            token_type=EvmTokenKind.ERC20,
+            chain=None,
+            token_type=None,
         )]
     # only non-ethereum token
     assert globaldb.get_assets_with_symbol('BIDR') == [bidr_asset_data]

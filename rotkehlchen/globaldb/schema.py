@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS assets (
     swapped_for TEXT,
     common_details_id TEXT,
     FOREIGN KEY(common_details_id) REFERENCES common_asset_details(identifier) ON UPDATE CASCADE
+    FOREIGN KEY(swapped_for) REFERENCES common_asset_details(identifier) ON UPDATE CASCADE
 );
 """
 

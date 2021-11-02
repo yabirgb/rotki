@@ -12,6 +12,7 @@ from rotkehlchen.chain.ethereum.typing import string_to_evm_address
 from rotkehlchen.constants.assets import CONSTANT_ASSETS
 from rotkehlchen.constants.resolver import (
     ChainID,
+    EvmTokenKind,
     ethaddress_to_identifier,
     translate_old_format_to_new,
 )
@@ -132,7 +133,7 @@ class GlobalDBHandler():
             data: Union[EvmToken, Dict[str, Any]],
     ) -> None:
         """
-        Add an asset in the DB. Either an ethereum token or a custom asset.
+        Add an asset in the DB. Either an evm token or a custom asset.
 
         If it's a custom asset the data should be typed. As given in by marshmallow.
 
@@ -140,11 +141,10 @@ class GlobalDBHandler():
         connection = GlobalDBHandler()._conn
         cursor = connection.cursor()
 
-        details_id: Union[str, ChecksumEvmAddress]
+        details_id = asset_id
         if AssetType.is_evm_compatible(asset_type):
             token = cast(EvmToken, data)
             GlobalDBHandler().add_evm_token_data(token)
-            details_id = token.evm_address
             name = token.name
             symbol = token.symbol
             started = token.started
@@ -152,7 +152,6 @@ class GlobalDBHandler():
             coingecko = token.coingecko
             cryptocompare = token.cryptocompare
         else:
-            details_id = asset_id
             data = cast(Dict[str, Any], data)
             # The data should already be typed (as given in by marshmallow)
             name = data.get('name', None)
@@ -165,32 +164,35 @@ class GlobalDBHandler():
 
         try:
             cursor.execute(
+                'INSERT INTO common_asset_details(identifier, name, symbol, coingecko, '
+                'cryptocompare, forked)'
+                'VALUES(?, ?, ?, ?, ?, ?);',
+                (
+                    asset_id,
+                    name,
+                    symbol,
+                    coingecko,
+                    cryptocompare,
+                    None,  # TODO @yabirgb review this
+                ),
+            )
+            cursor.execute(
                 'INSERT INTO assets('
-                'identifier, type, name, symbol, started, swapped_for, '
-                'coingecko, cryptocompare, details_reference) '
-                'VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'identifier, type, started, swapped_for, common_details_id) '
+                'VALUES(?, ?, ?, ?, ?);',
                 (
                     asset_id,
                     asset_type.serialize_for_db(),
-                    name,
-                    symbol,
                     started,
                     swapped_for,
-                    coingecko,
-                    cryptocompare,
-                    details_id),
+                    details_id,
+                ),
             )
         except sqlite3.IntegrityError as e:
             connection.rollback()
             raise InputError(
                 f'Failed to add asset {asset_id} into the assets table for details id {details_id} due to {str(e)}',  # noqa: E501
             ) from e
-
-        # for common asset details we have to add them after the addition of the main asset table
-        if asset_type != AssetType.ETHEREUM_TOKEN:
-            asset_data = cast(Dict[str, Any], data)
-            asset_data['identifier'] = asset_id
-            GlobalDBHandler().add_common_asset_details(asset_data)
 
         connection.commit()  # success
 
@@ -265,8 +267,8 @@ class GlobalDBHandler():
                 forked=entry[7],
                 swapped_for=entry[8],
                 evm_address=evm_address,
-                chain=entry[12],
-                token_type=entry[13],
+                chain=ChainID(entry[12]) if entry[12] is not None else None,
+                token_type=EvmTokenKind(entry[13]) if entry[13] is not None else None,
                 decimals=entry[3],
                 cryptocompare=entry[10],
                 coingecko=entry[9],
@@ -448,7 +450,7 @@ class GlobalDBHandler():
         """Returns the asset identifier of an evm token by address if it can be found"""
         cursor = GlobalDBHandler()._conn.cursor()
         query = cursor.execute(
-            'SELECT identifier from evm_tokens address=?;',
+            'SELECT identifier from evm_tokens WHERE address=?;',
             (address,),
         )
         result = query.fetchall()
@@ -472,7 +474,8 @@ class GlobalDBHandler():
         """
         cursor = GlobalDBHandler()._conn.cursor()
         query = cursor.execute(
-            'SELECT identifier from assets WHERE type=? AND name=? AND symbol=?;',
+            'SELECT A.identifier from assets AS A JOIN common_asset_details as C '
+            'ON A.identifier=C.identifier WHERE A.type=? AND C.name=? AND C.symbol=?;',
             (asset_type.serialize_for_db(), name, symbol),
         )
         result = query.fetchall()
@@ -489,10 +492,10 @@ class GlobalDBHandler():
         """
         cursor = GlobalDBHandler()._conn.cursor()
         query = cursor.execute(
-            'SELECT A.identifier, B.address, B.decimals, A.name, A.symbol, A.started, '
-            'A.swapped_for, A.coingecko, A.cryptocompare, B.protocol '
+            'SELECT A.identifier, B.address, B.decimals, A.name, A.symbol, C.started, '
+            'C.swapped_for, A.coingecko, A.cryptocompare, B.protocol '
             'FROM evm_tokens AS B JOIN '
-            'common_asset_details AS A ON B.address = A.details_reference '
+            'common_asset_details AS A ON B.address = A.identifier '
             'JOIN assets AS C on C.identifier=A.identifier WHERE B.address=?;',
             (address,),
         )
@@ -638,7 +641,7 @@ class GlobalDBHandler():
                 ),
             )
             cursor.execute(
-                'UPDATE assets SET started=?, swapped_for=?, common_details_id=?, '
+                'UPDATE assets SET started=?, swapped_for=?, common_details_id=? '
                 'WHERE identifier=?;',
                 (
                     entry.started,
@@ -733,13 +736,23 @@ class GlobalDBHandler():
             )
 
         # finally delete the information from other tables
+        affected_rows = 0
         try:
             cursor.execute(
-                'DELETE FROM assets WHERE identifier=?; '
-                'DELETE FROM multiasset_collector WHERE identifier=?; '
-                'DELETE FROM common_asset_details WHERE identifier=?;',
-                (identifier, identifier, identifier),
+                'DELETE FROM assets WHERE identifier=?; ',
+                (identifier,),
             )
+            affected_rows += cursor.rowcount
+            cursor.execute(
+                'DELETE FROM multiasset_collector WHERE identifier=?;',
+                (identifier,),
+            )
+            affected_rows += cursor.rowcount
+            cursor.execute(
+                'DELETE FROM common_asset_details WHERE identifier=?;',
+                (identifier,),
+            )
+            affected_rows += cursor.rowcount
         except sqlite3.IntegrityError as e:
             connection.rollback()
             raise InputError(
@@ -749,8 +762,7 @@ class GlobalDBHandler():
                 f'other tokens as an underlying or swapped for token',
             ) from e
 
-        affected_rows = cursor.rowcount
-        if affected_rows != 3:
+        if affected_rows < 2:
             connection.rollback()
             raise InputError(
                 f'Tried to delete ethereum token with address {address} '
@@ -836,7 +848,7 @@ class GlobalDBHandler():
         forked = forked_asset.identifier if forked_asset else None
         try:
             cursor.execute(
-                'INSERT INTO common_asset_details(asset_id, forked)'
+                'INSERT INTO common_asset_details(identifier, forked)'
                 'VALUES(?, ?)',
                 (asset_id, forked),
             )
@@ -969,8 +981,8 @@ class GlobalDBHandler():
                 identifier=entry[0],
                 asset_type=asset_type,
                 evm_address=evm_address,
-                chain=entry[12],
-                token_type=entry[13],
+                chain=ChainID(entry[12]) if entry[12] is not None else None,
+                token_type=EvmTokenKind(entry[13]) if entry[13] is not None else None,
                 decimals=entry[3],
                 name=entry[4],
                 symbol=entry[5],
