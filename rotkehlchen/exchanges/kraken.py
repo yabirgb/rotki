@@ -22,13 +22,19 @@ from rotkehlchen.constants import KRAKEN_API_VERSION, KRAKEN_BASE_URL
 from rotkehlchen.constants.assets import A_DAI, A_ETH, A_ETH2
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
+from rotkehlchen.db.ranges import DBQueryRanges
 from rotkehlchen.errors import (
     DeserializationError,
     RemoteError,
     UnknownAsset,
     UnprocessableTradePair,
 )
-from rotkehlchen.exchanges.data_structures import AssetMovement, MarginPosition, Trade
+from rotkehlchen.exchanges.data_structures import (
+    AssetMovement,
+    KrakenStakingEvent,
+    MarginPosition,
+    Trade,
+)
 from rotkehlchen.exchanges.exchange import ExchangeInterface, ExchangeQueryBalances
 from rotkehlchen.history.deserialization import deserialize_price
 from rotkehlchen.inquirer import Inquirer
@@ -782,3 +788,68 @@ class Kraken(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             end_ts: Timestamp,  # pylint: disable=unused-argument
     ) -> List[LedgerAction]:
         return []  # noop for kraken
+
+    def query_online_staking_history(
+        self,
+        ranges: List[Tuple[Timestamp, Timestamp]],
+    ) -> List[KrakenStakingEvent]:
+        response = self.api_query(method='Staking/Transactions')
+        log.debug('Kraken staking events', num_results=len(response))
+        events = []
+        for raw_event in response:
+            timestamp = deserialize_timestamp_from_kraken(raw_event['time'])
+            if any([start_ts <= timestamp <= end_ts for start_ts, end_ts in ranges]):
+                try:
+                    event = KrakenStakingEvent(
+                        refid=raw_event['refid'],
+                        amount=deserialize_asset_amount(raw_event['amount']),
+                        fee=deserialize_fee(raw_event['fee']),
+                        timestamp=timestamp,
+                        bond_start=deserialize_timestamp_from_kraken(raw_event['bond_start']),
+                        bond_end=deserialize_timestamp_from_kraken(raw_event['bond_end']),
+                        event_type=raw_event['type'],
+                        asset=asset_from_kraken(raw_event['asset']),
+                    )
+                except (DeserializationError, KeyError, UnknownAsset) as e:
+                    msg = str(e)
+                    if isinstance(e, KeyError):
+                        msg = f'Keyrror {msg}'
+                    self.msg_aggregator.add_error(
+                        f'Failed to read staking event from kraken {raw_event} due to {msg}',
+                    )
+                events.append(event)
+        return events
+
+    def query_exchange_specific_history(
+        self,
+        start_ts: Timestamp,
+        end_ts: Timestamp,
+    ) -> List[Union[KrakenStakingEvent]]:
+        staking_events = self.db.get_kraken_staking_events(start_ts, end_ts)
+        ranges = DBQueryRanges(self.db)
+        location_string = f'{str(self.location)}_staking_{self.name}'
+        ranges_to_query = ranges.get_location_query_ranges(
+            location_string=location_string,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+        if len(ranges_to_query):
+            new_events = self.query_online_staking_history(ranges_to_query)
+            successful_insert = True
+            if len(new_events) != 0:
+                successful_insert = self.db.add_kraken_staking_event(events=new_events)
+            if successful_insert:
+                ranges.update_used_query_range(
+                    location_string=location_string,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    ranges_to_query=ranges_to_query,
+                )
+                staking_events.extend(new_events)
+            else:
+                self.msg_aggregator.add_error(
+                    f'Failed to insert result of kraken staking query to database for range'
+                    f' ({start_ts}, {end_ts}). Check logs to read the affected entries.',
+                )
+                return []
+        return staking_events

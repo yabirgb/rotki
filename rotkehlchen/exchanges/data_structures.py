@@ -390,3 +390,14 @@ def trades_from_dictlist(
             continue
 
     return returned_trades
+
+
+class KrakenStakingEvent(NamedTuple):
+    refid: str
+    amount: AssetAmount
+    fee: Fee
+    timestamp: Timestamp
+    bond_start: Timestamp
+    bond_end: Timestamp
+    event_type: str
+    asset: Asset

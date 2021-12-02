@@ -90,7 +90,12 @@ from rotkehlchen.errors import (
     UnsupportedAsset,
 )
 from rotkehlchen.exchanges.binance import BINANCE_MARKETS_KEY
-from rotkehlchen.exchanges.data_structures import AssetMovement, MarginPosition, Trade
+from rotkehlchen.exchanges.data_structures import (
+    AssetMovement,
+    KrakenStakingEvent,
+    MarginPosition,
+    Trade,
+)
 from rotkehlchen.exchanges.ftx import FTX_SUBACCOUNT_DB_SETTING
 from rotkehlchen.exchanges.kraken import KrakenAccountType
 from rotkehlchen.exchanges.manager import SUPPORTED_EXCHANGES
@@ -3420,3 +3425,32 @@ class DBHandler:
             new_db_path,
         )
         return new_db_path
+
+    def get_kraken_staking_events(
+        self,
+        start_ts: Timestamp,
+        end_ts: Timestamp,
+    ) -> List[KrakenStakingEvent]:
+        query_str = 'SELECT * from kraken_staking_events WHERE timestamp > ? AND timestamp < ?'
+        cursor = self.conn.cursor()
+        query = cursor.execute(query_str, (start_ts, end_ts))
+        output = []
+        for result in query:
+            try:
+                output.append(KrakenStakingEvent.deserialize_from_db(result))
+            except DeserializationError as e:
+                self.msg_aggregator.add_error(
+                    f'Failed to read kraken staking information from database. {result}. {str(e)}',
+                )
+        return output
+
+    def add_kraken_staking_event(self, events: List[KrakenStakingEvent]) -> bool:
+        query_str = 'INSERT INTO kraken_staking_events VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
+        cursor = self.conn.cursor()
+        try:
+            cursor.executemany(query_str, [event.serialize_for_db() for event in events])
+        except sqlcipher.IntegrityError as e:
+            log.error(f'Failed to insert kraken statking events in database. {str(e)}')
+            return False
+        self.update_last_write()
+        return True
