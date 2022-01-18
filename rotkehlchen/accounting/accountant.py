@@ -241,11 +241,15 @@ class Accountant():
         """
         selling_asset = trade.base_asset
         receiving_asset = trade.quote_asset
-        receiving_asset_rate = self.events.get_rate_in_profit_currency(
-            receiving_asset,
-            trade.timestamp,
-        )
-        selling_rate = receiving_asset_rate * trade.rate
+        if receiving_asset == self.profit_currency:
+            selling_rate = FVal(trade.rate)
+            receiving_asset_rate = FVal(trade.rate)
+        else:
+            receiving_asset_rate = self.events.get_rate_in_profit_currency(
+                receiving_asset,
+                trade.timestamp,
+            )
+            selling_rate = receiving_asset_rate * trade.rate
         fee_in_profit_currency = self.get_fee_in_profit_currency(trade)
         gain_in_profit_currency = selling_rate * trade.amount
 

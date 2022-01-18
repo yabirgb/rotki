@@ -364,8 +364,12 @@ class TaxableEvents():
             f'{paid_with_asset.identifier} at {timestamp}',
         )
 
-        paid_with_asset_rate = self.get_rate_in_profit_currency(paid_with_asset, timestamp)
-        buy_rate = paid_with_asset_rate * trade_rate
+        if paid_with_asset == self.profit_currency:
+            paid_with_asset_rate = trade_rate
+            buy_rate = trade_rate
+        else:
+            paid_with_asset_rate = self.get_rate_in_profit_currency(paid_with_asset, timestamp)
+            buy_rate = paid_with_asset_rate * trade_rate
 
         self.handle_prefork_asset_buys(
             location=location,
