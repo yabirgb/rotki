@@ -4,6 +4,7 @@ from typing import List, Optional
 from rotkehlchen.accounting.cost_basis import CostBasisCalculator
 from rotkehlchen.accounting.ledger_actions import LedgerAction, LedgerActionType
 from rotkehlchen.accounting.structures import DefiEvent
+form rotkehlchen.accounting.typing import ForkedAssetStrategy
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.constants import BCH_BSV_FORK_TS, BTC_BCH_FORK_TS, ETH_DAO_FORK_TS, ZERO
 from rotkehlchen.constants.assets import A_BCH, A_BSV, A_BTC, A_ETC, A_ETH
@@ -40,6 +41,11 @@ class TaxableEvents():
         # loan/margin settlement then profit/loss is also calculated before the entire
         # amount is taken as a loss
         self.count_profit_for_settlements = False
+        self.known_forks_handled = {
+            A_ETH: False,
+            A_BTC: False,
+            A_BCH: False,
+        }
 
     def reset(self, profit_currency: Asset, start_ts: Timestamp, end_ts: Timestamp) -> None:
         self.cost_basis.reset(profit_currency)
@@ -53,6 +59,11 @@ class TaxableEvents():
         self.margin_positions_profit_loss = ZERO
         self.defi_profit_loss = ZERO
         self.ledger_actions_profit_loss = ZERO
+        self.known_forks_handled = {
+            A_ETH: False,
+            A_BTC: False,
+            A_BCH: False,
+        }
 
     @property
     def include_crypto2crypto(self) -> Optional[bool]:
@@ -97,26 +108,89 @@ class TaxableEvents():
                 timestamp=timestamp,
             )
         return rate
-
-    def handle_prefork_asset_buys(
-            self,
-            location: Location,
-            bought_asset: Asset,
-            bought_amount: FVal,
-            paid_with_asset: Asset,
-            trade_rate: FVal,
-            fee_in_profit_currency: Fee,
-            timestamp: Timestamp,
-            is_from_prefork_virtual_buy: bool,
-            link: Optional[str],
-            notes: Optional[str],
+    
+    def _handle_assets_all_fork_time(
+        self,
+        location: Location,
+        bought_asset: Asset,
+        bought_amount: FVal,
+        paid_with_asset: Asset,
+        trade_rate: FVal,
+        fee_in_profit_currency: Fee,
+        timestamp: Timestamp,
+        is_from_prefork_virtual_buy: bool,
+        link: Optional[str],
+        notes: Optional[str],
+        use_source_asset: bool = True,
     ) -> None:
-        if is_from_prefork_virtual_buy:
-            # This way we avoid double counting. For example BTC before BCH/BSV fork
-            # adding the BSV twice
-            return
-
-        # TODO: Should fee also be taken into account here?
+        #if asset not in (A_ETC, A_BSV, A_BCH):
+        if bought_asset == A_ETC and not self.known_forks_handled[A_ETC]:
+            if timestamp >= ETH_DAO_FORK_TS:
+                owned_eth = self.cost_basis.get_calculated_asset_amount(A_ETH)
+                rate = self.events.get_rate_in_profit_currency(
+                    A_ETH,
+                    ETH_DAO_FORK_TS,
+                )
+                bought_asset 
+                if owned_eth > ZERO:
+                    self.cost_basis.obtain_asset(
+                        location=ETH_DAO_FORK_TS,
+                        timestamp=timestamp,
+                        description='trade',
+                        asset=A_ETC,
+                        amount=owned_eth,
+                        rate=rate,
+                        fee_in_profit_currency=ZERO,
+                    )
+        elif bought_asset == A_BTC and not self.known_forks_handled[A_BCH]:
+            if timestamp >= BTC_BCH_FORK_TS:
+                owned_btc = self.cost_basis.get_calculated_asset_amount(A_ETH)
+                rate = self.events.get_rate_in_profit_currency(
+                    A_BTC,
+                    BTC_BCH_FORK_TS,
+                )
+                if owned_eth > ZERO:
+                    self.cost_basis.obtain_asset(
+                        location=BTC_BCH_FORK_TS,
+                        timestamp=timestamp,
+                        description='trade',
+                        asset=A_BTC,
+                        amount=owned_btc,
+                        rate=rate,
+                        fee_in_profit_currency=ZERO,
+                    )
+        elif bought_asset == A_BCH and not self.known_forks_handled[A_BSV]:
+            if timestamp >= BCH_BSV_FORK_TS:
+                owned_bch = self.cost_basis.get_calculated_asset_amount(A_ETH)
+                rate = self.events.get_rate_in_profit_currency(
+                    A_BCH,
+                    BCH_BSV_FORK_TS,
+                )
+                if owned_eth > ZERO:
+                    self.cost_basis.obtain_asset(
+                        location=BCH_BSV_FORK_TS,
+                        timestamp=timestamp,
+                        description='trade',
+                        asset=A_BCH,
+                        amount=owned_bch,
+                        rate=rate,
+                        fee_in_profit_currency=ZERO,
+                    )
+                    
+    def _handle_prefork_buy_new_buy(
+        self,
+        location: Location,
+        bought_asset: Asset,
+        bought_amount: FVal,
+        paid_with_asset: Asset,
+        trade_rate: FVal,
+        fee_in_profit_currency: Fee,
+        timestamp: Timestamp,
+        is_from_prefork_virtual_buy: bool,
+        link: Optional[str],
+        notes: Optional[str],
+        use_source_asset: bool = True,
+    ) -> None:
         if bought_asset == A_ETH and timestamp < ETH_DAO_FORK_TS:
             self.add_buy(
                 location=location,
@@ -183,6 +257,52 @@ class TaxableEvents():
                 is_from_prefork_virtual_buy=True,
                 link=link,
                 notes=notes,
+            )
+
+    def handle_prefork_asset_buys(
+            self,
+            location: Location,
+            bought_asset: Asset,
+            bought_amount: FVal,
+            paid_with_asset: Asset,
+            trade_rate: FVal,
+            fee_in_profit_currency: Fee,
+            timestamp: Timestamp,
+            is_from_prefork_virtual_buy: bool,
+            link: Optional[str],
+            notes: Optional[str],
+    ) -> None:
+        if is_from_prefork_virtual_buy:
+            # This way we avoid double counting. For example BTC before BCH/BSV fork
+            # adding the BSV twice
+            return
+
+        if ForkedAssetStrategy.PREFORK_BUY_BUYS_ASSET:
+            self._handle_prefork_buy_new_buy(
+                location=location,
+                bought_asset=bought_asset,
+                bought_amount=bought_amount,
+                paid_with_asset=paid_with_asset,
+                trade_rate=trade_rate,
+                fee_in_profit_currency=fee_in_profit_currency,
+                timestamp=timestamp,
+                is_from_prefork_virtual_buy=is_from_prefork_virtual_buy,
+                link=link,
+                notes=notes,
+            )
+        elif ForkedAssetStrategy.ALL_AT_FORK_TIME_SOURCE_ASSET:
+            self._handle_assets_all_fork_time(
+                location=location,
+                bought_asset=bought_asset,
+                bought_amount=bought_amount,
+                paid_with_asset=paid_with_asset,
+                trade_rate=trade_rate,
+                fee_in_profit_currency=fee_in_profit_currency,
+                timestamp=timestamp,
+                is_from_prefork_virtual_buy=is_from_prefork_virtual_buy,
+                link=link,
+                notes=notes,
+                use_source_asset=True,
             )
 
     def handle_prefork_asset_sells(

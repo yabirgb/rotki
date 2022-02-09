@@ -2,6 +2,7 @@ import json
 from typing import Any, Dict, List, NamedTuple, Optional, Union
 
 from rotkehlchen.accounting.ledger_actions import LedgerActionType
+from rotkehlchen.accounting.typing import PREFORK_BUY_BUYS_ASSET
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.constants.assets import A_USD
 from rotkehlchen.constants.timing import YEAR_IN_SECONDS
@@ -45,6 +46,7 @@ DEFAULT_PNL_CSV_WITH_FORMULAS = True
 DEFAULT_PNL_CSV_HAVE_SUMMARY = False
 DEFAULT_SSF_0GRAPH_MULTIPLIER = 0
 DEFAULT_LAST_DATA_MIGRATION = 0
+DEFAULT_FORKED_ASSET_STRATEGY = ForkedAssetStrategy.PREFORK_BUY_BUYS_ASSET
 
 JSON_KEYS = ('current_price_oracles', 'historical_price_oracles', 'taxable_ledger_actions')
 BOOLEAN_KEYS = (
@@ -66,6 +68,7 @@ INTEGER_KEYS = (
     'btc_derivation_gap_limit',
     'ssf_0graph_multiplier',
     'last_data_migration',
+    'forked_asset_strategy',
 )
 STRING_KEYS = (
     'eth_rpc_endpoint',
@@ -108,6 +111,7 @@ class DBSettings(NamedTuple):
     pnl_csv_have_summary: bool = DEFAULT_PNL_CSV_HAVE_SUMMARY
     ssf_0graph_multiplier: int = DEFAULT_SSF_0GRAPH_MULTIPLIER
     last_data_migration: int = DEFAULT_LAST_DATA_MIGRATION
+    forked_asset_strategy: ForkedAssetStrategy = DEFAULT_FORKED_ASSET_STRATEGY
 
 
 class ModifiableDBSettings(NamedTuple):
@@ -135,6 +139,7 @@ class ModifiableDBSettings(NamedTuple):
     pnl_csv_with_formulas: Optional[bool] = None
     pnl_csv_have_summary: Optional[bool] = None
     ssf_0graph_multiplier: Optional[int] = None
+    forked_asset_strategy: Optional[int] = None
 
     def serialize(self) -> Dict[str, Any]:
         settings_dict = {}

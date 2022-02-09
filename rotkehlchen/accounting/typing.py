@@ -1,3 +1,4 @@
+from enum import auto
 import json
 from typing import Any, Dict, NamedTuple, Tuple
 
@@ -151,3 +152,10 @@ class NamedJson(NamedTuple):
             ) from e
 
         return event_type, string_data
+
+
+class ForkedAssetStrategy(DBEnumMixIn):
+    PREFORK_BUY_BUYS_ASSET = 0
+    ALL_AT_FORK_TIME_SOURCE_ASSET = auto()
+    ALL_AT_FORK_TIME_FORKED_ASSET = auto()
+    FORKED_ASSET_NO_COST_BASIS = auto()
