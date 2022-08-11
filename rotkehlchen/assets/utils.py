@@ -30,7 +30,7 @@ def add_ethereum_token_to_db(token_data: EvmToken) -> EvmToken:
     globaldb = GlobalDBHandler()
     globaldb.add_asset(
         asset_id=token_data.identifier,
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=token_data,
     )
     # This can, but should not raise UnknownAsset, DeserializationError
@@ -145,7 +145,7 @@ def symbol_to_ethereum_token(symbol: str) -> EvmToken:
     - UnknownAsset if an ethereum token can't be found by the symbol or if
     more than one tokens match this symbol
     """
-    maybe_asset = get_asset_by_symbol(symbol, asset_type=AssetType.ETHEREUM_TOKEN)
+    maybe_asset = get_asset_by_symbol(symbol, asset_type=AssetType.EVM_TOKEN)
     if maybe_asset is None:
         raise UnknownAsset(symbol)
 

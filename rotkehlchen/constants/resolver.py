@@ -1,5 +1,7 @@
-from typing import Optional, Tuple
+from typing import Final, Optional, Tuple, Type
+
 from rotkehlchen.chain.ethereum.types import string_to_evm_address
+from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.types import ChecksumEvmAddress, EvmTokenKind
 from rotkehlchen.utils.mixins.dbenum import DBEnumMixIn
 
@@ -31,14 +33,45 @@ class ChainID(DBEnumMixIn):
 
         raise RuntimeError(f'Unknown chain {chain}')
 
+    def serialize_for_db(self) -> str:
+        return CHAINS_TO_DB_SYMBOL[self]
+
+    @classmethod
+    def deserialize_from_db(cls: Type['ChainID'], value: str) -> 'ChainID':
+        """May raise a DeserializationError if something is wrong with the DB data"""
+        if not isinstance(value, str):
+            raise DeserializationError(
+                f'Failed to deserialize ChainID DB value from non string value: {value}',
+            )
+
+        symbol_to_chain = {v: k for k, v in CHAINS_TO_DB_SYMBOL.items()}
+        chain = symbol_to_chain.get(value)
+        if chain is None:
+            raise DeserializationError(
+                f'Failed to deserialize ChainID DB value from invalid value: {value}',
+            )
+        return chain
+
+
+CHAINS_TO_DB_SYMBOL: Final = {
+    ChainID.ETHEREUM: 'A',
+    ChainID.OPTIMISM: 'B',
+    ChainID.BINANCE: 'C',
+    ChainID.GNOSIS: 'D',
+    ChainID.MATIC: 'E',
+    ChainID.FANTOM: 'F',
+    ChainID.ARBITRUM: 'G',
+    ChainID.AVALANCHE: 'H',
+}
+
 
 def evm_address_to_identifier(
-    address: str,
-    chain: ChainID,
-    token_type: EvmTokenKind,
-    collectible_id: Optional[str] = None,
+        address: str,
+        chain: ChainID,
+        token_type: EvmTokenKind,
+        collectible_id: Optional[str] = None,
 ) -> str:
-    """Format an EVM token information into the CAIPs identifier format"""
+    """Format a EVM token information into the CAIPs identifier format"""
     ident = f'{EVM_CHAIN_DIRECTIVE}:{chain.value}/{str(token_type)}:{address}'
     if collectible_id is not None:
         return ident + f'/{collectible_id}'

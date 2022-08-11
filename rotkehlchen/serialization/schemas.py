@@ -59,7 +59,7 @@ class AssetDataSchema(Schema):
         if swapped_for is not None:
             swapped_for_ident = swapped_for.identifier
 
-        if asset_type == AssetType.ETHEREUM_TOKEN:
+        if asset_type == AssetType.EVM_TOKEN:
             extra_information = EvmToken.initialize(
                 address=data.pop('evm_address'),
                 chain=data.pop('chain'),

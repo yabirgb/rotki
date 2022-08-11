@@ -1455,7 +1455,7 @@ class RestAPI():
         try:
             GlobalDBHandler().add_asset(
                 asset_id=identifier,
-                asset_type=AssetType.ETHEREUM_TOKEN,
+                asset_type=AssetType.EVM_TOKEN,
                 data=token,
             )
         except InputError as e:

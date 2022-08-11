@@ -162,7 +162,7 @@ INSERT INTO assets(identifier,type, started, swapped_for) VALUES("EUR", "A", NUL
         assert new_token.identifier == strethaddress_to_identifier('0xC2FEC534c461c45533e142f724d0e3930650929c')  # noqa: E501
         assert new_token.name == 'AKB token'
         assert new_token.symbol == 'AKB'
-        assert new_token.asset_type == AssetType.ETHEREUM_TOKEN
+        assert new_token.asset_type == AssetType.EVM_TOKEN
         assert new_token.started == 123
         assert new_token.forked is None
         assert new_token.swapped_for is None
@@ -202,7 +202,7 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
     """  # noqa: E501
     globaldb.add_asset(  # add a conflicting token
         asset_id='eip155:1/erc20:0x1B175474E89094C44Da98b954EedeAC495271d0F',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=EvmToken.initialize(
             address=ChecksumEvmAddress('0x1B175474E89094C44Da98b954EedeAC495271d0F'),
             chain=ChainID.ETHEREUM,
@@ -420,7 +420,7 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         assert dai.identifier == strethaddress_to_identifier('0x6B175474E89094C44Da98b954EedeAC495271d0F')  # noqa: E501
         assert dai.name == 'New Multi Collateral DAI'
         assert dai.symbol == 'NDAI'
-        assert dai.asset_type == AssetType.ETHEREUM_TOKEN
+        assert dai.asset_type == AssetType.EVM_TOKEN
         assert dai.started == 1573672677
         assert dai.forked is None
         assert dai.swapped_for is None
@@ -462,7 +462,7 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         ctk = EvmToken('eip155:1/erc20:0x1B175474E89094C44Da98b954EedeAC495271d0F')
         assert ctk.name == 'Conflicting token'
         assert ctk.symbol == 'CTK'
-        assert ctk.asset_type == AssetType.ETHEREUM_TOKEN
+        assert ctk.asset_type == AssetType.EVM_TOKEN
         assert ctk.started == 1573672677
         assert ctk.forked is None
         assert ctk.swapped_for is None
@@ -622,7 +622,7 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         assert gnt.identifier == strethaddress_to_identifier('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')  # noqa: E501
         assert gnt.name == 'Golem'
         assert gnt.symbol == 'GNT'
-        assert gnt.asset_type == AssetType.ETHEREUM_TOKEN
+        assert gnt.asset_type == AssetType.EVM_TOKEN
         assert gnt.started == 1478810650
         assert gnt.forked is None
         assert gnt.swapped_for == A_GLM.identifier
@@ -767,7 +767,7 @@ INSERT INTO evm_tokens(identifier, token_kind, chain, address, decimals, protoco
         assert gnt.identifier == strethaddress_to_identifier('0xa74476443119A942dE498590Fe1f2454d7D4aC0d')  # noqa: E501
         assert gnt.name == 'Golem'
         assert gnt.symbol == 'GNT'
-        assert gnt.asset_type == AssetType.ETHEREUM_TOKEN
+        assert gnt.asset_type == AssetType.EVM_TOKEN
         assert gnt.started == 1478810650
         assert gnt.forked is None
         assert gnt.swapped_for == A_GLM.identifier

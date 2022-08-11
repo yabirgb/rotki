@@ -1859,7 +1859,7 @@ def test_upgrade_db_25_to_26(globaldb, user_data_dir, have_kraken, have_kraken_s
     # make sure the globaldb has a custom token used in the DB
     globaldb.add_asset(
         asset_id='_ceth_0xa54d2EBfD977ad836203c85F18db2F0a0cF88854',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=EvmToken.initialize(
             address=ChecksumEvmAddress('0xa54d2EBfD977ad836203c85F18db2F0a0cF88854'),
             chain=ChainID.ETHEREUM,

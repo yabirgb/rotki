@@ -29,7 +29,7 @@ selfkey_asset_data = AssetData(
     identifier=selfkey_id,
     name='Selfkey',
     symbol='KEY',
-    asset_type=AssetType.ETHEREUM_TOKEN,
+    asset_type=AssetType.EVM_TOKEN,
     started=Timestamp(1508803200),
     forked=None,
     swapped_for=None,
@@ -119,13 +119,13 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
     token_to_delete_id = token_to_delete.identifier
     globaldb.add_asset(
         asset_id=token_to_delete_id,
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=token_to_delete,
     )
     asset_to_delete = Asset(token_to_delete_id)
     with globaldb.conn.write_ctx() as cursor:
         assert globaldb.delete_evm_token(
-            cursor,
+            write_cursor=cursor,
             address=address_to_delete,
             chain=ChainID.ETHEREUM,
         ) == token_to_delete_id
@@ -134,7 +134,7 @@ def test_add_edit_token_with_wrong_swapped_for(globaldb):
     with pytest.raises(InputError):
         globaldb.add_asset(
             asset_id='NEWID',
-            asset_type=AssetType.ETHEREUM_TOKEN,
+            asset_type=AssetType.EVM_TOKEN,
             data=EvmToken.initialize(
                 address=make_ethereum_address(),
                 chain=ChainID.ETHEREUM,
@@ -224,7 +224,7 @@ def test_get_asset_with_symbol(globaldb):
             identifier=ethaddress_to_identifier(bihukey_address),
             name='Bihu KEY',
             symbol='KEY',
-            asset_type=AssetType.ETHEREUM_TOKEN,
+            asset_type=AssetType.EVM_TOKEN,
             started=1507822985,
             forked=None,
             swapped_for=None,
@@ -258,7 +258,7 @@ def test_get_asset_with_symbol(globaldb):
         identifier=ethaddress_to_identifier(aave_address),
         name='Aave Token',
         symbol='AAVE',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         started=1600970788,
         forked=None,
         swapped_for=None,
@@ -278,7 +278,7 @@ def test_get_asset_with_symbol(globaldb):
         identifier=ethaddress_to_identifier(renbtc_address),
         name='renBTC',
         symbol='renBTC',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         started=1585090944,
         forked=None,
         swapped_for=None,
@@ -290,7 +290,7 @@ def test_get_asset_with_symbol(globaldb):
         coingecko='renbtc',
         protocol=None,
     )]
-    for x in itertools.product(('ReNbTc', 'renbtc', 'RENBTC', 'rEnBTc'), (None, AssetType.ETHEREUM_TOKEN)):  # noqa: E501
+    for x in itertools.product(('ReNbTc', 'renbtc', 'RENBTC', 'rEnBTc'), (None, AssetType.EVM_TOKEN)):  # noqa: E501
         assert globaldb.get_assets_with_symbol(*x) == expected_renbtc
 
 
@@ -493,7 +493,7 @@ def test_global_db_restore(globaldb, database):
     )
     globaldb.add_asset(
         asset_id='DELMEID1',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=token_to_delete,
     )
     # Add a token with underlying token
@@ -513,7 +513,7 @@ def test_global_db_restore(globaldb, database):
     )
     globaldb.add_asset(
         asset_id='xDELMEID1',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=with_underlying,
     )
     # Add asset that is not a token
@@ -629,7 +629,7 @@ def test_global_db_reset(globaldb):
     )
     globaldb.add_asset(
         asset_id='DELMEID1',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=token_to_delete,
     )
     # Add a token with underlying token
@@ -651,7 +651,7 @@ def test_global_db_reset(globaldb):
     )
     globaldb.add_asset(
         asset_id='xDELMEID1',
-        asset_type=AssetType.ETHEREUM_TOKEN,
+        asset_type=AssetType.EVM_TOKEN,
         data=with_underlying,
     )
     # Add asset that is not a token

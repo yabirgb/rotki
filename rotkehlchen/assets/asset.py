@@ -6,7 +6,6 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, TypeVar
 from rotkehlchen.constants.misc import NFT_DIRECTIVE
 from rotkehlchen.constants.resolver import (
     ChainID,
-    ethaddress_to_identifier,
     evm_address_to_identifier,
     strethaddress_to_identifier,
 )
@@ -803,10 +802,10 @@ class Asset():
         return self.asset_type == AssetType.FIAT
 
     def is_eth_token(self) -> bool:
-        return self.asset_type == AssetType.ETHEREUM_TOKEN
+        return self.asset_type == AssetType.EVM_TOKEN and isinstance(self, EvmToken) and self.chain == ChainID.ETHEREUM  # noqa: E501  # pylint: disable=no-member
 
     def is_evm_token(self) -> bool:
-        return self.asset_type.is_evm_compatible()
+        return self.asset_type == AssetType.EVM_TOKEN
 
     def __str__(self) -> str:
         if self.is_evm_token():
@@ -973,7 +972,7 @@ Y = TypeVar('Y', bound='HasEvmToken')
 
 @dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
 class HasEvmToken(Asset):
-    """ Marker to denote assets having an Ethereum token address """
+    """Marker to denote assets having an EVM token address"""
     evm_address: ChecksumEvmAddress = field(init=False)
     chain: ChainID = field(init=False)
     token_kind: EvmTokenKind = field(init=False)
@@ -997,7 +996,7 @@ class HasEvmToken(Asset):
 
         data = AssetResolver().get_asset_data(self.identifier)  # pylint: disable=no-member
 
-        if not data.evm_address:
+        if data.evm_address is None:
             raise DeserializationError(
                 'Tried to initialize a non Ethereum asset as Ethereum Token',
             )
@@ -1008,7 +1007,7 @@ class HasEvmToken(Asset):
         object.__setattr__(self, 'protocol', data.protocol)
 
         with GlobalDBHandler().conn.read_ctx() as cursor:
-            underlying_tokens = GlobalDBHandler().fetch_underlying_tokens(cursor, data.evm_address)  # noqa: E501
+            underlying_tokens = GlobalDBHandler().fetch_underlying_tokens(cursor, data.identifier)  # noqa: E501
         object.__setattr__(self, 'underlying_tokens', underlying_tokens)
 
     def serialize_all_info(self) -> Dict[str, Any]:
@@ -1048,10 +1047,15 @@ class HasEvmToken(Asset):
     ) -> Y:
         """Initialize a token from fields"""
         token = cls('whatever', direct_field_initialization=True)
-        object.__setattr__(token, 'identifier', ethaddress_to_identifier(address))
+        identifier = evm_address_to_identifier(
+            address=address,
+            chain=chain,
+            token_type=token_kind,
+        )
+        object.__setattr__(token, 'identifier', identifier)
         object.__setattr__(token, 'name', name)
         object.__setattr__(token, 'symbol', symbol)
-        object.__setattr__(token, 'asset_type', AssetType.ETHEREUM_TOKEN)
+        object.__setattr__(token, 'asset_type', AssetType.EVM_TOKEN)
         object.__setattr__(token, 'started', started)
         object.__setattr__(token, 'forked', None)
         object.__setattr__(token, 'swapped_for', swapped_for)

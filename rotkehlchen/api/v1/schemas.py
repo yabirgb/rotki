@@ -1423,7 +1423,9 @@ def _transform_btc_or_bch_address(
 
 
 def _transform_eth_address(
-        ethereum: EthereumManager, given_address: str) -> ChecksumEvmAddress:
+        ethereum: EthereumManager,
+        given_address: str,
+) -> ChecksumEvmAddress:
     try:
         address = to_checksum_address(given_address)
     except ValueError:
@@ -1658,7 +1660,7 @@ class OptionalEthereumAddressSchema(Schema):
 
 class RequiredEthereumAddressSchema(Schema):
     address = EthereumAddressField(required=True)
-    chain = SerializableEnumField(enum_class=ChainID, required=False, load_default=None)
+    chain = SerializableEnumField(enum_class=ChainID, required=True)
 
 
 class UnderlyingTokenInfoSchema(Schema):
@@ -1692,7 +1694,7 @@ def _validate_external_ids(
 
 class AssetSchema(Schema):
     identifier = fields.String(required=False, load_default=None)
-    asset_type = AssetTypeField(required=True, exclude_types=(AssetType.ETHEREUM_TOKEN,))
+    asset_type = AssetTypeField(required=True, exclude_types=(AssetType.EVM_TOKEN,))
     name = fields.String(required=True)
     symbol = fields.String(required=True)
     started = TimestampField(load_default=None)
@@ -1723,7 +1725,7 @@ class AssetSchema(Schema):
         _validate_external_ids(data, self.coingecko_obj, self.cryptocompare_obj)
 
 
-class EthereumTokenSchema(Schema):
+class EvmTokenSchema(Schema):
     address = EthereumAddressField(required=True)
     chain = SerializableEnumField(enum_class=ChainID, required=True)
     token_kind = SerializableEnumField(enum_class=EvmTokenKind, required=True)
@@ -1781,7 +1783,7 @@ class EthereumTokenSchema(Schema):
                 )
 
         if self.coingecko_obj is not None:
-            # most probably validation happens at ModifyEthereumTokenSchema
+            # most probably validation happens at ModifyEvmTokenSchema
             # so this is not needed. Kind of an ugly way to do this but can't
             # find a way around it at the moment
             _validate_external_ids(data, self.coingecko_obj, self.cryptocompare_obj)  # type: ignore  # noqa:E501
@@ -1806,8 +1808,8 @@ class EthereumTokenSchema(Schema):
         return EvmToken.initialize(**data, underlying_tokens=underlying_tokens)
 
 
-class ModifyEthereumTokenSchema(Schema):
-    token = fields.Nested(EthereumTokenSchema, required=True)
+class ModifyEvmTokenSchema(Schema):
+    token = fields.Nested(EvmTokenSchema, required=True)
 
     def __init__(
             self,

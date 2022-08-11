@@ -217,7 +217,7 @@ def test_cryptocompare_asset_support(cryptocompare):
 def test_all_assets_json_tokens_address_is_checksummed():
     """Test that all ethereum saved token asset addresses are checksummed"""
     for asset_data in GlobalDBHandler().get_all_asset_data(mapping=False):
-        if not asset_data.asset_type == AssetType.ETHEREUM_TOKEN:
+        if not asset_data.asset_type == AssetType.EVM_TOKEN:
             continue
 
         msg = (
