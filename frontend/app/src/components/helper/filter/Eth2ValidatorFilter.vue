@@ -8,13 +8,13 @@
     outlined
     :chains="chains"
     :usable-addresses="usableAddresses"
-    :label="$t('eth2_validator_filter.label')"
+    :label="tc('eth2_validator_filter.label')"
     multiple
   />
   <validator-filter-input
     v-else
     :value="value"
-    :items="eth2Validators"
+    :items="eth2Validators.entries"
     @input="input"
   />
 </template>
@@ -23,9 +23,11 @@
 import { GeneralAccount } from '@rotki/common/lib/account';
 import { Blockchain } from '@rotki/common/lib/blockchain';
 import { defineComponent, PropType, ref, watch } from '@vue/composition-api';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n-composable';
 import BlockchainAccountSelector from '@/components/helper/BlockchainAccountSelector.vue';
 import ValidatorFilterInput from '@/components/helper/filter/ValidatorFilterInput.vue';
-import { setupBlockchainAccounts } from '@/composables/balances';
+import { useBlockchainAccountsStore } from '@/store/balances/blockchain-accounts';
 
 export default defineComponent({
   name: 'Eth2ValidatorFilter',
@@ -48,8 +50,11 @@ export default defineComponent({
   },
   emits: ['input'],
   setup(props, { emit }) {
-    const { eth2Validators } = setupBlockchainAccounts();
+    const { eth2ValidatorsState: eth2Validators } = storeToRefs(
+      useBlockchainAccountsStore()
+    );
     const account = ref<GeneralAccount[]>([]);
+    const { tc } = useI18n();
     const input = (selection: string[]) => {
       emit('input', selection);
     };
@@ -60,7 +65,8 @@ export default defineComponent({
       account,
       input,
       chains: [Blockchain.ETH],
-      eth2Validators
+      eth2Validators,
+      tc
     };
   }
 });

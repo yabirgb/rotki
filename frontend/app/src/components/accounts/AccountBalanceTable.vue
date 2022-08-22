@@ -5,7 +5,7 @@
       :headers="tableHeaders"
       :items="visibleBalances"
       :loading="accountOperation || loading"
-      :loading-text="$t('account_balances.data_table.loading')"
+      :loading-text="tc('account_balances.data_table.loading')"
       single-expand
       item-key="index"
       :expanded.sync="expanded"
@@ -55,18 +55,68 @@
       <template v-if="isEth2" #item.ownershipPercentage="{ item }">
         <percentage-display :value="item.ownershipPercentage" />
       </template>
+      <template v-if="isEth" #item.numOfDetectedTokens="{ item }">
+        <div class="d-flex align-center justify-end">
+          <account-detected-tokens-dialog
+            :info="getEthDetectedTokensInfo(item.address)"
+            :disabled="detectingTokens(item.address).value || loading"
+            :loading="detectingTokens(item.address).value"
+            @refresh="fetchDetectedTokens(item.address)"
+          />
+          <div>
+            <v-tooltip top>
+              <template #activator="{ on }">
+                <v-btn
+                  text
+                  icon
+                  :disabled="detectingTokens(item.address).value || loading"
+                  v-on="on"
+                  @click="fetchDetectedTokens(item.address)"
+                >
+                  <v-progress-circular
+                    v-if="detectingTokens(item.address).value"
+                    indeterminate
+                    color="primary"
+                    width="2"
+                    size="20"
+                  />
+                  <v-icon v-else small>mdi-refresh</v-icon>
+                </v-btn>
+              </template>
+              <div class="text-center">
+                <div>
+                  {{ tc('account_balances.detect_tokens.tooltip.redetect') }}
+                </div>
+                <div v-if="getEthDetectedTokensInfo(item.address).timestamp">
+                  <i18n
+                    path="account_balances.detect_tokens.tooltip.last_detected"
+                  >
+                    <template #time>
+                      <date-display
+                        :timestamp="
+                          getEthDetectedTokensInfo(item.address).timestamp
+                        "
+                      />
+                    </template>
+                  </i18n>
+                </div>
+              </div>
+            </v-tooltip>
+          </div>
+        </div>
+      </template>
       <template v-if="!loopring" #item.actions="{ item }">
         <row-actions
           class="account-balance-table__actions"
           :no-delete="true"
-          :edit-tooltip="$t('account_balances.edit_tooltip')"
+          :edit-tooltip="tc('account_balances.edit_tooltip')"
           :disabled="accountOperation || loading"
           @edit-click="editClick(item)"
         />
       </template>
       <template v-if="balances.length > 0" #body.append="{ isMobile }">
         <row-append
-          :label="$t('common.total')"
+          :label="tc('common.total')"
           :class-name="{ 'flex-column': isMobile }"
           :left-patch-colspan="1"
           :is-mobile="isMobile"
@@ -140,11 +190,12 @@ import { get } from '@vueuse/core';
 import isEqual from 'lodash/isEqual';
 import sortBy from 'lodash/sortBy';
 import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n-composable';
 import { DataTableHeader } from 'vuetify';
-import { setupGeneralBalances } from '@/composables/balances';
 import { useTheme } from '@/composables/common';
 import { bigNumberSum } from '@/filters';
-import i18n from '@/i18n';
+import { useBlockchainAccountsStore } from '@/store/balances/blockchain-accounts';
+import { useBlockchainBalancesStore } from '@/store/balances/blockchain-balances';
 import { chainSection } from '@/store/balances/const';
 import {
   BlockchainAccountWithBalance,
@@ -157,7 +208,7 @@ import { useTasks } from '@/store/tasks';
 import { getStatusUpdater } from '@/store/utils';
 import { Properties } from '@/types';
 import { TaskType } from '@/types/task-type';
-import { Zero } from '@/utils/bignumbers';
+import { Zero, zeroBalance } from '@/utils/bignumbers';
 
 export default defineComponent({
   name: 'AccountBalanceTable',
@@ -194,6 +245,9 @@ export default defineComponent({
     ),
     RowExpander: defineAsyncComponent(
       () => import('@/components/helper/RowExpander.vue')
+    ),
+    AccountDetectedTokensDialog: defineAsyncComponent(
+      () => import('@/components/accounts/AccountDetectedTokensDialog.vue')
     )
   },
   props: {
@@ -216,7 +270,9 @@ export default defineComponent({
       useGeneralSettingsStore()
     );
     const { hasDetails, accountAssets, accountLiabilities, loopringBalances } =
-      setupGeneralBalances();
+      useBlockchainBalancesStore();
+
+    const { tc } = useI18n();
 
     const editClick = (account: BlockchainAccountWithBalance) => {
       emit('edit-click', account);
@@ -322,7 +378,7 @@ export default defineComponent({
                 address: '',
                 label: '',
                 tags: [],
-                balance: { amount: Zero, usdValue: Zero },
+                balance: zeroBalance(),
                 chain: get(blockchain)
               }
             );
@@ -345,10 +401,7 @@ export default defineComponent({
     });
 
     const collapsedXpubBalances = computed<Balance>(() => {
-      const balance: Balance = {
-        amount: Zero,
-        usdValue: Zero
-      };
+      const balance = zeroBalance();
 
       return get(collapsedXpubs)
         .filter(({ tags }) => get(visibleTags).every(tag => tags.includes(tag)))
@@ -464,16 +517,16 @@ export default defineComponent({
       const currency = { symbol: get(currencySymbol) };
 
       const currencyHeader = get(isEth)
-        ? i18n.t('account_balances.headers.usd_value_eth', currency)
-        : i18n.t('account_balances.headers.usd_value', currency);
+        ? tc('account_balances.headers.usd_value_eth', 0, currency)
+        : tc('account_balances.headers.usd_value', 0, currency);
 
       const accountHeader = get(isEth2)
-        ? i18n.t('account_balances.headers.validator')
-        : i18n.t('common.account');
+        ? tc('account_balances.headers.validator')
+        : tc('common.account');
 
       const headers: DataTableHeader[] = [
         { text: '', value: 'accountSelection', width: '34px', sortable: false },
-        { text: accountHeader.toString(), value: 'label' },
+        { text: accountHeader, value: 'label' },
         {
           text: get(isEth2) && get(treatEth2AsEth) ? 'ETH' : get(blockchain),
           value: 'balance.amount',
@@ -488,15 +541,24 @@ export default defineComponent({
 
       if (get(isEth2)) {
         headers.push({
-          text: i18n.t('account_balances.headers.ownership').toString(),
+          text: tc('account_balances.headers.ownership'),
           value: 'ownershipPercentage',
           align: 'end',
           width: '28'
         });
       }
 
+      if (get(isEth)) {
+        headers.push({
+          text: tc('account_balances.headers.num_of_detected_tokens'),
+          value: 'numOfDetectedTokens',
+          align: 'end',
+          width: '150'
+        });
+      }
+
       headers.push({
-        text: i18n.tc('account_balances.headers.actions'),
+        text: tc('account_balances.headers.actions'),
         value: 'actions',
         align: 'center',
         sortable: false,
@@ -516,12 +578,14 @@ export default defineComponent({
     });
 
     const getItems = (xpub: string, derivationPath?: string) => {
-      return get(balances).filter(
-        value =>
-          'xpub' in value &&
-          xpub === value.xpub &&
-          derivationPath === value?.derivationPath
-      );
+      const isXpub = (
+        value: BlockchainAccountWithBalance
+      ): value is XpubAccountWithBalance =>
+        'xpub' in value &&
+        xpub === value.xpub &&
+        derivationPath === value?.derivationPath;
+
+      return get(balances).filter(isXpub);
     };
 
     const accountOperation = computed<boolean>(() => {
@@ -541,6 +605,12 @@ export default defineComponent({
         collapsedXpubs.value.splice(index, 1);
       }
     };
+
+    const { getEthDetectedTokensInfo, fetchDetectedTokens } =
+      useBlockchainAccountsStore();
+
+    const detectingTokens = (address: string) =>
+      isTaskRunning(TaskType.FETCH_DETECTED_TOKENS, { address });
 
     const assets = (address: string) => {
       return get(accountAssets(address));
@@ -578,7 +648,11 @@ export default defineComponent({
       expandXpub,
       deleteXpub,
       removeCollapsed,
-      get
+      get,
+      detectingTokens,
+      fetchDetectedTokens,
+      getEthDetectedTokensInfo,
+      tc
     };
   }
 });

@@ -1,16 +1,18 @@
 <template>
   <div>
     <data-table
+      ref="tableRef"
       :class="$style.table"
       :headers="tableHeaders"
       :items="data"
+      :container="tableContainer"
       :mobile-breakpoint="0"
     >
       <template #item.category="{ item }">
         <div>
           <span>{{ toSentenceCase(item.category) }}</span>
           <span v-if="isNft(item.assetIdentifier)">
-            ({{ $t('dashboard.snapshot.edit.dialog.balances.nft') }})
+            ({{ tc('dashboard.snapshot.edit.dialog.balances.nft') }})
           </span>
         </div>
       </template>
@@ -19,6 +21,7 @@
         <asset-details
           v-if="!isNft(item.assetIdentifier)"
           :class="$style.asset"
+          :asset-styled="{ padding: '2px 0.75rem' }"
           :asset="item.assetIdentifier"
           :opens-details="false"
           :enable-association="false"
@@ -41,9 +44,9 @@
 
       <template #item.action="{ item }">
         <row-actions
-          :edit-tooltip="$t('dashboard.snapshot.edit.dialog.actions.edit_item')"
+          :edit-tooltip="tc('dashboard.snapshot.edit.dialog.actions.edit_item')"
           :delete-tooltip="
-            $t('dashboard.snapshot.edit.dialog.actions.delete_item')
+            tc('dashboard.snapshot.edit.dialog.actions.delete_item')
           "
           @edit-click="editClick(item)"
           @delete-click="deleteClick(item)"
@@ -52,7 +55,7 @@
     </data-table>
     <v-sheet elevation="10" class="d-flex align-center px-4 py-2">
       <div>
-        <div class="text-caption">{{ $t('common.total') }}:</div>
+        <div class="text-caption">{{ tc('common.total') }}:</div>
         <div class="font-weight-bold text-h6 mt-n1">
           <amount-display :value="total" fiat-currency="USD" />
         </div>
@@ -61,11 +64,11 @@
       <v-btn text color="primary" class="mr-4" @click="add">
         <v-icon class="mr-2">mdi-plus</v-icon>
         <span>
-          {{ $t('dashboard.snapshot.edit.dialog.actions.add_new_entry') }}
+          {{ tc('dashboard.snapshot.edit.dialog.actions.add_new_entry') }}
         </span>
       </v-btn>
       <v-btn color="primary" @click="updateStep(2)">
-        {{ $t('common.actions.next') }}
+        {{ tc('common.actions.next') }}
       </v-btn>
     </v-sheet>
 
@@ -73,10 +76,10 @@
       :display="showForm"
       :title="
         indexToEdit !== null
-          ? $t('dashboard.snapshot.edit.dialog.balances.edit_title')
-          : $t('dashboard.snapshot.edit.dialog.balances.add_title')
+          ? tc('dashboard.snapshot.edit.dialog.balances.edit_title')
+          : tc('dashboard.snapshot.edit.dialog.balances.add_title')
       "
-      :primary-action="$t('common.actions.save')"
+      :primary-action="tc('common.actions.save')"
       :action-disabled="loading || !valid"
       @confirm="save"
       @cancel="clearEditDialog"
@@ -93,9 +96,9 @@
 
     <confirm-dialog
       :display="showDeleteConfirmation"
-      :title="$t('dashboard.snapshot.edit.dialog.balances.delete_title')"
+      :title="tc('dashboard.snapshot.edit.dialog.balances.delete_title')"
       :message="
-        $t('dashboard.snapshot.edit.dialog.balances.delete_confirmation')
+        tc('dashboard.snapshot.edit.dialog.balances.delete_confirmation')
       "
       max-width="700"
       @cancel="clearDeleteDialog"
@@ -117,22 +120,21 @@ import {
   computed,
   defineComponent,
   PropType,
-  Ref,
   ref,
   toRefs
 } from '@vue/composition-api';
 import { get, set } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n-composable';
 import { DataTableHeader } from 'vuetify';
 import EditBalancesSnapshotForm from '@/components/dashboard/EditBalancesSnapshotForm.vue';
 import EditBalancesSnapshotLocationSelector from '@/components/dashboard/EditBalancesSnapshotLocationSelector.vue';
 import BigDialog from '@/components/dialogs/BigDialog.vue';
 import NftDetails from '@/components/helper/NftDetails.vue';
 import RowActions from '@/components/helper/RowActions.vue';
-import { setupExchangeRateGetter } from '@/composables/balances';
 import { CURRENCY_USD } from '@/data/currencies';
 import { bigNumberSum } from '@/filters';
-import i18n from '@/i18n';
+import { useBalancePricesStore } from '@/store/balances/prices';
 import {
   BalanceSnapshot,
   BalanceSnapshotPayload,
@@ -144,45 +146,6 @@ import { isNft } from '@/utils/nft';
 import { toSentenceCase } from '@/utils/text';
 
 type IndexedBalanceSnapshot = BalanceSnapshot & { index: number };
-
-const tableHeaders = (currency: Ref<string>) =>
-  computed<DataTableHeader[]>(() => {
-    return [
-      {
-        text: i18n.t('common.category').toString(),
-        value: 'category',
-        cellClass: 'py-2',
-        width: 150
-      },
-      {
-        text: i18n.t('common.asset').toString(),
-        value: 'assetIdentifier'
-      },
-      {
-        text: i18n.t('common.amount').toString(),
-        value: 'amount',
-        align: 'end',
-        sort: (a: BigNumber, b: BigNumber) => sortDesc(a, b)
-      },
-      {
-        text: i18n
-          .t('common.value_in_symbol', {
-            symbol: get(currency)
-          })
-          .toString(),
-        value: 'usdValue',
-        align: 'end',
-        sort: (a: BigNumber, b: BigNumber) => sortDesc(a, b)
-      },
-      {
-        text: '',
-        value: 'action',
-        cellClass: 'py-2',
-        width: 100,
-        sortable: false
-      }
-    ];
-  });
 
 export default defineComponent({
   name: 'EditBalancesSnapshotTable',
@@ -219,9 +182,10 @@ export default defineComponent({
     const loading = ref<boolean>(false);
     const excludedAssets = ref<string[]>([]);
 
-    const exchangeRate = setupExchangeRateGetter();
+    const { exchangeRate } = useBalancePricesStore();
+    const { tc } = useI18n();
     const fiatExchangeRate = computed<BigNumber>(() => {
-      return exchangeRate(get(currencySymbol)) ?? One;
+      return get(exchangeRate(get(currencySymbol))) ?? One;
     });
 
     const data = computed<IndexedBalanceSnapshot[]>(() => {
@@ -239,6 +203,40 @@ export default defineComponent({
       if (!totalEntry) return Zero;
       return totalEntry.usdValue;
     });
+
+    const tableHeaders = computed<DataTableHeader[]>(() => [
+      {
+        text: tc('common.category'),
+        value: 'category',
+        cellClass: 'py-2',
+        width: 150
+      },
+      {
+        text: tc('common.asset'),
+        value: 'assetIdentifier'
+      },
+      {
+        text: tc('common.amount'),
+        value: 'amount',
+        align: 'end',
+        sort: (a: BigNumber, b: BigNumber) => sortDesc(a, b)
+      },
+      {
+        text: tc('common.value_in_symbol', 0, {
+          symbol: get(currencySymbol)
+        }).toString(),
+        value: 'usdValue',
+        align: 'end',
+        sort: (a: BigNumber, b: BigNumber) => sortDesc(a, b)
+      },
+      {
+        text: '',
+        value: 'action',
+        cellClass: 'py-2',
+        width: 100,
+        sortable: false
+      }
+    ]);
 
     const input = (value: Snapshot) => {
       emit('input', value);
@@ -486,13 +484,21 @@ export default defineComponent({
       clearDeleteDialog();
     };
 
+    const tableRef = ref<any>(null);
+
+    const tableContainer = computed(() => {
+      return get(tableRef)?.$el;
+    });
+
     return {
+      tableRef,
+      tableContainer,
       data,
       showForm,
       showDeleteConfirmation,
       indexToEdit,
       form,
-      tableHeaders: tableHeaders(currencySymbol),
+      tableHeaders,
       valid,
       loading,
       excludedAssets,
@@ -511,7 +517,8 @@ export default defineComponent({
       deleteClick,
       updateForm,
       clearDeleteDialog,
-      confirmDelete
+      confirmDelete,
+      tc
     };
   }
 });

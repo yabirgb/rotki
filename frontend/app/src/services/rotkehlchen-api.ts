@@ -100,7 +100,6 @@ export class RotkehlchenApi {
   private _backups: BackupApi;
   private _serverUrl: string;
   private signal = axios.CancelToken.source();
-  private readonly baseTransformer = setupTransformer([]);
   private readonly pathname: string;
 
   get defaultServerUrl(): string {
@@ -150,7 +149,6 @@ export class RotkehlchenApi {
       timeout: 30000
     });
     this.setupCancellation();
-    this.baseTransformer = setupTransformer();
     ({
       defi: this._defi,
       balances: this._balances,
@@ -684,10 +682,9 @@ export class RotkehlchenApi {
   }
 
   async editBtcAccount(
-    payload: BlockchainAccountPayload,
-    blockchain: Blockchain.BTC | Blockchain.BCH = Blockchain.BTC
+    payload: BlockchainAccountPayload
   ): Promise<BtcAccountData> {
-    let url = `/blockchains/${blockchain}`;
+    let url = `/blockchains/${payload.blockchain}`;
     const { address, label, tags } = payload;
 
     let data: {};
@@ -728,7 +725,10 @@ export class RotkehlchenApi {
     payload: BlockchainAccountPayload
   ): Promise<GeneralAccountData[]> {
     const { address, label, tags, blockchain } = payload;
-    assert(blockchain !== Blockchain.BTC, 'call editBtcAccount for btc');
+    assert(
+      ![Blockchain.BTC, Blockchain.BCH].includes(blockchain),
+      'call editBtcAccount for btc'
+    );
     const response = await this.axios.patch<ActionResult<GeneralAccountData[]>>(
       `/blockchains/${blockchain}`,
       {

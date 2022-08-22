@@ -5,8 +5,9 @@ from unittest.mock import _patch, patch
 import requests
 
 from rotkehlchen.accounting.structures.balance import Balance, BalanceType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
+from rotkehlchen.chain.ethereum.defi.structures import DefiProtocolBalances
 from rotkehlchen.constants.assets import A_BTC, A_ETH, A_EUR
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.db.utils import DBAssetBalance, LocationData
@@ -22,13 +23,13 @@ from rotkehlchen.tests.utils.exchanges import (
     patch_poloniex_balances_query,
     try_get_first_exchange,
 )
-from rotkehlchen.types import BTCAddress, ChecksumEthAddress, Location, Timestamp
+from rotkehlchen.types import BTCAddress, ChecksumEvmAddress, Location, Timestamp
 
 
 class BalancesTestSetup(NamedTuple):
     eth_balances: List[str]
     btc_balances: List[str]
-    token_balances: Dict[EthereumToken, List[str]]
+    token_balances: Dict[EvmToken, List[str]]
     binance_balances: Dict[Asset, FVal]
     poloniex_balances: Dict[Asset, FVal]
     manually_tracked_balances: List[ManuallyTrackedBalance]
@@ -38,7 +39,8 @@ class BalancesTestSetup(NamedTuple):
     beaconchain_patch: _patch
     ethtokens_max_chunks_patch: _patch
     bitcoin_patch: _patch
-    defi_balances_patch: Optional[_patch]
+    defi_balances_addition_method_patch: Optional[_patch]
+    defichad_query_balances_patch: Optional[_patch]
 
     def enter_all_patches(self, stack: ExitStack):
         stack.enter_context(self.poloniex_patch)
@@ -55,23 +57,26 @@ class BalancesTestSetup(NamedTuple):
         stack.enter_context(self.etherscan_patch)
         stack.enter_context(self.ethtokens_max_chunks_patch)
         stack.enter_context(self.beaconchain_patch)
-        if self.defi_balances_patch is not None:
-            stack.enter_context(self.defi_balances_patch)
+        if self.defi_balances_addition_method_patch is not None:
+            stack.enter_context(self.defi_balances_addition_method_patch)
+        if self.defichad_query_balances_patch is not None:
+            stack.enter_context(self.defichad_query_balances_patch)
         return stack
 
 
 def setup_balances(
         rotki,
-        ethereum_accounts: Optional[List[ChecksumEthAddress]],
+        ethereum_accounts: Optional[List[ChecksumEvmAddress]],
         btc_accounts: Optional[List[BTCAddress]],
         eth_balances: Optional[List[str]] = None,
-        token_balances: Optional[Dict[EthereumToken, List[str]]] = None,
+        token_balances: Optional[Dict[EvmToken, List[str]]] = None,
         populate_detected_tokens: bool = True,
-        liabilities: Optional[Dict[EthereumToken, List[str]]] = None,
+        liabilities: Optional[Dict[EvmToken, List[str]]] = None,
         btc_balances: Optional[List[str]] = None,
         manually_tracked_balances: Optional[List[ManuallyTrackedBalance]] = None,
         original_queries: Optional[List[str]] = None,
         extra_flags: Optional[List[str]] = None,
+        defi_balances: Optional[Dict[ChecksumEvmAddress, List[DefiProtocolBalances]]] = None,
 ) -> BalancesTestSetup:
     """Setup the blockchain, exchange and fiat balances for some tests
 
@@ -123,7 +128,7 @@ def setup_balances(
         else:
             btc_balances = []
 
-    eth_map: Dict[ChecksumEthAddress, Dict[Union[str, EthereumToken], Any]] = {}
+    eth_map: Dict[ChecksumEvmAddress, Dict[Union[str, EvmToken], Any]] = {}
     with rotki.data.db.user_write() as write_cursor:
         for idx, acc in enumerate(ethereum_accounts):
             eth_map[acc] = {}
@@ -133,9 +138,9 @@ def setup_balances(
             if populate_detected_tokens is True:
                 rotki.data.db.save_tokens_for_address(write_cursor, acc, list(token_balances.keys()))  # noqa: E501
 
-    defi_balances_patch = None
+    defi_balances_addition_method_patch = None
     if liabilities is not None:
-        def mock_add_defi_balances_to_token_and_totals():
+        def mock_add_defi_balances_to_account():
             # super hacky way of mocking this but well fuck it
             if len(rotki.chain_manager.balances.eth) == 4:
                 d_liabilities = liabilities.copy()
@@ -156,13 +161,37 @@ def setup_balances(
 
                     account = ethereum_accounts[idx]
                     rotki.chain_manager.balances.eth[account].liabilities[token] = Balance(balance)
-                    rotki.chain_manager.totals.liabilities[token] += Balance(balance)
 
-        defi_balances_patch = patch.object(
+            # need this to not get randomized behaviour when defi balances are added or not
+            # depending on whether liabilities are mocked
+            if rotki.chain_manager.defi_balances is not None:
+                for account, single_defi_balances in rotki.chain_manager.defi_balances.items():
+                    rotki.chain_manager._add_account_defi_balances_to_token(
+                        account=account,
+                        balances=single_defi_balances,
+                    )
+
+        defi_balances_addition_method_patch = patch.object(
             rotki.chain_manager,
-            'add_defi_balances_to_token_and_totals',
-            side_effect=mock_add_defi_balances_to_token_and_totals,
+            'add_defi_balances_to_account',
+            side_effect=mock_add_defi_balances_to_account,
         )
+
+    if defi_balances is not None:
+        def mock_defichad_query_balances(addresses: List[ChecksumEvmAddress]):
+            result: Dict[ChecksumEvmAddress, List[DefiProtocolBalances]] = {}
+            for addr in addresses:
+                if addr in defi_balances:  # type: ignore
+                    result[addr] = defi_balances[addr]  # type: ignore
+            return result
+
+        defichad_query_balances_patch = patch.object(
+            rotki.chain_manager.defichad,
+            'query_defi_balances',
+            side_effect=mock_defichad_query_balances,
+        )
+    else:
+        defichad_query_balances_patch = None
 
     btc_map: Dict[BTCAddress, str] = {}
     for idx, btc_acc in enumerate(btc_accounts):
@@ -217,7 +246,8 @@ def setup_balances(
         ethtokens_max_chunks_patch=ethtokens_max_chunks_patch,
         bitcoin_patch=bitcoin_patch,
         beaconchain_patch=beaconchain_patch,
-        defi_balances_patch=defi_balances_patch,
+        defi_balances_addition_method_patch=defi_balances_addition_method_patch,
+        defichad_query_balances_patch=defichad_query_balances_patch,
     )
 
 

@@ -11,6 +11,7 @@
       <asset-icon
         :changeable="changeable"
         size="26px"
+        :styled="assetStyled"
         :identifier="identifier"
         :symbol="symbol"
       />
@@ -19,6 +20,7 @@
 </template>
 
 <script lang="ts">
+import { Nullable } from '@rotki/common';
 import { SupportedAsset } from '@rotki/common/lib/data';
 import {
   computed,
@@ -39,8 +41,16 @@ const AssetDetailsBase = defineComponent({
   props: {
     asset: {
       required: true,
-      type: Object as PropType<SupportedAsset>
+      type: Object as PropType<
+        | SupportedAsset
+        | {
+            identifier: string;
+            symbol?: Nullable<string>;
+            name?: Nullable<string>;
+          }
+      >
     },
+    assetStyled: { required: false, type: Object, default: () => null },
     opensDetails: { required: false, type: Boolean, default: false },
     changeable: { required: false, type: Boolean, default: false },
     hideName: { required: false, type: Boolean, default: false },
@@ -53,11 +63,9 @@ const AssetDetailsBase = defineComponent({
 
     const identifier = computed(() => {
       const supportedAsset = get(asset);
-      if ('ethereumAddress' in supportedAsset) {
-        return `_ceth_${supportedAsset.ethereumAddress}`;
-      }
       return supportedAsset.identifier;
     });
+
     const symbol = computed(() =>
       get(assetSymbol(get(identifier), get(enableAssociation)))
     );

@@ -11,6 +11,7 @@ import {
   setupTransformer
 } from '@/services/axios-tranformers';
 import {
+  EthDetectedTokensRecord,
   ManualBalance,
   ManualBalances,
   OracleCacheMeta
@@ -89,7 +90,9 @@ export class BalancesApi {
       .then(handleResponse);
   }
 
-  async addManualBalances(balances: ManualBalance[]): Promise<ManualBalances> {
+  async addManualBalances(
+    balances: Omit<ManualBalance, 'id'>[]
+  ): Promise<ManualBalances> {
     return this.axios
       .put<ActionResult<ManualBalances>>(
         'balances/manual',
@@ -419,5 +422,40 @@ export class BalancesApi {
     );
 
     return handleResponse(response);
+  }
+
+  async internalDetectedTokens<T>(
+    addresses: string[],
+    asyncQuery: boolean
+  ): Promise<T> {
+    return this.axios
+      .post<ActionResult<T>>(
+        '/blockchains/ETH/tokens/detect',
+        axiosSnakeCaseTransformer({
+          asyncQuery,
+          onlyCache: !asyncQuery,
+          addresses
+        }),
+        {
+          validateStatus: validWithParamsSessionAndExternalService,
+          transformResponse: basicAxiosTransformer
+        }
+      )
+      .then(handleResponse);
+  }
+
+  async fetchDetectedTokensTask(addresses: string[]): Promise<PendingTask> {
+    return this.internalDetectedTokens<PendingTask>(addresses, true);
+  }
+
+  async fetchDetectedTokens(
+    addresses: string[]
+  ): Promise<EthDetectedTokensRecord> {
+    const response = await this.internalDetectedTokens<EthDetectedTokensRecord>(
+      addresses,
+      false
+    );
+
+    return EthDetectedTokensRecord.parse(response);
   }
 }

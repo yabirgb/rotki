@@ -17,7 +17,7 @@
               v-on="on"
               @click="mergeTool = true"
             >
-              <v-icon>mdi-merge</v-icon>
+              <v-icon class="mr-2">mdi-merge</v-icon>
               <span>{{ $t('asset_management.merge_assets') }}</span>
             </v-btn>
           </template>
@@ -81,6 +81,7 @@ import {
   watch
 } from '@vue/composition-api';
 import { get, set } from '@vueuse/core';
+import { storeToRefs } from 'pinia';
 import AssetForm from '@/components/asset-manager/AssetForm.vue';
 import AssetTable from '@/components/asset-manager/AssetTable.vue';
 import MergeDialog from '@/components/asset-manager/MergeDialog.vue';
@@ -90,6 +91,7 @@ import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue';
 import { useRoute, useRouter } from '@/composables/common';
 import i18n from '@/i18n';
 import { Routes } from '@/router/routes';
+import { EVM_TOKEN } from '@/services/assets/consts';
 import { ManagedAsset } from '@/services/assets/types';
 import { api } from '@/services/rotkehlchen-api';
 import { useAssetInfoRetrieval } from '@/store/assets';
@@ -113,7 +115,9 @@ export default defineComponent({
   setup(props) {
     const { identifier } = toRefs(props);
 
-    const { supportedAssets, fetchSupportedAssets } = useAssetInfoRetrieval();
+    const assetsStore = useAssetInfoRetrieval();
+    const { supportedAssets } = storeToRefs(assetsStore);
+    const { fetchSupportedAssets } = assetsStore;
 
     const loading = ref<boolean>(false);
     const tokens = ref<ManagedAsset[]>([]);
@@ -161,7 +165,7 @@ export default defineComponent({
       set(loading, true);
       await fetchSupportedAssets(true);
       const assets = get(supportedAssets).filter(
-        ({ assetType }) => assetType !== 'ethereum token'
+        ({ assetType }) => assetType !== EVM_TOKEN
       );
       set(tokens, [...(await api.assets.ethereumTokens()), ...assets]);
       set(loading, false);
@@ -178,9 +182,9 @@ export default defineComponent({
       set(saving, false);
     };
 
-    const deleteToken = async (address: string) => {
+    const deleteToken = async (address: string, chain: string) => {
       try {
-        const success = await api.assets.deleteEthereumToken(address);
+        const success = await api.assets.deleteEthereumToken(address, chain);
         if (success) {
           await refresh();
         }
@@ -221,7 +225,7 @@ export default defineComponent({
       if ('assetType' in asset) {
         await deleteAsset(asset.identifier);
       } else {
-        await deleteToken(asset.address);
+        await deleteToken(asset.address, asset.chain as string);
       }
     };
 

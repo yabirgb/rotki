@@ -87,10 +87,10 @@ import {
 import { get, set, useClipboard, useTimeoutFn } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import AmountCurrency from '@/components/display/AmountCurrency.vue';
-import { setupExchangeRateGetter } from '@/composables/balances';
 import { displayAmountFormatter } from '@/data/amount_formatter';
 import { findCurrency } from '@/data/currencies';
 import { useAssetInfoRetrieval } from '@/store/assets';
+import { useBalancePricesStore } from '@/store/balances/prices';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useSessionSettingsStore } from '@/store/settings/session';
@@ -154,7 +154,7 @@ export default defineComponent({
       useSessionSettingsStore()
     );
 
-    const exchangeRate = setupExchangeRateGetter();
+    const { exchangeRate } = useBalancePricesStore();
 
     const {
       thousandSeparator,
@@ -214,8 +214,8 @@ export default defineComponent({
 
     const isRenderValueNaN = computed<boolean>(() => get(renderValue).isNaN());
 
-    const renderValueDecimalPlaces = computed<number>(() =>
-      get(renderValue).decimalPlaces()
+    const renderValueDecimalPlaces = computed<number>(
+      () => get(renderValue).decimalPlaces() ?? 0
     );
 
     const convertFiat = computed<boolean>(() => {
@@ -262,7 +262,8 @@ export default defineComponent({
         );
       }
 
-      const hiddenDecimals = price.decimalPlaces() > floatingPrecisionUsed;
+      const decimals = price.decimalPlaces() ?? 0;
+      const hiddenDecimals = decimals > floatingPrecisionUsed;
       if (hiddenDecimals && get(rounding) === BigNumber.ROUND_UP) {
         return `< ${formattedValue}`;
       } else if (
@@ -283,7 +284,7 @@ export default defineComponent({
     });
 
     const convertValue = (value: BigNumber): BigNumber => {
-      const rate = exchangeRate(get(currencySymbol));
+      const rate = get(exchangeRate(get(currencySymbol)));
       return rate ? value.multipliedBy(rate) : value;
     };
 
@@ -294,7 +295,8 @@ export default defineComponent({
     });
 
     const fullFormattedValue = computed<string>(() => {
-      return get(fullValue).toFormat(get(fullValue).decimalPlaces());
+      const value = get(fullValue);
+      return value.toFormat(value.decimalPlaces() ?? 0);
     });
 
     const rounding = computed<RoundingMode | undefined>(() => {

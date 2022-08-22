@@ -1,9 +1,9 @@
 import { AssetBalance } from '@rotki/common';
+import { SupportedAsset } from '@rotki/common/lib/data';
 import { ManagedAsset } from '@/services/assets/types';
-import { AssetInfoGetter } from '@/store/balances/types';
 import { assert } from '@/utils/assertions';
 
-function levenshtein(a: string, b: string) {
+const levenshtein = (a: string, b: string) => {
   let tmp;
   if (a.length === 0) {
     return b.length;
@@ -39,15 +39,15 @@ function levenshtein(a: string, b: string) {
     }
   }
   return res;
-}
+};
 
-function score(keyword: string, { name, symbol }: ManagedAsset): number {
+const score = (keyword: string, { name, symbol }: ManagedAsset): number => {
   const symbolScore = symbol
     ? levenshtein(keyword, symbol.toLocaleLowerCase())
     : 0;
   const nameScore = name ? levenshtein(keyword, name.toLocaleLowerCase()) : 0;
   return Math.min(symbolScore, nameScore);
-}
+};
 
 /**
  *
@@ -63,7 +63,7 @@ function score(keyword: string, { name, symbol }: ManagedAsset): number {
  * 1. It will prioritize string that match from beginning (i.e. for keyword `hop`, it prioritizes string `hop-portocol` higher than string `hoo`)
  * 2. It will prioritize string that contain the keyword (i.e. for keyword `urv`, it prioritizes string `curvy`, higher than string `urw`)
  */
-export function compareSymbols(a: string, b: string, keyword: string) {
+export const compareSymbols = (a: string, b: string, keyword: string) => {
   const search = keyword.toLocaleLowerCase().trim();
   const keywordA = a.toLocaleLowerCase().trim();
   const keywordB = b.toLocaleLowerCase().trim();
@@ -94,15 +94,15 @@ export function compareSymbols(a: string, b: string, keyword: string) {
   }
 
   return rankA - rankB;
-}
+};
 
-export function compareAssets(
+export const compareAssets = (
   a: ManagedAsset,
   b: ManagedAsset,
   element: keyof ManagedAsset,
   keyword: string,
   desc: boolean
-): number {
+): number => {
   const fields = ['symbol', 'name'];
   if (keyword.length > 0 && fields.includes(element)) {
     const diff = score(keyword, a) - score(keyword, b);
@@ -120,9 +120,11 @@ export function compareAssets(
       : aElement.toLocaleLowerCase().localeCompare(bElement);
   }
   return 0;
-}
+};
 
-export const getSortItems = (getInfo: AssetInfoGetter) => {
+export const getSortItems = (
+  getInfo: (identifier: string) => SupportedAsset | undefined
+) => {
   return (
     items: AssetBalance[],
     sortBy: (keyof AssetBalance)[],
@@ -149,4 +151,18 @@ export const getSortItems = (getInfo: AssetInfoGetter) => {
       ).toNumber();
     });
   };
+};
+
+export const isEvmIdentifier = (identifier?: string) => {
+  if (!identifier) return false;
+  return identifier.startsWith('eip155');
+};
+
+export const getAddressFromEvmIdentifier = (identifier?: string) => {
+  if (!identifier) return '';
+  return identifier.split(':')[2] ?? '';
+};
+
+export const createEvmIdentifierFromAddress = (address: string) => {
+  return `eip155:1/erc20:${address}`;
 };

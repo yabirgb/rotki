@@ -5,10 +5,10 @@ import os
 from typing import Any, Dict, List, Optional
 
 from rotkehlchen.chain.ethereum.contracts import EthereumContract
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 
 MAX_BLOCKTIME_CACHE = 250  # 55 mins with 13 secs avg block time
-ETH_SPECIAL_ADDRESS = string_to_ethereum_address('0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE')
+ETH_SPECIAL_ADDRESS = string_to_evm_address('0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE')
 
 
 class EthereumConstants():
@@ -183,6 +183,8 @@ UNISWAP_V3_FACTORY = EthereumConstants().contract('UNISWAP_V3_FACTORY')
 UNISWAP_V3_NFT_MANAGER = EthereumConstants.contract('UNISWAP_V3_NFT_POSITIONS_MANAGER')
 
 SADDLE_ALETH_POOL = EthereumConstants().contract('SADDLE_ALETH_POOL')
+
+ENS_REVERSE_RECORDS = EthereumConstants.contract('ENS_REVERSE_RECORDS')
 
 RAY_DIGITS = 27
 # If an on-chain pool single-side asset liquidity is less than this, ignore the pool

@@ -38,7 +38,7 @@ from rotkehlchen.chain.ethereum.manager import EthereumManager
 from rotkehlchen.chain.ethereum.oracles.saddle import SaddleOracle
 from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV2Oracle, UniswapV3Oracle
 from rotkehlchen.chain.ethereum.transactions import EthTransactions
-from rotkehlchen.chain.manager import BlockchainBalancesUpdate, ChainManager
+from rotkehlchen.chain.manager import ChainManager
 from rotkehlchen.chain.substrate.manager import SubstrateManager
 from rotkehlchen.chain.substrate.types import SubstrateChain
 from rotkehlchen.chain.substrate.utils import (
@@ -76,7 +76,7 @@ from rotkehlchen.types import (
     ApiKey,
     ApiSecret,
     BlockchainAccountData,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     ListOfBlockchainAddresses,
     Location,
     SupportedBlockchain,
@@ -182,7 +182,8 @@ class Rotkehlchen():
         - AuthenticationError if premium_credentials are given and are invalid
         or can't authenticate with the server
         - DBUpgradeError if the rotki DB version is newer than the software or
-        there is a DB upgrade and there is an error.
+        there is a DB upgrade and there is an error or if the version is older
+        than the one supported.
         - SystemPermissionError if the directory or DB file can not be accessed
         - sqlcipher.OperationalError: If some very weird error happens with the DB.
         For example unexpected schema.
@@ -515,14 +516,13 @@ class Rotkehlchen():
             self,
             blockchain: SupportedBlockchain,
             account_data: List[BlockchainAccountData],
-    ) -> BlockchainBalancesUpdate:
+    ) -> None:
         """Adds new blockchain accounts
 
         Adds the accounts to the blockchain instance and queries them to get the
         updated balances. Also adds them in the DB
 
         May raise:
-        - EthSyncError from modify_blockchain_account
         - InputError if the given accounts list is empty.
         - TagConstraintError if any of the given account data contain unknown tags.
         - RemoteError if an external service such as Etherscan is queried and
@@ -536,7 +536,7 @@ class Rotkehlchen():
                 data_type='blockchain accounts',
             )
             address_type = blockchain.get_address_type()
-            updated_balances = self.chain_manager.add_blockchain_accounts(
+            self.chain_manager.add_blockchain_accounts(
                 blockchain=blockchain,
                 accounts=[address_type(entry.address) for entry in account_data],
             )
@@ -545,8 +545,6 @@ class Rotkehlchen():
                 blockchain=blockchain,
                 account_data=account_data,
             )
-
-        return updated_balances
 
     def edit_blockchain_accounts(
             self,
@@ -591,22 +589,19 @@ class Rotkehlchen():
             self,
             blockchain: SupportedBlockchain,
             accounts: ListOfBlockchainAddresses,
-    ) -> BlockchainBalancesUpdate:
+    ) -> None:
         """Removes blockchain accounts
 
-        Removes the accounts from the blockchain instance and queries them to get
-        the updated balances. Also removes them from the DB
+        Removes the accounts from the blockchain instance. Also removes them from the DB.
 
         May raise:
-        - RemoteError if an external service such as Etherscan is queried and
-          there is a problem with its query.
         - InputError if a non-existing account was given to remove
         """
-        balances_update = self.chain_manager.remove_blockchain_accounts(
+        self.chain_manager.remove_blockchain_accounts(
             blockchain=blockchain,
             accounts=accounts,
         )
-        eth_addresses: List[ChecksumEthAddress] = cast(List[ChecksumEthAddress], accounts) if blockchain == SupportedBlockchain.ETHEREUM else []  # noqa: E501
+        eth_addresses: List[ChecksumEvmAddress] = cast(List[ChecksumEvmAddress], accounts) if blockchain == SupportedBlockchain.ETHEREUM else []  # noqa: E501
         with contextlib.ExitStack() as stack:
             cursor = stack.enter_context(self.data.db.user_write())
             if blockchain == SupportedBlockchain.ETHEREUM:
@@ -614,8 +609,6 @@ class Rotkehlchen():
                 stack.enter_context(self.eth_transactions.missing_receipts_lock)
                 stack.enter_context(self.evm_tx_decoder.undecoded_tx_query_lock)
             self.data.db.remove_blockchain_accounts(cursor, blockchain, accounts)
-
-        return balances_update
 
     def get_history_query_status(self) -> Dict[str, str]:
         if self.events_historian.progress < FVal('100'):
@@ -746,35 +739,14 @@ class Rotkehlchen():
                 if len(loopring_balances) != 0:
                     balances[str(Location.LOOPRING)] = loopring_balances
 
-        # retrieve uniswap v3 & v2 lps
-        uniswap = self.chain_manager.get_module('uniswap')
         uniswap_v3_balances = None
-        if uniswap is not None:
-            try:
-                uniswap_v3_balances = uniswap.get_v3_balances(
-                    addresses=self.chain_manager.queried_addresses_for_module('uniswap'),
-                )
-            except RemoteError as e:
-                log.error(
-                    f'At balance snapshot Uniswap V3 balances query failed due to {str(e)}. Error '
-                    f'is ignored and balance snapshot will still be saved.',
-                )
-            try:
-                uniswap_v2_balances = uniswap.get_balances(
-                    addresses=self.chain_manager.queried_addresses_for_module('uniswap'),
-                )
-            except RemoteError as e:
-                log.error(
-                    f'At balance snapshot Uniswap V2 balances query failed due to {str(e)}. Error '
-                    f'is ignored and balance snapshot will still be saved.',
-                )
-            else:
-                if str(Location.BLOCKCHAIN) not in balances:
-                    balances[str(Location.BLOCKCHAIN)] = {}
-
-                for uniswap_v2_lps in uniswap_v2_balances.values():
-                    for lp in uniswap_v2_lps:
-                        balances[str(Location.BLOCKCHAIN)][Asset(lp.address)] = lp.user_balance
+        try:
+            uniswap_v3_balances = self.chain_manager.query_ethereum_lp_balances(balances=balances)
+        except RemoteError as e:
+            log.error(
+                f'At balance snapshot LP balances query failed due to {str(e)}. Error '
+                f'is ignored and balance snapshot will still be saved.',
+            )
 
         # retrieve nft balances if module is activated
         nfts = self.chain_manager.get_module('nfts')
@@ -796,7 +768,7 @@ class Rotkehlchen():
                     if str(Location.BLOCKCHAIN) not in balances:
                         balances[str(Location.BLOCKCHAIN)] = {}
 
-                    for _, nft_balances in nft_mapping.items():
+                    for nft_balances in nft_mapping.values():
                         for balance_entry in nft_balances:
                             balances[str(Location.BLOCKCHAIN)][Asset(
                                 balance_entry['id'])] = Balance(

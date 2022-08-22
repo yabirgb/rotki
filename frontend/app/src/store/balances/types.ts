@@ -1,16 +1,8 @@
 import { Balance, BigNumber, HasBalance, NumericString } from '@rotki/common';
 import { GeneralAccount } from '@rotki/common/lib/account';
 import { Blockchain } from '@rotki/common/lib/blockchain';
-import { SupportedAsset } from '@rotki/common/lib/data';
-import { Eth2Validators } from '@rotki/common/lib/staking/eth2';
 import { z } from 'zod';
 import { PriceInformation } from '@/services/assets/types';
-import {
-  BlockchainAssetBalances,
-  BtcBalances,
-  ManualBalanceWithValue
-} from '@/services/balances/types';
-import { BtcAccountData, GeneralAccountData } from '@/services/types-api';
 import { Section } from '@/store/const';
 import { Nullable } from '@/types';
 import {
@@ -20,7 +12,7 @@ import {
 } from '@/types/exchanges';
 import { Module } from '@/types/modules';
 import { SupportedSubBlockchainProtocol } from '@/types/protocols';
-import { ExchangeRates, PriceOracle } from '@/types/user';
+import { PriceOracle } from '@/types/user';
 
 export interface LocationBalance {
   readonly location: string;
@@ -32,37 +24,11 @@ export interface BalanceByLocation {
 }
 
 export interface AssetBalances {
-  readonly [asset: string]: Balance;
+  [asset: string]: Balance;
 }
 
 export interface AccountAssetBalances {
   readonly [account: string]: AssetBalances;
-}
-
-export interface BalanceState {
-  eth2Validators: Eth2Validators;
-  loopringBalances: AccountAssetBalances;
-  eth: BlockchainAssetBalances;
-  eth2: BlockchainAssetBalances;
-  btc: BtcBalances;
-  bch: BtcBalances;
-  ksm: BlockchainAssetBalances;
-  dot: BlockchainAssetBalances;
-  avax: BlockchainAssetBalances;
-  totals: AssetBalances;
-  liabilities: AssetBalances;
-  usdToFiatExchangeRates: ExchangeRates;
-  ethAccounts: GeneralAccountData[];
-  btcAccounts: BtcAccountData;
-  bchAccounts: BtcAccountData;
-  ksmAccounts: GeneralAccountData[];
-  dotAccounts: GeneralAccountData[];
-  avaxAccounts: GeneralAccountData[];
-  manualBalances: ManualBalanceWithValue[];
-  manualLiabilities: ManualBalanceWithValue[];
-  manualBalanceByLocation: BalanceByLocation;
-  prices: AssetPrices;
-  nonFungibleBalances: NonFungibleBalances;
 }
 
 export interface EditExchange {
@@ -114,6 +80,7 @@ export interface BlockchainAccountPayload
 export interface AccountPayload {
   readonly address: string;
   readonly label?: string;
+  readonly xpub?: XpubPayload;
   readonly tags: string[];
 }
 
@@ -144,11 +111,13 @@ interface XpubAccount extends GeneralAccount, XpubPayload {}
 
 export interface XpubAccountWithBalance extends XpubAccount, HasBalance {}
 
-export type BlockchainAccount = GeneralAccount | XpubAccount;
+export type AccountWithBalanceAndSharedOwnership = AccountWithBalance & {
+  ownershipPercentage?: string;
+};
 
 export type BlockchainAccountWithBalance =
   | XpubAccountWithBalance
-  | (AccountWithBalance & { ownershipPercentage?: string });
+  | AccountWithBalanceAndSharedOwnership;
 
 export type AddAccountsPayload = {
   readonly blockchain: Blockchain;
@@ -222,14 +191,6 @@ export interface ERC20Token {
   readonly symbol?: string;
 }
 
-export type ExchangeRateGetter = (currency: string) => BigNumber | undefined;
-export type AssetInfoGetter = (
-  identifier: string
-) => SupportedAsset | undefined;
-
-export type IdentifierForSymbolGetter = (symbol: string) => string | undefined;
-export type AssetSymbolGetter = (identifier: string) => string;
-
 export const NonFungibleBalance = PriceInformation.merge(
   z.object({
     name: z.string().nullable(),
@@ -290,6 +251,7 @@ export type BalanceSnapshotPayload = {
   assetIdentifier: string;
   amount: string;
   usdValue: string;
+  location: string;
 };
 
 export const LocationDataSnapshot = z.object({

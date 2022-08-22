@@ -27,9 +27,17 @@
       "loading": "Please wait while rotki queries the blockchain..."
     },
     "delete_tooltip": "Delete selected account(s)",
+    "detect_tokens": {
+      "title": "Detected tokens ({length})",
+      "tooltip": {
+        "last_detected": "Last detected: {time}",
+        "redetect": "Re-detect tokens"
+      }
+    },
     "edit_tooltip": "Edit account",
     "headers": {
       "actions": "Actions",
+      "num_of_detected_tokens": "Num. of detected tokens",
       "ownership": "Ownership",
       "usd_value": "{symbol} value",
       "usd_value_eth": "Total {symbol} value of account's assets",
@@ -222,16 +230,6 @@
           "title": "Querying blockchain balances"
         }
       },
-      "blockchain_account_add": {
-        "error": {
-          "description": "Failed to add the account: {error}",
-          "title": "Adding {blockchain} account {address}"
-        },
-        "task": {
-          "description": "{address} is being added",
-          "title": "Adding {blockchain} account"
-        }
-      },
       "blockchain_account_removal": {
         "error": {
           "description": "Failed to remove the account: {error}",
@@ -260,6 +258,12 @@
         "already_running": "Task is already running",
         "failed": "Failed while creating a cache entry from {fromAsset} to {toAsset} on source: {error}",
         "task": "Creating cache entry from {fromAsset} to {toAsset} on {source}"
+      },
+      "detect_tokens": {
+        "task": {
+          "description": "Fetch detected tokens for {address}",
+          "title": "Fetch detected tokens"
+        }
       },
       "exchange_balances": {
         "error": {
@@ -311,12 +315,6 @@
       "manual_delete": {
         "error": {
           "title": "Deleting Manual Balance"
-        }
-      },
-      "net_value": {
-        "error": {
-          "message": "Failed to fetch net value data: {message}",
-          "title": "Retrieving net value data"
         }
       },
       "supported_assets": {
@@ -910,6 +908,7 @@
     "identifier_copy": "Copy the identifier",
     "labels": {
       "asset_type": "Asset Type",
+      "chain": "Chain",
       "coingecko": "CoinGecko",
       "coingecko_hint": "The identifier of the asset on CoinGecko. If not set rotki will not be able to retrieve prices for the asset from CoinGecko.",
       "cryptocompare": "CryptoCompare",
@@ -918,7 +917,8 @@
       "forked": "Forked",
       "started": "Started",
       "swapped_for": "Swapped for",
-      "symbol": "Symbol"
+      "symbol": "Symbol",
+      "token_kind": "Token Kind"
     },
     "optional": "Optional Fields",
     "oracle_disable": "Disable/Enable the price fetching from the price oracle. If the oracle is not disabled, and there is no value specified, rotki will attempt to fetch a price using the asset symbol.",
@@ -1389,9 +1389,9 @@
     "liabilities": {
       "title": "Liabilities"
     },
-    "liquidity_provider": {
-      "short": "LP Tokens",
-      "title": "Liqudity Provider Tokens"
+    "liquidity_position": {
+      "refresh_tooltip": "Refresh LP Tokens",
+      "title": "LP Tokens"
     },
     "manual_balances": {
       "add": "Add a manual balance",

@@ -1,20 +1,20 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, NamedTuple, Tuple, Type
+from typing import Any, Dict, NamedTuple, Tuple, Type
 
 from eth_typing import HexAddress, HexStr
 
 from rotkehlchen.fval import FVal
-from rotkehlchen.types import ChecksumEthAddress
+from rotkehlchen.types import ChecksumEvmAddress
 
 ETHERSCAN_NODE_NAME = 'etherscan'
 
 
-def string_to_ethereum_address(value: str) -> ChecksumEthAddress:
+def string_to_evm_address(value: str) -> ChecksumEvmAddress:
     """This is a conversion without any checks of a string to ethereum address
 
     Is only used for typing.
     """
-    return ChecksumEthAddress(HexAddress(HexStr(value)))
+    return ChecksumEvmAddress(HexAddress(HexStr(value)))
 
 
 class NodeName(NamedTuple):
@@ -33,15 +33,6 @@ class NodeName(NamedTuple):
             'endpoint': self.endpoint,
             'owned': self.owned,
         }
-
-
-class EnsContractParams(NamedTuple):
-    """Parameters for a contract"""
-
-    address: ChecksumEthAddress
-    abi: List[Any]
-    method_name: str
-    arguments: List[Any]
 
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=True)

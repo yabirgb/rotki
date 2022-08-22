@@ -1,12 +1,14 @@
-import { AssetBalanceWithPrice, Balance } from '@rotki/common';
+import { AssetBalanceWithPrice, Balance, BigNumber } from '@rotki/common';
 import { computed, ComputedRef, Ref, ref } from '@vue/composition-api';
 import { get, set } from '@vueuse/core';
 import { forEach } from 'lodash';
-import { acceptHMRUpdate, defineStore } from 'pinia';
+import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
 import i18n from '@/i18n';
 import { balanceKeys } from '@/services/consts';
 import { api } from '@/services/rotkehlchen-api';
 import { useAssetInfoRetrieval, useIgnoredAssetsStore } from '@/store/assets';
+import { useBalancesStore } from '@/store/balances/index';
+import { useBalancePricesStore } from '@/store/balances/prices';
 import {
   AssetBalances,
   EditExchange,
@@ -16,7 +18,6 @@ import {
 import { Section, Status } from '@/store/const';
 import { useHistory } from '@/store/history';
 import { useNotifications } from '@/store/notifications';
-import store from '@/store/store';
 import { useTasks } from '@/store/tasks';
 import { getStatus, setStatus, showError } from '@/store/utils';
 import {
@@ -67,6 +68,7 @@ export const useExchangeBalancesStore = defineStore(
       exchange: SupportedExchange
     ): ComputedRef<AssetBalanceWithPrice[]> =>
       computed(() => {
+        const { prices } = storeToRefs(useBalancePricesStore());
         const ownedAssets: Record<string, Balance> = {};
         const balances = get(exchangeBalances);
 
@@ -86,14 +88,13 @@ export const useExchangeBalancesStore = defineStore(
               };
         });
 
-        const prices = store.state.balances!.prices;
         return Object.keys(ownedAssets)
           .filter(asset => !get(isAssetIgnored(asset)))
           .map(asset => ({
             asset,
             amount: ownedAssets[asset].amount,
             usdValue: ownedAssets[asset].usdValue,
-            usdPrice: prices[asset] ?? NoPrice
+            usdPrice: (get(prices)[asset] as BigNumber) ?? NoPrice
           }));
       });
 
@@ -276,12 +277,12 @@ export const useExchangeBalancesStore = defineStore(
           });
         }
 
+        const { refreshPrices } = useBalancesStore();
+
         fetchExchangeBalances({
           location: exchange.location,
           ignoreCache: false
-        }).then(() =>
-          store.dispatch('balances/refreshPrices', { ignoreCache: false })
-        );
+        }).then(() => refreshPrices({ ignoreCache: false }));
 
         purgeHistoryLocation(exchange.location);
 

@@ -4,7 +4,7 @@
     outlined
     :value="selectedAccounts"
     flat
-    :label="$t('module_queried_address.label')"
+    :label="tc('module_queried_address.label')"
     multiple
     :chains="[ETH]"
     :loading="loading"
@@ -13,7 +13,7 @@
 </template>
 
 <script lang="ts">
-import { Account, GeneralAccount } from '@rotki/common/lib/account';
+import { GeneralAccount } from '@rotki/common/lib/account';
 import { Blockchain } from '@rotki/common/lib/blockchain';
 import {
   defineComponent,
@@ -25,8 +25,9 @@ import {
 } from '@vue/composition-api';
 import { get, set } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n-composable';
 import BlockchainAccountSelector from '@/components/helper/BlockchainAccountSelector.vue';
-import { setupBlockchainAccounts } from '@/composables/balances';
+import { useBlockchainAccountsStore } from '@/store/balances/blockchain-accounts';
 import { useQueriedAddressesStore } from '@/store/session/queried-addresses';
 import { Module } from '@/types/modules';
 
@@ -38,13 +39,14 @@ export default defineComponent({
   setup(props) {
     const { module } = toRefs(props);
     const loading = ref(false);
-    const selectedAccounts: Ref<Account[]> = ref([]);
+    const selectedAccounts: Ref<GeneralAccount[]> = ref([]);
+    const { tc } = useI18n();
 
     let store = useQueriedAddressesStore();
     const { queriedAddresses } = storeToRefs(store);
     const { addQueriedAddress, deleteQueriedAddress } = store;
 
-    const { accounts } = setupBlockchainAccounts();
+    const { accounts } = storeToRefs(useBlockchainAccountsStore());
 
     const setSelectedAccounts = (addresses: string[]): void => {
       const selected = get(accounts).filter(account =>
@@ -95,7 +97,8 @@ export default defineComponent({
       loading,
       selectedAccounts,
       ETH: Blockchain.ETH,
-      added
+      added,
+      tc
     };
   }
 });
