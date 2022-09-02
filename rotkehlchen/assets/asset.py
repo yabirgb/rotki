@@ -204,6 +204,30 @@ WORLD_TO_POLONIEX = {
     strethaddress_to_identifier('0x9E46A38F5DaaBe8683E10793b06749EEF7D733d1'): 'NCT',
     strethaddress_to_identifier('0xa3EE21C306A700E682AbCdfe9BaA6A08F3820419'): 'CTC',
     strethaddress_to_identifier('0xd2877702675e6cEb975b4A1dFf9fb7BAF4C91ea9'): 'WLUNA',
+    evm_address_to_identifier('0x8F0528cE5eF7B51152A59745bEfDD91D97091d2F', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'ALPACA',  # noqa: E501
+    evm_address_to_identifier('0x287880Ea252b52b63Cc5f40a2d3E5A44aa665a76', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'ALPINE',  # noqa: E501
+    evm_address_to_identifier('0x8C851d1a123Ff703BD1f9dabe631b69902Df5f97', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'BNX',  # noqa: E501
+    evm_address_to_identifier('0xAe9269f27437f0fcBC232d39Ec814844a51d6b8f', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'BURGER',  # noqa: E501
+    evm_address_to_identifier('0x20de22029ab63cf9A7Cf5fEB2b737Ca1eE4c82A6', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'CHESS',  # noqa: E501
+    evm_address_to_identifier('0x23CE9e926048273eF83be0A3A8Ba9Cb6D45cd978', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'DAR',  # noqa: E501
+    evm_address_to_identifier('0xAf41054C1487b0e5E2B9250C0332eCBCe6CE9d71', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'EPX',  # noqa: E501
+    evm_address_to_identifier('0x714f020C54cc9D104B6F4f6998C63ce2a31D1888', chain=ChainID.AVALANCHE, token_type=EvmTokenKind.ERC20): 'FITFI',  # noqa: E501
+    evm_address_to_identifier('0xDa4714fEE90Ad7DE50bC185ccD06b175D23906c1', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'GODZ',  # noqa: E501
+    evm_address_to_identifier('0x0b15Ddf19D47E6a86A56148fb4aFFFc6929BcB89', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'IDIA',  # noqa: E501
+    evm_address_to_identifier('0x6e84a6216eA6dACC71eE8E6b0a5B7322EEbC0fDd', chain=ChainID.AVALANCHE, token_type=EvmTokenKind.ERC20): 'JOE',  # noqa: E501
+    evm_address_to_identifier('0xa269A9942086f5F87930499dC8317ccC9dF2b6CB', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'LATTE',  # noqa: E501
+    evm_address_to_identifier('0x3203c9E46cA618C8C1cE5dC67e7e9D75f5da2377', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'MBOX',  # noqa: E501
+    evm_address_to_identifier('0xFD0ed86319BbF02359266d5Fa1cF10BC1720B2e0', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'MQST',  # noqa: E501
+    evm_address_to_identifier('0x42F6f551ae042cBe50C739158b4f0CAC0Edb9096', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'NRV',  # noqa: E501
+    evm_address_to_identifier('0x8A953CfE442c5E8855cc6c61b1293FA648BAE472', chain=ChainID.MATIC, token_type=EvmTokenKind.ERC20): 'POLYDOGE',  # noqa: E501
+    evm_address_to_identifier('0x8729438EB15e2C8B576fCc6AeCdA6A148776C0F5', chain=ChainID.AVALANCHE, token_type=EvmTokenKind.ERC20): 'QI',  # noqa: E501
+    evm_address_to_identifier('0x71DE20e0C4616E7fcBfDD3f875d568492cBE4739', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'SWINGBY',  # noqa: E501
+    evm_address_to_identifier('0xd0258a3fD00f38aa8090dfee343f10A9D4d30D3F', chain=ChainID.MATIC, token_type=EvmTokenKind.ERC20): 'VOXEL',  # noqa: E501
+    evm_address_to_identifier('0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'XVS',  # noqa: E501
+    evm_address_to_identifier('0x12BB890508c125661E03b09EC06E404bc9289040', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'RACA',  # noqa: E501
+    evm_address_to_identifier('0x27eb4587783F2744c489aD2e64269A2e86daeB80', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'RD',  # noqa: E501
+    evm_address_to_identifier('0xA0c8c80ED6B7F09F885e826386440B2349F0Da7E', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'SSG',  # noqa: E501
+    'LUNA-2': 'LUNA',
 }
 
 WORLD_TO_KRAKEN = {
@@ -558,6 +582,33 @@ WORLD_TO_KUCOIN = {
     'ARN': 'ARNM',
     strethaddress_to_identifier('0xC775C0C30840Cb9F51e21061B054ebf1A00aCC29'): 'PSL',
     strethaddress_to_identifier('0x29d578CEc46B50Fa5C88a99C6A4B70184C062953'): 'EVER',
+
+    evm_address_to_identifier('0x4200000000000000000000000000000000000042', chain=ChainID.OPTIMISM, token_type=EvmTokenKind.ERC20): 'OP',  # noqa: E501
+    evm_address_to_identifier('0x9C65AB58d8d978DB963e63f2bfB7121627e3a739', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'MDX',  # noqa: E501
+    evm_address_to_identifier('0x9c67638c4Fa06FD47fB8900fC7F932f7EAB589De', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'ARKER',  # noqa: E501
+    evm_address_to_identifier('0xA3499dd7dBBBD93CB0f8303f8a8AcE8D02508E73', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'LACE',  # noqa: E501
+    evm_address_to_identifier('0xB139eD26b743C7254A246cf91eb594D097238524', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'FALCONS',  # noqa: E501
+    evm_address_to_identifier('0x6Aa91CbfE045f9D154050226fCc830ddbA886CED', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'PLGR',  # noqa: E501
+    evm_address_to_identifier('0x62823659d09F9F9D2222058878f89437425eB261', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'ERTHA',  # noqa: E501
+    evm_address_to_identifier('0x1180C484f55024C5Ce1765101f4efaC1e7A3F6d4', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'SURV',  # noqa: E501
+    evm_address_to_identifier('0xb0A480E2FA5AF51C733a0Af9FcB4De62Bc48c38B', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'STARLY',  # noqa: E501
+    evm_address_to_identifier('0xa9BE3cd803Fa19F2af24412FF0a2a4a67a29dE88', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'LAVAX',  # noqa: E501
+    evm_address_to_identifier('0xd306c124282880858a634E7396383aE58d37c79c', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'WAL',  # noqa: E501
+    evm_address_to_identifier('0x3b0E967cE7712EC68131A809dB4f78ce9490e779', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'SON',  # noqa: E501
+    evm_address_to_identifier('0xa9BE3cd803Fa19F2af24412FF0a2a4a67a29dE88', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'LAVAX',  # noqa: E501
+    evm_address_to_identifier('0x287880Ea252b52b63Cc5f40a2d3E5A44aa665a76', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'ALPINE',  # noqa: E501
+    evm_address_to_identifier('0xd0258a3fD00f38aa8090dfee343f10A9D4d30D3F', chain=ChainID.MATIC, token_type=EvmTokenKind.ERC20): 'VOXEL',  # noqa: E501
+    evm_address_to_identifier('0x12BB890508c125661E03b09EC06E404bc9289040', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'RACA',  # noqa: E501
+    evm_address_to_identifier('0x23CE9e926048273eF83be0A3A8Ba9Cb6D45cd978', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'DAR',  # noqa: E501
+    evm_address_to_identifier('0xa9BE3cd803Fa19F2af24412FF0a2a4a67a29dE88', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'LAVAX',  # noqa: E501
+    evm_address_to_identifier('0x3203c9E46cA618C8C1cE5dC67e7e9D75f5da2377', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'MBOX',  # noqa: E501
+    evm_address_to_identifier('0x86a53fcd199212FEa44FA7e16EB1f28812be911D', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'IHC',  # noqa: E501
+    evm_address_to_identifier('0x4ffA6BB42d1a1A6d8e79935CcF1457d55deCff3f', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'REV3L',  # noqa: E501
+    evm_address_to_identifier('0x229b1b6C23ff8953D663C4cBB519717e323a0a84', chain=ChainID.MATIC, token_type=EvmTokenKind.ERC20): 'BLOK',  # noqa: E501
+    evm_address_to_identifier('0x02e22Eb7F6e73EF313DD71248cD164b1Bdc5aAdd', chain=ChainID.MATIC, token_type=EvmTokenKind.ERC20): 'TAUM',  # noqa: E501
+    evm_address_to_identifier('0xAe9269f27437f0fcBC232d39Ec814844a51d6b8f', chain=ChainID.BINANCE, token_type=EvmTokenKind.ERC20): 'BURGER',  # noqa: E501
+
+
 }
 
 WORLD_TO_ICONOMI = {
