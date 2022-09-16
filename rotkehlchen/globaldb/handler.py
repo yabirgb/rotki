@@ -206,6 +206,12 @@ class GlobalDBHandler():
                 f'Failed to add asset {asset_id} into the assets table due to {str(e)}',
             ) from e
 
+    @staticmethod
+    def count_all_assets() -> int:
+        with GlobalDBHandler().conn.read_ctx() as cursor:
+            cursor.execute('SELECT COUNT(*) from assets')
+            return cursor.fetchone()[0]
+
     @overload
     @staticmethod
     def get_all_asset_data(
@@ -290,92 +296,115 @@ class GlobalDBHandler():
         return result
 
     @staticmethod
+    def assets_with_coingecko() -> List[str]:
+        """Returns the identifiers of all the assets that have a valid coingecko id"""
+        with GlobalDBHandler().conn.read_ctx() as cursor:
+            cursor.execute(
+                'SELECT identifier from common_assets_details where coingecko IS NOT NULL '
+                'and coingecko != "";',
+            )
+        return [asset[0] for asset in cursor.fetchall()]
+
+    def _get_fiat_asset_data(identifier:str, cursor: 'DBHandler') -> Optional[Dict[str, Any]]:
+        cursor.execute(
+            'SELECT A.identifier, A.type, A.name, B.symbol from assets AS A JOIN '
+            'common_asset_details AS B ON A.identifier = B.identifier WHERE A.identifier=?;',
+        )
+        result = cursor.fetchone()
+        if result is None:
+            return None
+        return {
+            'identifier': result[0],
+            'asset_type': AssetType.deserialize_from_db(result[1]),
+            'name': result[2],
+            'symbol': result[3],
+        }
+
+    def _get_evm_token_data(identifier: str, cursor: 'DBHandler') -> Optional[Dict[str, Any]]:
+        result = cursor.execute(
+            'SELECT A.identifier, A.type, A.name, B.symbol, A.started, A.swapped_for, '
+            'B.coingecko, B.cryptocompare, B.forked, C.decimals, C.protocol, C.address, C.chain, '
+            'C.token_kind from evm_tokens from assets AS A JOIN  '
+            'common_asset_details AS B ON A.identifier = B.identifier JOIN evm_tokens AS C ON '
+            'A.identifier=C.identiferWHERE A.identifier=?;',
+            (identifier,),
+        )
+        result = cursor.fetchone()
+
+        if result is None:
+            return None
+
+        return {
+            'identifier': result[0],
+            'asset_type': AssetType.deserialize_from_db(result[1]),
+            'name': result[2],
+            'symbol': result[3],
+            'started': result[4],
+            'swapped_for': result[5],
+            'coingecko': result[6],
+            'cryptocompare': result[7],
+            'forked': result[8],
+            'decimals': result[9],
+            'protocol': result[10],
+            'address': result[11],
+            'chain': ChainID.deserialize_from_db(result[12]),
+            'token_kind': EvmTokenKind.deserialize_from_db(result[13]),
+        }
+
+    def _get_crypto_asset_data(identifier: str, cursor: 'DBHandler') -> Optional[Dict[str, Any]]:
+        cursor.execute(
+            'SELECT A.identifier, A.type, A.name, B.symbol, A.started, A.swapped_for, '
+            'B.coingecko, B.cryptocompare, B.forked from assets AS A JOIN  '
+            'common_asset_details AS B ON A.identifier = B.identifier WHERE A.identifier=?;',
+            (identifier,),
+        )        
+        result = cursor.fetchone()
+
+        if result is None:
+            return None
+
+        return {
+            'identifier': result[0],
+            'asset_type': AssetType.deserialize_from_db(result[1]),
+            'name': result[2],
+            'symbol': result[3],
+            'started': result[4],
+            'swapped_for': result[5],
+            'coingecko': result[6],
+            'cryptocompare': result[7],
+            'forked': result[8],
+        }
+
     def get_asset_data(
+            self,
             identifier: str,
             form_with_incomplete_data: bool,
-    ) -> Optional[AssetData]:
+            asset_type: AssetType,
+    ) -> Optional[Dict[str, Any]]:
         """Get all details of a single asset by identifier
 
         Returns None if identifier can't be matched to an asset
         """
         with GlobalDBHandler().conn.read_ctx() as cursor:
-            cursor.execute(
-                'SELECT A.identifier, A.type, A.name, B.symbol, A.started, A.swapped_for, '
-                'B.coingecko, B.cryptocompare, B.forked from assets AS A JOIN  '
-                'common_asset_details AS B ON A.identifier = B.identifier WHERE A.identifier=?;',
-                (identifier,),
-            )
-            result = cursor.fetchone()
-            if result is None:
-                return None
+            if asset_type == AssetType.FIAT:
+                data = self._get_fiat_asset_data(identifier, cursor)
+            elif asset_type == AssetType.EVM_TOKEN:
+                data = self._get_evm_token_data(identifier, cursor)
+            else:
+                data = self._get_crypto_asset_data(identifier, cursor)
 
-            # Since comparison is case insensitive let's return original identifier
-            saved_identifier = result[0]  # get the identifier as saved in the DB.
-            db_serialized_type = result[1]
-            name = result[2]
-            symbol = result[3]
-            started = result[4]
-            swapped_for = result[5]
-            coingecko = result[6]
-            cryptocompare = result[7]
-            forked = result[8]
-            decimals = None
-            protocol = None
-            evm_address = None
-            chain = None
-            token_kind = None
+            missing_basic_data = data['name'] is None or 'symbol' in data and data['symbol'] is None
+            if asset_type == AssetType.EVM_TOKEN and missing_basic_data is False:
+                missing_basic_data = missing_basic_data or data['decimals'] is None
 
-            try:
-                asset_type = AssetType.deserialize_from_db(db_serialized_type)
-            except DeserializationError as e:
+            if missing_basic_data and form_with_incomplete_data is False:
                 log.debug(
-                    f'Failed to read asset {identifier} from the DB due to '
-                    f'{str(e)}. Skipping',
+                    f'Considering ethereum token with identifier {data["identifier"]} '
+                    f'as unknown since its missing either decimals or name or symbol',
                 )
                 return None
 
-            if asset_type == AssetType.EVM_TOKEN:
-                cursor.execute(
-                    'SELECT decimals, protocol, address, chain, token_kind from evm_tokens '
-                    'WHERE identifier=?', (saved_identifier,),
-                )
-                result = cursor.fetchone()
-                if result is None:
-                    log.error(
-                        f'Found token {saved_identifier} in the DB assets table but not '
-                        f'in the token details table.',
-                    )
-                    return None
-
-                decimals = result[0]
-                protocol = result[1]
-                evm_address = result[2]
-                chain = ChainID.deserialize_from_db(result[3])
-                token_kind = EvmTokenKind.deserialize_from_db(result[4])
-                missing_basic_data = name is None or symbol is None or decimals is None
-                if missing_basic_data and form_with_incomplete_data is False:
-                    log.debug(
-                        f'Considering ethereum token with identifier {saved_identifier} '
-                        f'as unknown since its missing either decimals or name or symbol',
-                    )
-                    return None
-
-        return AssetData(
-            identifier=saved_identifier,
-            name=name,
-            symbol=symbol,
-            asset_type=asset_type,
-            started=started,
-            forked=forked,
-            swapped_for=swapped_for,
-            address=evm_address,
-            chain=chain,
-            token_kind=token_kind,
-            decimals=decimals,
-            coingecko=coingecko,
-            cryptocompare=cryptocompare,
-            protocol=protocol,
-        )
+        return data
 
     @staticmethod
     def fetch_underlying_tokens(
