@@ -107,9 +107,9 @@ def test_add_get_ethereum_transactions(data_dir, username, sql_vm_instructions_c
         dbethtx.add_ethereum_transactions(cursor, [tx2], relevant_address=ETH_ADDRESS2)
 
         # try transaction query by tx_hash
-        result = dbethtx.get_ethereum_transactions(cursor, ETHTransactionsFilterQuery.make(tx_hash=tx2_hash), has_premium=True)  # noqa: E501
+        result = dbethtx.get_ethereum_transactions(cursor, ETHTransactionsFilterQuery.make(tx_hashes=[tx2_hash]), has_premium=True)  # noqa: E501
         assert result == [tx2], 'querying transaction by hash in bytes failed'
-        result = dbethtx.get_ethereum_transactions(cursor, ETHTransactionsFilterQuery.make(tx_hash=b'dsadsad'), has_premium=True)  # noqa: E501
+        result = dbethtx.get_ethereum_transactions(cursor, ETHTransactionsFilterQuery.make(tx_hashes=[b'dsadsad']), has_premium=True)  # noqa: E501
         assert result == []
 
         # Now try transaction by relevant addresses

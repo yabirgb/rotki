@@ -61,6 +61,7 @@ from rotkehlchen.errors.misc import (
 )
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.externalapis.etherscan import Etherscan
+from rotkehlchen.externalapis.trueblocks import Trueblocks
 from rotkehlchen.fval import FVal
 from rotkehlchen.greenlets import GreenletManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
@@ -209,6 +210,7 @@ class EthereumManager():
     def __init__(
             self,
             etherscan: Etherscan,
+            trueblocks: Trueblocks,
             msg_aggregator: MessagesAggregator,
             greenlet_manager: GreenletManager,
             connect_at_start: Sequence[WeightedNode],
@@ -219,6 +221,7 @@ class EthereumManager():
         self.greenlet_manager = greenlet_manager
         self.web3_mapping: Dict[NodeName, Web3] = {}
         self.etherscan = etherscan
+        self.trueblocks = trueblocks
         self.msg_aggregator = msg_aggregator
         self.eth_rpc_timeout = eth_rpc_timeout
         self.archive_connection = False
@@ -1177,6 +1180,9 @@ class EthereumManager():
 
         # event from web3
         block_number = event['blockNumber']
+        if self.trueblocks.is_available() is True:
+            return self.trueblocks.get_block_timestamp(block_number)
+
         block_data = self.get_block_by_number(block_number)
         return Timestamp(block_data['timestamp'])
 

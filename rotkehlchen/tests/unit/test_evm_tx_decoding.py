@@ -35,7 +35,7 @@ def test_tx_decode(evm_transaction_decoder, database):
             cursor=cursor,
             filter_=ETHTransactionsFilterQuery.make(
                 addresses=[addr1],
-                tx_hash=approve_tx_hash,
+                tx_hashes=[approve_tx_hash],
             ),
             has_premium=True,
         )

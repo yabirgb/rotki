@@ -133,13 +133,16 @@ class DBETHTransactionJoinsFilter(DBFilter):
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
 class DBETHTransactionHashFilter(DBFilter):
-    tx_hash: Optional[EVMTxHash] = None
+    tx_hashes: Optional[List[EVMTxHash]] = None
 
     def prepare(self) -> Tuple[List[str], List[Any]]:
-        if self.tx_hash is None:
+        if self.tx_hashes is None:
             return [], []
 
-        return ['tx_hash=?'], [self.tx_hash]
+        if len(self.tx_hashes) == 1:
+            return ['tx_hash=?'], [self.tx_hash]
+
+        return [f'tx_hash IN ({",".join(["?" for x in self.tx_hashes])})', self.tx_hashes]
 
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
@@ -332,7 +335,7 @@ class ETHTransactionsFilterQuery(DBFilterQuery, FilterWithTimestamp):
             addresses: Optional[List[ChecksumEvmAddress]] = None,  # noqa: E501
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-            tx_hash: Optional[EVMTxHash] = None,
+            tx_hashes: Optional[List[EVMTxHash]] = None,
             protocols: Optional[List[str]] = None,
             asset: Optional[EvmToken] = None,
             exclude_ignored_assets: bool = False,
@@ -348,7 +351,7 @@ class ETHTransactionsFilterQuery(DBFilterQuery, FilterWithTimestamp):
         )
         filter_query = cast('ETHTransactionsFilterQuery', filter_query)
         filters: List[DBFilter] = []
-        if tx_hash is not None:  # tx_hash means single result so make it as single filter
+        if tx_hashes is not None:  # tx_hash means single result so make it as single filter
             filters.append(DBETHTransactionHashFilter(and_op=False, tx_hash=tx_hash))
         else:
             should_join_events = asset is not None or protocols is not None or exclude_ignored_assets is True  # noqa: E501

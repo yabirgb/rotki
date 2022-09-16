@@ -441,7 +441,7 @@ class DBEthTx():
         with self.db.conn.read_ctx() as cursor:
             tx_in_db = self.get_ethereum_transactions(
                 cursor=cursor,
-                filter_=ETHTransactionsFilterQuery.make(tx_hash=GENESIS_HASH, addresses=[account]),
+                filter_=ETHTransactionsFilterQuery.make(tx_hashes=[GENESIS_HASH], addresses=[account]),
                 has_premium=True,
             )
         if len(tx_in_db) == 1:

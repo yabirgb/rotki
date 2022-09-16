@@ -4,6 +4,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    List,
     Literal,
     Tuple,
     Type,
@@ -581,6 +582,26 @@ def deserialize_evm_transaction(
         raise DeserializationError(
             f'evm {"internal" if internal else ""}transaction from {source} missing expected key {str(e)}',  # noqa: E501
         ) from e
+
+
+def deserialize_trueblocks_internal_transactions(
+    data: Dict[str, Any],
+    address: ChecksumEvmAddress,
+) -> List[EvmInternalTransaction]:
+    """
+    Takes the list of trace entries and extract from them the internal transactions
+    """
+    internal_transactions = []
+    trace_id = 0
+    for entry in data['trace']:
+        if address in (entry['action'], entry['to']):
+            internal_transactions.append(
+                EvmInternalTransaction(
+                    parent_tx_hash=data['hash'],
+                    trace_id=trace_id,
+                )
+            )
+            trace_id += 1
 
 
 R = TypeVar('R')

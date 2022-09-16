@@ -271,24 +271,27 @@ class EVMTransactionDecoder():
                     tx_hashes.append(EVMTxHash(entry[0]))
 
         with self.database.user_write() as cursor:
-            for tx_hash in tx_hashes:
-                try:
-                    receipt = self.transactions.get_or_query_transaction_receipt(cursor, tx_hash)  # noqa: E501
-                except RemoteError as e:
-                    raise InputError(f'Hash {tx_hash.hex()} does not correspond to a transaction') from e  # noqa: E501
+            if self.ethereum_manager.trueblocks.is_available() is False:
+                for tx_hash in tx_hashes:
+                    try:
+                        receipt = self.transactions.get_or_query_transaction_receipt(cursor, tx_hash)  # noqa: E501
+                    except RemoteError as e:
+                        raise InputError(f'Hash {tx_hash.hex()} does not correspond to a transaction') from e  # noqa: E501
 
-                # TODO: Change this if transaction filter query can accept multiple hashes
-                txs = self.dbethtx.get_ethereum_transactions(
-                    cursor=cursor,
-                    filter_=ETHTransactionsFilterQuery.make(tx_hash=tx_hash),
-                    has_premium=True,  # ignore limiting here
-                )
-                events.extend(self.get_or_decode_transaction_events(
-                    write_cursor=cursor,
-                    transaction=txs[0],
-                    tx_receipt=receipt,
-                    ignore_cache=ignore_cache,
-                ))
+                    # TODO: Change this if transaction filter query can accept multiple hashes
+                    txs = self.dbethtx.get_ethereum_transactions(
+                        cursor=cursor,
+                        filter_=ETHTransactionsFilterQuery.make(tx_hashes=[tx_hash]),
+                        has_premium=True,  # ignore limiting here
+                    )
+                    events.extend(self.get_or_decode_transaction_events(
+                        write_cursor=cursor,
+                        transaction=txs[0],
+                        tx_receipt=receipt,
+                        ignore_cache=ignore_cache,
+                    ))
+            else:
+                receipts = self.ethereum_manager.trueblocks.get_transactions_receipts(tx_hashes=tx_hashes)
 
         return events
 
