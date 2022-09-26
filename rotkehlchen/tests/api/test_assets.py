@@ -379,7 +379,7 @@ def test_get_all_assets(rotkehlchen_api_server):
     assert 'entries_limit' in result
     for entry in result['entries']:
         assert entry['type'] == 'fiat'
-        assert entry['symbol'] != A_USD.symbol and entry['symbol'] != A_EUR.symbol
+        assert entry['symbol'] != A_USD.resolve_to_asset_with_symbol().symbol and entry['symbol'] != A_EUR.resolve_to_asset_with_symbol().symbol  # noqa: E501
     assert_asset_result_order(data=result['entries'], is_ascending=True, order_field='name')
 
     # test that user owned assets filter works
@@ -400,9 +400,9 @@ def test_get_all_assets(rotkehlchen_api_server):
     result = assert_proper_response_with_result(response)
     assets_names = {r['name'] for r in result['entries']}
     assert 22 >= len(result['entries']) > 3
-    assert A_BTC.name in assets_names
-    assert A_DAI.name in assets_names
-    assert A_SAI.name not in assets_names  # although present, it exceeds the limit
+    assert A_BTC.resolve_to_asset_with_name_and_type().name in assets_names
+    assert A_DAI.resolve_to_asset_with_name_and_type().name in assets_names
+    assert A_SAI.resolve_to_asset_with_name_and_type().name not in assets_names  # although present, it exceeds the limit  # noqa: E501
     assert_asset_result_order(data=result['entries'], is_ascending=True, order_field='name')
 
     # check that providing multiple order_by_attributes fails
