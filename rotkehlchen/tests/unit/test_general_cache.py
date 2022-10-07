@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.assets.utils import add_ethereum_token_to_db
 from rotkehlchen.errors.misc import InputError
 from rotkehlchen.globaldb import GlobalDBHandler
-from rotkehlchen.types import ChainID, GeneralCacheType
+from rotkehlchen.types import CURVE_POOL_PROTOCOL, ChainID, EvmTokenKind, GeneralCacheType
 
 CURVE_EXPECTED_LP_TOKENS_TO_POOLS = {
     # first 2 are registry pools
@@ -63,19 +65,42 @@ def test_curve_pools_cache(rotkehlchen_instance):
         try:
             GlobalDBHandler().delete_evm_token(
                 write_cursor=write_cursor,
+                address='0x1F71f05CF491595652378Fe94B7820344A551B8E',
+                chain=ChainID.ETHEREUM,
+            )
+        except InputError:
+            pass  # token might not exist but we don't care
+
+        try:
+            GlobalDBHandler().delete_evm_token(
+                write_cursor=write_cursor,
                 address='0xD71eCFF9342A5Ced620049e616c5035F1dB98620',
                 chain=ChainID.ETHEREUM,
             )
         except InputError:
-            # token might not exist but we don't care
-            pass
+            pass  # token might not exist but we don't care
 
-    # check that it was deleted successfully
+    # check that tokens were deleted successfully
     token = GlobalDBHandler().get_evm_token(
         address='0xD71eCFF9342A5Ced620049e616c5035F1dB98620',
         chain=ChainID.ETHEREUM,
     )
     assert token is None
+    token = GlobalDBHandler().get_evm_token(
+        address='0x1F71f05CF491595652378Fe94B7820344A551B8E',
+        chain=ChainID.ETHEREUM,
+    )
+    assert token is None
+
+    # Add a curve pool token without protocol specified
+    add_ethereum_token_to_db(token_data=EvmToken.initialize(
+        address='0x1F71f05CF491595652378Fe94B7820344A551B8E',
+        chain=ChainID.ETHEREUM,
+        token_kind=EvmTokenKind.ERC20,
+        name='Manually added curve pool token',
+        symbol='MYTOKEN',
+        decimals=18,
+    ))
 
     def mock_call_contract(contract, manager, method_name, **kwargs):
         if method_name == 'pool_count':
@@ -120,6 +145,17 @@ def test_curve_pools_cache(rotkehlchen_instance):
     assert token.name == 'Synth sEUR'
     assert token.symbol == 'sEUR'
     assert token.decimals == 18
+
+    token = GlobalDBHandler().get_evm_token(
+        address='0x1F71f05CF491595652378Fe94B7820344A551B8E',
+        chain=ChainID.ETHEREUM,
+    )
+    # Check that name, symbol and decimals stayed untouched
+    assert token.name == 'Manually added curve pool token'
+    assert token.symbol == 'MYTOKEN'
+    assert token.decimals == 18
+    # And that the protocol was set properly
+    assert token.protocol == CURVE_POOL_PROTOCOL
 
     # Check that initially set values are gone
     assert 'key123' not in GlobalDBHandler().get_general_cache_values(key_parts=[GeneralCacheType.CURVE_LP_TOKENS])  # noqa: E501

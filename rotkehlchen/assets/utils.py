@@ -70,6 +70,9 @@ def get_or_create_evm_token(
     )
     try:
         ethereum_token = EvmToken(identifier, form_with_incomplete_data=form_with_incomplete_data)
+        if protocol is not None and ethereum_token.protocol != protocol:
+            object.__setattr__(ethereum_token, 'protocol', protocol)
+            GlobalDBHandler().edit_evm_token(entry=ethereum_token)
     except (UnknownAsset, DeserializationError):
         log.info(
             f'Encountered unknown asset with address '
