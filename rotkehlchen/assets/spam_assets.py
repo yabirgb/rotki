@@ -133,6 +133,16 @@ KNOWN_ETH_SPAM_TOKENS: Dict[ChecksumEvmAddress, Dict[str, Any]] = {
         'symbol': 'ETH2DAO.net',
         'decimals': 18,
     },
+    string_to_evm_address('0x622651529Bda465277Cb890EF9176C442f42B338'): {
+        'name': 'abekky.com',
+        'symbol': MISSING_SYMBOL_SPAM_TOKEN,
+        'decimals': 18,
+    },
+    string_to_evm_address('0xED123a93aB410deD50D917EDfE256D45281B95D5'): {
+        'name': 'SPAM TOKEN',
+        'symbol': MISSING_SYMBOL_SPAM_TOKEN,
+        'decimals': 18,
+    },
 }
 
 
