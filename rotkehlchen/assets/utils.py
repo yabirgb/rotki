@@ -70,14 +70,22 @@ def get_or_create_evm_token(
     )
     try:
         ethereum_token = EvmToken(identifier, form_with_incomplete_data=form_with_incomplete_data)
-        if protocol is not None and ethereum_token.protocol != protocol:
-            object.__setattr__(ethereum_token, 'protocol', protocol)
-            GlobalDBHandler().edit_evm_token(entry=ethereum_token)
     except (UnknownAsset, DeserializationError):
+        # It can happen that the assets exists but is missing basic information check if it exists
+        # and if that is the case we fetch information. The check above would fail if the
+        # identifier is not a token or name, symbol or decimals is missing while
+        # form_with_incomplete_data is False
+        try:
+            asset_exists = Asset(identifier).check_existence() is not None
+        except UnknownAsset:
+            asset_exists = False
+
         log.info(
             f'Encountered unknown asset with address '
             f'{evm_address}. Adding it to the global DB',
         )
+
+        info = {}
         if ethereum_manager is not None:
             info = ethereum_manager.get_basic_contract_info(evm_address)
             decimals = info['decimals'] if decimals is None else decimals
@@ -87,6 +95,18 @@ def get_or_create_evm_token(
             if None in (decimals, symbol, name):
                 raise NotERC20Conformant(f'Token {evm_address} is not ERC20 conformant')  # noqa: E501  # pylint: disable=raise-missing-from
 
+        if len(info) == 0 and asset_exists is True:
+            # This means that we have incomplete data in the database and we couldn't query any
+            # missing information so we just return the information we have if it is enough
+            try:
+                return EvmToken(
+                    identifier=identifier,
+                    form_with_incomplete_data=form_with_incomplete_data,
+                )
+            except (UnknownAsset, DeserializationError) as e:
+                raise NotERC20Conformant(f'Token {evm_address} is not ERC20 conformant') from e
+
+        # Otherwise store the information in the database and return it
         token_data = EvmToken.initialize(
             address=evm_address,
             chain=chain,
@@ -97,10 +117,21 @@ def get_or_create_evm_token(
             protocol=protocol,
             underlying_tokens=underlying_tokens,
         )
-        # This can but should not raise InputError since it should not already exist
-        ethereum_token = add_ethereum_token_to_db(token_data)
-        with userdb.user_write() as cursor:
-            userdb.add_asset_identifiers(cursor, [ethereum_token.identifier])
+
+        if asset_exists is True:
+            # This means that we might need to update the information in the database
+            GlobalDBHandler().edit_evm_token(token_data)
+        elif asset_exists is False:
+            # This can but should not raise InputError since it should not already exist
+            ethereum_token = add_ethereum_token_to_db(token_data)
+            with userdb.user_write() as cursor:
+                userdb.add_asset_identifiers(cursor, [ethereum_token.identifier])
+
+    if protocol is not None and ethereum_token.protocol != protocol:
+        # This is the case where the user added a token with the wrong protocol and later
+        # we add it with the correct one.
+        object.__setattr__(ethereum_token, 'protocol', protocol)
+        GlobalDBHandler().edit_evm_token(entry=ethereum_token)
 
     return ethereum_token
 
