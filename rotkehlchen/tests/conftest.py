@@ -3,14 +3,24 @@ import os
 import re
 import sys
 import tempfile
+from enum import auto
 from pathlib import Path
 from typing import List
 
 import py
 import pytest
 
+from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import TRACE, add_logging_level, configure_logging
 from rotkehlchen.tests.utils.args import default_args
+from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
+
+
+class TestEnvironment(SerializableEnumMixin):
+    STANDARD = auto()  # test during normal development
+    NIGHTLY = auto()  # all tests
+    NFTS = auto()  # nft tests
+
 
 add_logging_level('TRACE', TRACE)
 configure_logging(default_args())
@@ -114,9 +124,12 @@ def profiler(request):
         profiler_instance.stop()
 
 
-def requires_env(allowed_envs: List[str]):
-    """Conditionally run tests if the environment is in the list of alloweds"""
-    env = os.environ.get('TEST_ENVIRONMENT', 'standard')
+def requires_env(allowed_envs: List[TestEnvironment]):
+    """Conditionally run tests if the environment is in the list of allowed environments"""
+    try:
+        env = TestEnvironment.deserialize(os.environ.get('TEST_ENVIRONMENT', 'standard'))
+    except DeserializationError:
+        env = TestEnvironment.STANDARD
     return pytest.mark.skipif(
         env not in allowed_envs,
         reason=f"Not suitable envrionment {env} for current test",
