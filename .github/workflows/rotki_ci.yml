@@ -43,9 +43,7 @@ jobs:
             frontend/app
       - name: Set TEST_ENVIRONMENT
         run: | 
-          echo "TEST_ENVIRONMENT=${TEST_ENVIRONMENT}"
-          echo "TEST_ENVIRONMENT=${TEST_ENVIRONMENT}" >> $GITHUB_ENV
-
+          echo "TEST_ENVIRONMENT=${{env.TEST_ENVIRONMENT}}" >> $GITHUB_ENV
 
   lint-frontend:
     name: 'Frontend lint'
@@ -168,7 +166,7 @@ jobs:
   test-backend:
     name: 'Backend tests'
     if: ${{ needs.check-changes.outputs.backend_tasks }}
-    needs: ['lint-backend', 'check-changes']
+    needs: ['check-changes']
     timeout-minutes: 60
     env:
       CI: true
@@ -200,7 +198,10 @@ jobs:
         run: |
           COVERAGE_ARGS='--cov=./'
           PYTEST_ARGS='--durations=150'
-          python pytestgeventwrapper.py $PYTEST_ARGS $COVERAGE_ARGS rotkehlchen/tests  && python pytestgeventwrapper.py --dead-fixtures
+          echo $TEST_ENVIRONMENT
+          "TEST_ENVIRONMENT=${{env.TEST_ENVIRONMENT}}"
+          echo $TEST_ENVIRONMENT
+          python pytestgeventwrapper.py $PYTEST_ARGS $COVERAGE_ARGS rotkehlchen/tests/api/test_nfts.py && python pytestgeventwrapper.py --dead-fixtures
       - name: Upload coverage
         run: ./.github/.codecov -F backend
 
@@ -288,7 +289,7 @@ jobs:
   done:
     name: 'Success check'
     if: ${{ always() }}
-    needs: [ 'check-changes', 'lint-frontend', 'unittest-frontend', 'docs', 'lint-backend', 'test-backend', 'test-e2e' ]
+    needs: [ 'check-changes', 'lint-frontend', 'unittest-frontend', 'docs', 'lint-backend', 'test-e2e' ]
     runs-on: ubuntu-latest
     steps:
       - name: Check if any task failed
