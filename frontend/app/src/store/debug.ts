@@ -1,6 +1,5 @@
 import { BigNumber } from '@rotki/common';
 import { PiniaPluginContext } from 'pinia';
-import createPersistedState from 'vuex-persistedstate';
 import { bigNumberify } from '@/utils/bignumbers';
 import { logger } from '@/utils/logging';
 
@@ -55,25 +54,9 @@ function shouldPersistStore(): any {
   const debugSettings = window.interop?.debugSettings?.();
   const menuEnabled = debugSettings?.persistStore;
   const envEnabled = import.meta.env.VITE_PERSIST_STORE;
-  const isTest = process.env.VITE_TEST;
+  const isTest = import.meta.env.VITE_TEST;
   return (menuEnabled || envEnabled) && !isTest;
 }
-
-export const storeVuexPlugins = () => {
-  const persistStore = shouldPersistStore();
-
-  if (!persistStore) {
-    storage.removeItem('vuex');
-    return [];
-  }
-
-  return [
-    createPersistedState({
-      getState,
-      setState
-    })
-  ];
-};
 
 export const storePiniaPlugins = (context: PiniaPluginContext) => {
   const persistStore = shouldPersistStore();
@@ -89,6 +72,11 @@ export const storePiniaPlugins = (context: PiniaPluginContext) => {
   try {
     const fromStorage = getState(storeId);
     if (fromStorage) {
+      // Ensures that components reload properly.
+      if (storeId === 'session/premium') {
+        fromStorage.componentsLoaded = false;
+        fromStorage.componentsReady = false;
+      }
       store.$patch(fromStorage);
     }
   } catch (e) {

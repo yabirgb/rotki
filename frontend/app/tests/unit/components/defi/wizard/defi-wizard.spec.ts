@@ -1,36 +1,27 @@
 import { mount, Wrapper } from '@vue/test-utils';
-import { createPinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
 import DefiWizard from '@/components/defi/wizard/DefiWizard.vue';
 import { axiosSnakeCaseTransformer } from '@/services/axios-tranformers';
-import { api } from '@/services/rotkehlchen-api';
-import store from '@/store/store';
-import '../../../i18n';
+import { useSettingsApi } from '@/services/settings/settings-api';
 import { FrontendSettings } from '@/types/frontend-settings';
 
-vi.mock('@/store/store', () => ({
-  default: {
-    getters: {
-      'balances/accounts': []
-    }
-  }
+vi.mock('@/services/settings/settings-api', () => ({
+  useSettingsApi: vi.fn().mockReturnValue({
+    setSettings: vi.fn()
+  })
 }));
-vi.mock('@/services/rotkehlchen-api');
-
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
 
 describe('DefiWizard.vue', () => {
   let wrapper: Wrapper<any>;
   let settings: FrontendSettings;
+  let api: ReturnType<typeof useSettingsApi>;
 
   const createWrapper = () => {
     const vuetify = new Vuetify();
     const pinia = createPinia();
     setActivePinia(pinia);
     return mount(DefiWizard, {
-      store,
       pinia,
       vuetify,
       stubs: ['v-tooltip', 'module-selector', 'module-address-selector', 'card']
@@ -40,11 +31,13 @@ describe('DefiWizard.vue', () => {
   beforeEach(() => {
     settings = FrontendSettings.parse({});
     wrapper = createWrapper();
+    api = useSettingsApi();
+    api.setSettings = vi.fn();
   });
 
   test('wizard completes when use default is pressed', async () => {
     expect.assertions(1);
-    wrapper.find('.defi-wizard__use-default').trigger('click');
+    await wrapper.find('.defi-wizard__use-default').trigger('click');
     await wrapper.vm.$nextTick();
     expect(api.setSettings).toBeCalledWith({
       frontendSettings: JSON.stringify(
@@ -55,11 +48,11 @@ describe('DefiWizard.vue', () => {
 
   test('wizard completes when complete is pressed', async () => {
     expect.assertions(1);
-    wrapper.find('.defi-wizard__select-modules').trigger('click');
+    await wrapper.find('.defi-wizard__select-modules').trigger('click');
     await wrapper.vm.$nextTick();
-    wrapper.find('.defi-wizard__select-accounts').trigger('click');
+    await wrapper.find('.defi-wizard__select-accounts').trigger('click');
     await wrapper.vm.$nextTick();
-    wrapper.find('.defi-wizard__done').trigger('click');
+    await wrapper.find('.defi-wizard__done').trigger('click');
     await wrapper.vm.$nextTick();
     expect(api.setSettings).toBeCalledWith({
       frontendSettings: JSON.stringify(

@@ -1,10 +1,10 @@
 <template>
   <a
     v-if="href"
-    :href="$interop.isPackaged ? undefined : href"
+    :href="isPackaged ? undefined : href"
     target="_blank"
     class="text-no-wrap"
-    @click="$interop.isPackaged ? openLink() : undefined"
+    @click="isPackaged ? openLink() : undefined"
   >
     <slot>
       {{ displayText }}
@@ -15,33 +15,31 @@
   </div>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { interop } from '@/electron-interop';
+<script setup lang="ts">
+import { PropType } from 'vue';
+import { useInterop } from '@/electron-interop';
 import { truncateAddress } from '@/filters';
+import { assert } from '@/utils/assertions';
 
-export default defineComponent({
-  name: 'BaseExternalLink',
-  props: {
-    href: { required: false, type: String, default: null },
-    truncate: { required: false, type: Boolean, default: false },
-    text: { required: false, type: String, default: '' }
+const props = defineProps({
+  href: {
+    required: false,
+    type: String as PropType<string | null | undefined>,
+    default: null
   },
-  setup(props) {
-    const { href, truncate, text } = toRefs(props);
-    const openLink = () => {
-      interop.openUrl(get(href));
-    };
-
-    const displayText = computed(() =>
-      get(truncate) ? truncateAddress(get(text)) : get(text)
-    );
-
-    return {
-      openLink,
-      displayText
-    };
-  }
+  truncate: { required: false, type: Boolean, default: false },
+  text: { required: false, type: String, default: '' }
 });
+
+const { href, truncate, text } = toRefs(props);
+const { openUrl, isPackaged } = useInterop();
+const openLink = () => {
+  const url = get(href);
+  assert(url);
+  openUrl(url);
+};
+
+const displayText = computed(() =>
+  get(truncate) ? truncateAddress(get(text)) : get(text)
+);
 </script>

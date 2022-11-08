@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import CryptoAsset
 from rotkehlchen.chain.ethereum.graph import Graph
 from rotkehlchen.chain.ethereum.modules.makerdao.constants import RAY
 from rotkehlchen.chain.ethereum.utils import ethaddress_to_asset, token_normalized_value_decimals
@@ -15,8 +15,8 @@ from rotkehlchen.history.price import query_usd_price_zero_if_error
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
-from rotkehlchen.types import ChecksumEthAddress, EVMTxHash, Timestamp, deserialize_evm_tx_hash
+from rotkehlchen.serialization.deserialize import deserialize_evm_address
+from rotkehlchen.types import ChecksumEvmAddress, EVMTxHash, Timestamp, deserialize_evm_tx_hash
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import ts_now
 
@@ -190,7 +190,7 @@ USER_EVENTS_QUERY_V2 = """
 
 
 class ATokenBalanceHistory(NamedTuple):
-    reserve_address: ChecksumEthAddress
+    reserve_address: ChecksumEvmAddress
     balance: FVal
     tx_hash: EVMTxHash
     timestamp: Timestamp
@@ -198,15 +198,15 @@ class ATokenBalanceHistory(NamedTuple):
 
 
 class AaveUserReserve(NamedTuple):
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     symbol: str
 
 
 class AaveEventProcessingResult(NamedTuple):
     interest_events: List[AaveInterestEvent]
-    total_earned_interest: Dict[Asset, Balance]
-    total_lost: Dict[Asset, Balance]
-    total_earned_liquidations: Dict[Asset, Balance]
+    total_earned_interest: Dict[CryptoAsset, Balance]
+    total_lost: Dict[CryptoAsset, Balance]
+    total_earned_liquidations: Dict[CryptoAsset, Balance]
 
 
 def _get_version_from_reserveid(pairs: List[str], index: int) -> int:
@@ -219,13 +219,13 @@ def _get_version_from_reserveid(pairs: List[str], index: int) -> int:
 def _calculate_loss(
         borrow_actions: List[AaveEvent],
         balances: AaveBalances,
-) -> Tuple[Dict[Asset, Balance], Dict[Asset, Balance]]:
+) -> Tuple[Dict[CryptoAsset, Balance], Dict[CryptoAsset, Balance]]:
     """Returns a tuple of mapping of losses due to liquidation/borrowing and
     earnings due to keeping the principal repaid by the liquidation"""
     borrow_actions.sort(key=lambda event: event.timestamp)
-    historical_borrow_balances: Dict[Asset, FVal] = defaultdict(FVal)
-    total_lost: Dict[Asset, Balance] = defaultdict(Balance)
-    total_earned: Dict[Asset, Balance] = defaultdict(Balance)
+    historical_borrow_balances: Dict[CryptoAsset, FVal] = defaultdict(FVal)
+    total_lost: Dict[CryptoAsset, Balance] = defaultdict(Balance)
+    total_earned: Dict[CryptoAsset, Balance] = defaultdict(Balance)
 
     for b_action in borrow_actions:
         if b_action.event_type == 'borrow':
@@ -317,7 +317,7 @@ def _parse_atoken_balance_history(
 
         try:
             address_s = '0x' + pairs[2]
-            reserve_address = deserialize_ethereum_address(address_s)
+            reserve_address = deserialize_evm_address(address_s)
         except DeserializationError:
             log.error(
                 f'Error deserializing reserve address {address_s}',
@@ -366,10 +366,10 @@ def _parse_atoken_balance_history(
 def _get_reserve_asset_and_decimals(
         entry: Dict[str, Any],
         reserve_key: str,
-) -> Optional[Tuple[Asset, int]]:
+) -> Optional[Tuple[CryptoAsset, int]]:
     try:
         # The ID of reserve is the address of the asset and the address of the market's LendingPoolAddressProvider, in lower case  # noqa: E501
-        reserve_address = deserialize_ethereum_address(entry[reserve_key]['id'][:42])
+        reserve_address = deserialize_evm_address(entry[reserve_key]['id'][:42])
     except DeserializationError:
         log.error(f'Failed to Deserialize reserve address {entry[reserve_key]["id"]}')
         return None
@@ -408,12 +408,12 @@ class AaveGraphInquirer(AaveInquirer):
 
     def get_history_for_addresses(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             to_block: int,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            aave_balances: Dict[ChecksumEthAddress, AaveBalances],
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+            aave_balances: Dict[ChecksumEvmAddress, AaveBalances],
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """
         Queries aave history for a list of addresses.
 
@@ -434,7 +434,7 @@ class AaveGraphInquirer(AaveInquirer):
 
         return result
 
-    def _get_user_reserves(self, address: ChecksumEthAddress) -> List[AaveUserReserve]:
+    def _get_user_reserves(self, address: ChecksumEvmAddress) -> List[AaveUserReserve]:
         query = self.graph.query(
             querystr=USER_RESERVES_QUERY.format(address=address.lower()),
         )
@@ -447,7 +447,7 @@ class AaveGraphInquirer(AaveInquirer):
             try:
                 result.append(AaveUserReserve(
                     # The ID of reserve is the address of the asset and the address of the market's LendingPoolAddressProvider, in lower case  # noqa: E501
-                    address=deserialize_ethereum_address(reserve['id'][:42]),
+                    address=deserialize_evm_address(reserve['id'][:42]),
                     symbol=reserve['symbol'],
                 ))
             except DeserializationError:
@@ -461,14 +461,14 @@ class AaveGraphInquirer(AaveInquirer):
 
     def _calculate_interest_and_profit(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             user_result: Dict[str, Any],
             actions: List[AaveDepositWithdrawalEvent],
             balances: AaveBalances,
             db_interest_events: Set[AaveInterestEvent],
             from_ts: Timestamp,
             to_ts: Timestamp,
-    ) -> Tuple[List[AaveInterestEvent], Dict[Asset, Balance]]:
+    ) -> Tuple[List[AaveInterestEvent], Dict[CryptoAsset, Balance]]:
         reserve_history = {}
         for reserve in user_result['reserves']:
             pairs = reserve['id'].split('0x')
@@ -481,7 +481,7 @@ class AaveGraphInquirer(AaveInquirer):
 
             try:
                 address_s = '0x' + pairs[2]
-                reserve_address = deserialize_ethereum_address(address_s)
+                reserve_address = deserialize_evm_address(address_s)
             except DeserializationError:
                 log.error(
                     f'Failed to deserialize reserve address {address_s} '
@@ -497,9 +497,9 @@ class AaveGraphInquirer(AaveInquirer):
             reserve_history[reserve_address] = atoken_history
 
         interest_events: List[AaveInterestEvent] = []
-        atoken_balances: Dict[Asset, FVal] = defaultdict(FVal)
+        atoken_balances: Dict[CryptoAsset, FVal] = defaultdict(FVal)
         used_history_indices = set()
-        total_earned: Dict[Asset, Balance] = defaultdict(Balance)
+        total_earned: Dict[CryptoAsset, Balance] = defaultdict(Balance)
 
         # Go through the existing db interest events and add total earned
         for interest_event in db_interest_events:
@@ -609,7 +609,7 @@ class AaveGraphInquirer(AaveInquirer):
                 abi = ATOKEN_V2_ABI
 
             principal_balance = self.ethereum.call_contract(
-                contract_address=atoken.ethereum_address,
+                contract_address=atoken.evm_address,
                 abi=abi,
                 method_name=method,
                 arguments=[user_address],
@@ -625,7 +625,7 @@ class AaveGraphInquirer(AaveInquirer):
 
     def _process_events(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             user_result: Dict[str, Any],
             from_ts: Timestamp,
             to_ts: Timestamp,
@@ -731,7 +731,7 @@ class AaveGraphInquirer(AaveInquirer):
             self,
             from_ts: Timestamp,
             to_ts: Timestamp,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             balances: AaveBalances,
     ) -> AaveHistory:
         with self.database.conn.read_ctx() as cursor:
@@ -1069,7 +1069,7 @@ class AaveGraphInquirer(AaveInquirer):
 
     def get_history_for_address(
             self,
-            user_address: ChecksumEthAddress,
+            user_address: ChecksumEvmAddress,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             balances: AaveBalances,
@@ -1098,7 +1098,7 @@ class AaveGraphInquirer(AaveInquirer):
             reserve_key: str,
             amount_key: str,
             location: str,
-    ) -> Optional[Tuple[Asset, Balance]]:
+    ) -> Optional[Tuple[CryptoAsset, Balance]]:
         """Utility function to parse asset from graph query amount and price and return balance"""
         result = _get_reserve_asset_and_decimals(entry, reserve_key)
         if result is None:

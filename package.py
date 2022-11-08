@@ -8,6 +8,7 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Callable, Dict, Literal, Optional
 from zipfile import ZipFile
 
@@ -34,6 +35,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s: %(message)s',
 )
 logger = logging.getLogger('package')
+
+MAC_CERTIFICATE = 'CERTIFICATE_OSX_APPLICATION'
+WIN_CERTIFICATE = 'CERTIFICATE_WIN_APPLICATION'
+CERTIFICATE_KEY = 'CSC_KEY_PASSWORD'
+APPLE_ID = 'APPLEID'
+APPLE_ID_PASS = 'APPLEIDPASS'
 
 
 def log_group(name: str) -> Callable:
@@ -92,6 +99,65 @@ class Environment:
 
         if os.environ.get('ROTKI_VERSION') is None:
             os.environ.setdefault('ROTKI_VERSION', self.rotki_version)
+
+        self.__certificate_mac = os.environ.get(MAC_CERTIFICATE)
+        self.__certificate_win = os.environ.get(WIN_CERTIFICATE)
+        self.__csc_password = os.environ.get(CERTIFICATE_KEY)
+        self.__appleid = os.environ.get(APPLE_ID)
+        self.__appleidpass = os.environ.get(APPLE_ID_PASS)
+
+        os.environ.pop(MAC_CERTIFICATE, None)
+        os.environ.pop(WIN_CERTIFICATE, None)
+        os.environ.pop(CERTIFICATE_KEY, None)
+        os.environ.pop(APPLE_ID, None)
+        os.environ.pop(APPLE_ID_PASS, None)
+
+    def macos_sign_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        if self.__csc_password is not None:
+            env.setdefault(CERTIFICATE_KEY, self.__csc_password)
+        if self.__appleid is not None:
+            env.setdefault(APPLE_ID, self.__appleid)
+        if self.__appleidpass is not None:
+            env.setdefault(APPLE_ID_PASS, self.__appleidpass)
+        return env
+
+    def macos_sign_vars(self) -> Dict[str, Optional[str]]:
+        return {
+            'certificate': self.__certificate_mac,
+            'key': self.__csc_password,
+            'appleid': self.__appleid,
+            'appleidpass': self.__appleidpass,
+        }
+
+    def win_sign_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        if self.__csc_password is not None:
+            env.setdefault(CERTIFICATE_KEY, self.__csc_password)
+        return env
+
+    def win_sign_vars(self) -> Dict[str, Optional[str]]:
+        return {
+            'certificate': self.__certificate_win,
+            'key': self.__csc_password,
+        }
+
+    @staticmethod
+    def sanity_check() -> None:
+        """
+        Sanity check that exits if any os the secret environment variables is set when called.
+        """
+        mac_cert = os.environ.get(MAC_CERTIFICATE)
+        win_cert = os.environ.get(WIN_CERTIFICATE)
+        key_pass = os.environ.get(CERTIFICATE_KEY)
+        appleid = os.environ.get(APPLE_ID)
+        appleidpass = os.environ.get(APPLE_ID_PASS)
+
+        sign_vars = [mac_cert, win_cert, key_pass, appleid, appleidpass]
+
+        if any(sign_vars):
+            logger.error('at least one of the secrets was set in the environment')
+            exit(1)
 
     @staticmethod
     def check_repo() -> None:
@@ -254,11 +320,15 @@ class Storage:
         logger.info(f'copying {file.name} to {self.dist_directory}')
         shutil.copy(src=file, dst=self.dist_directory)
 
+    def clean(self) -> None:
+        shutil.rmtree(self.build_directory)
+
 
 class WindowsPackaging:
     def __init__(self, storage: Storage, env: Environment) -> None:
         self.__storage = storage
         self.__env = env
+        self.__p12 = ''
 
     @log_group('miniupnpc windows')
     def setup_miniupnpc(self) -> None:
@@ -303,6 +373,46 @@ class WindowsPackaging:
         zip_path.unlink(missing_ok=True)
         shutil.rmtree(extraction_dir)
 
+    @log_group('certificates')
+    def import_signing_certificates(self) -> bool:
+        """
+        Imports the signing certificates from the environment variables
+        and prepares for signing.
+
+        The function will bail (exit 1) when the certificate is set but
+        no key has been passed in the configuration.
+
+        :return: True when the certificate and key are properly setup,
+        False when the certificate is not configured.
+        """
+        sign_vars = self.__env.win_sign_vars()
+        certificate = sign_vars.get('certificate')
+        csc_password = sign_vars.get('key')
+
+        if os.environ.get('WIN_CSC_LINK') is not None and csc_password is not None:
+            logger.info('WIN_CSC_LINK already set skipping')
+            return True
+
+        if certificate is None:
+            logger.info(f'{WIN_CERTIFICATE} is not set skipping signing')
+            return False
+
+        if csc_password is None:
+            logger.error(f'Missing {CERTIFICATE_KEY}')
+            exit(1)
+
+        logger.info('preparing to sign windows installer')
+        with NamedTemporaryFile(delete=False, suffix='.p12') as p12:
+            self.__p12 = p12.name
+            os.environ.setdefault('WIN_CSC_LINK', self.__p12)
+            certificate_data = base64.b64decode(certificate)
+            p12.write(certificate_data)
+
+        return True
+
+    def cleanup_certificate(self) -> None:
+        Path(self.__p12).unlink(missing_ok=True)
+
 
 class MacPackaging:
     def __init__(self, storage: Storage, environment: Environment) -> None:
@@ -318,14 +428,17 @@ class MacPackaging:
             plt: Literal['macosx_10_9_x86_64', 'macosx_11_0_arm64'],
             directory: Path,
     ) -> None:
+        logger.info(f'preparing to download {package_version} wheel for {plt}')
         directory.mkdir(exist_ok=True)
         os.chdir(directory)
         subprocess.call(
             f'pip download {package_version} --platform {plt} --only-binary=:all:',
             shell=True,
         )
+        pkg_arch = 'x86_64' if plt.find('x86_64') >= 0 else 'arm64'
         for file in directory.iterdir():
-            if file.name.find(plt) >= 0:
+            logger.info(f'checking if {file} package is {pkg_arch}')
+            if file.name.find(pkg_arch) >= 0:
                 logger.info(f'unpacking wheel {file}')
                 subprocess.call(f'wheel unpack {file}', shell=True)
 
@@ -425,10 +538,10 @@ class MacPackaging:
                     package_versions[package_name.strip()] = package_version.strip()
         return package_versions
 
-    @log_group('coincurve universal2 wheel')
-    def __coincurve_universal_repackage(self) -> None:
+    @log_group('universal2 wheel')
+    def __universal_repackage(self, package_name: str) -> None:
         """
-        Creates universal2 wheels for coincurve and cffi.
+        Creates universal2 wheels for packages.
 
         coincurve and cffi only provide architecture specific wheels (x86_64, arm64)
         for macOS. To create a universal2 wheel we download the architecture
@@ -437,8 +550,7 @@ class MacPackaging:
         and we finally pack the wheel again.
         """
         storage = self.__storage
-        logger.info('Preparing to merge coincurve wheels')
-        package_name = 'coincurve'
+        logger.info(f'Preparing to merge {package_name} wheels')
         versions = self.__get_versions(packages=[package_name])
         build_directory = storage.build_directory
         if not build_directory.exists():
@@ -453,7 +565,7 @@ class MacPackaging:
         x86_64 = temp / 'x86_64'
         arm64 = temp / 'arm64'
 
-        package = f'{package_name}=={versions.get("coincurve")}'
+        package = f'{package_name}=={versions.get(package_name)}'
         self.unpack_wheels(package, 'macosx_10_9_x86_64', x86_64)
         self.unpack_wheels(package, 'macosx_11_0_arm64', arm64)
 
@@ -463,7 +575,7 @@ class MacPackaging:
                 arm64_solib = next(arm64.glob(f'**/{so_lib.name}'))
                 self.macos_link_archs(destination=so_lib, source=arm64_solib)
             metadata = next(unpacked_wheel.glob('**/WHEEL'))
-            logger.info(metadata)
+            logger.info(f'preparing to modify metadata: {metadata}')
             self.modify_wheel_metadata(metadata)
             ret_code = subprocess.call(
                 f'wheel pack {unpacked_wheel} -d {wheels_directory}',
@@ -472,6 +584,9 @@ class MacPackaging:
             if ret_code != 0:
                 logger.error(f'repack of {unpacked_wheel} failed')
                 exit(1)
+
+        shutil.rmtree(x86_64)
+        shutil.rmtree(arm64)
 
     @log_group('miniupnpc universal2 wheel')
     def __build_miniupnpc_universal(self) -> None:
@@ -584,7 +699,8 @@ class MacPackaging:
         special treatment.
         """
         self.__build_miniupnpc_universal()
-        self.__coincurve_universal_repackage()
+        self.__universal_repackage('coincurve')
+        self.__universal_repackage('py-ed25519-zebra-bindings')
 
     def install_wheels(self, install: Callable[[str], None]) -> None:
         """
@@ -609,15 +725,20 @@ class MacPackaging:
         Imports the signing certificates from the environment variables
         and prepares the keychain for signing
         """
-        certificate = os.environ.get('CERTIFICATE_OSX_APPLICATION')
-        csc_password = os.environ.get('CSC_KEY_PASSWORD')
+        sign_vars = self.__environment.macos_sign_vars()
+        certificate = sign_vars.get('certificate')
+        csc_password = sign_vars.get('key')
+
+        if os.environ.get('CSC_LINK') is not None and csc_password is not None:
+            logger.info('CSC_LINK already set skipping')
+            return True
 
         if certificate is None:
-            logger.info('CERTIFICATE_OSX_APPLICATION is not set skipping signing')
+            logger.info(f'{MAC_CERTIFICATE} is not set skipping signing')
             return False
 
         if csc_password is None:
-            logger.error('Missing CSC_KEY_PASSWORD')
+            logger.error(f'Missing {CERTIFICATE_KEY}')
             exit(1)
 
         logger.info('preparing to sign macOS binary')
@@ -748,15 +869,22 @@ class BackendBuilder:
         if storage.dist_directory.exists():
             shutil.rmtree(storage.dist_directory)
 
-    @staticmethod
     @log_group('pip install')
-    def pip_install(what: str) -> None:
+    def pip_install(self, what: str, use_pep_517: bool = True) -> None:
         """
         Calls pip install using subprocess.
 
         :param what: anything that goes after pip install
         """
-        ret_code = subprocess.call(f'pip install {what}', shell=True)
+        base_command = 'pip install '
+        if use_pep_517 is False:
+            base_command += '--no-use-pep517 '
+
+        ret_code = subprocess.call(
+            f'{base_command} {what}',
+            shell=True,
+            cwd=self.__storage.working_directory,
+        )
         if ret_code != 0:
             logger.error(f'could not run "pip install {what}"')
             exit(1)
@@ -848,6 +976,8 @@ class BackendBuilder:
         github_ref = os.environ.get('GITHUB_REF')
         os.environ.pop('GITHUB_REF', None)
 
+        self.__env.sanity_check()
+
         mac = self.__mac
         if mac is not None and self.__env.is_universal2():
             logger.info('Doing preparation for universal2 wheels')
@@ -862,7 +992,7 @@ class BackendBuilder:
         # This flag only works with the patched version of pip.
         # https://github.com/kelsos/pip/tree/patched
         os.environ.setdefault('PIP_FORCE_MACOS_UNIVERSAL2', '1')
-        self.pip_install('-e .')
+        self.pip_install('-e .', use_pep_517=False)
         os.environ.pop('PIP_FORCE_MACOS_UNIVERSAL2', None)
 
         if github_ref is not None:
@@ -929,11 +1059,18 @@ class BackendBuilder:
 
 
 class FrontendBuilder:
-    def __init__(self, storage: Storage, env: Environment, mac: Optional[MacPackaging]):
+    def __init__(
+            self,
+            storage: Storage,
+            env: Environment,
+            mac: Optional[MacPackaging],
+            win: Optional[WindowsPackaging],
+    ):
         self.__storage = storage
         self.__frontend_directory = storage.working_directory / 'frontend'
         self.__env = env
         self.__mac = mac
+        self.__win = win
 
     def __ensure_backend_executable(self) -> None:
         backend_directory = self.__storage.backend_directory
@@ -956,21 +1093,37 @@ class FrontendBuilder:
 
     @log_group('electron app build')
     def build(self) -> None:
+        self.__env.sanity_check()
         self.check_npm_version()
         self.__storage.check_backend()
         os.chdir(self.__frontend_directory)
-        if self.__mac is not None:
-            self.__mac.import_signing_certificates()
-
         frontend_env = self.__env.get_frontend_env()
 
         self.__restore_npm_dependencies()
         self.__ensure_backend_executable()
 
-        logger.info('Calling electron:build')
-        ret_code = subprocess.call('npm run electron:build', shell=True, env=frontend_env)
+        sign_env = {}
+        if self.__mac is not None:
+            self.__mac.import_signing_certificates()
+            sign_env = self.__env.macos_sign_env()
+
+        if self.__win is not None:
+            self.__win.import_signing_certificates()
+            sign_env = self.__env.win_sign_env()
+
+        logger.info('Calling build')
+        ret_code = subprocess.call('npm run build', shell=True, env=frontend_env)
         if ret_code != 0:
-            logger.error('electron build failed')
+            logger.error('build failed')
+            exit(1)
+
+        package_ret_code = subprocess.call(
+            'npm run electron:package',
+            shell=True,
+            env=frontend_env | sign_env,
+        )
+        if package_ret_code != 0:
+            logger.error('package failed')
             exit(1)
 
         app_path = self.__frontend_directory / 'app'
@@ -990,6 +1143,8 @@ class FrontendBuilder:
 
         if self.__mac is not None:
             self.__mac.cleanup_keychain()
+        if self.__win is not None:
+            self.__win.cleanup_certificate()
 
     @staticmethod
     @log_group('npm ci')
@@ -1019,7 +1174,17 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description='Build rotki')
     parser.add_argument('--build', choices=['backend', 'frontend', 'full'], default='full')
+    parser.add_argument(
+        '--clean',
+        action='store_true',
+        default=False,
+        help='Performs a clean build',
+    )
     args = parser.parse_args()
+
+    if args.clean:
+        logger.info('Cleaning build directory')
+        storage.clean()
 
     logger.info(f'starting build with {args.build}')
 
@@ -1035,7 +1200,7 @@ def main() -> None:
         builder.build()
 
     if args.build in ['full', 'frontend']:
-        frontend_builder = FrontendBuilder(storage, environment, mac)
+        frontend_builder = FrontendBuilder(storage, environment, mac, win)
         frontend_builder.build()
 
 

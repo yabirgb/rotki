@@ -5,16 +5,12 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.chain.ethereum.contracts import EthereumContract
 from rotkehlchen.chain.ethereum.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.ethereum.decoding.structures import ActionItem
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceiptLog
-from rotkehlchen.chain.ethereum.utils import (
-    asset_normalized_value,
-    ethaddress_to_asset,
-    multicall_specific,
-)
-from rotkehlchen.types import ChecksumEthAddress, EthereumTransaction, Location
+from rotkehlchen.chain.ethereum.utils import asset_normalized_value, ethaddress_to_asset
+from rotkehlchen.chain.evm.contracts import EvmContract
+from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction, Location
 from rotkehlchen.utils.misc import ts_sec_to_ms
 
 from .constants import CPT_DXDAO_MESA
@@ -45,7 +41,7 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         with open(os.path.join(dir_path, 'data', 'contracts.json'), 'r') as f:
             contracts = json.loads(f.read())
 
-        self.contract = EthereumContract(
+        self.contract = EvmContract(
             address=contracts['DXDAOMESA']['address'],
             abi=contracts['DXDAOMESA']['abi'],
             deployed_block=contracts['DXDAOMESA']['deployed_block'],
@@ -54,11 +50,11 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
     def _decode_events(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         if tx_log.topics[0] == DEPOSIT:
             return self._decode_deposit(tx_log, transaction, decoded_events, all_logs, action_items)  # noqa: E501
         if tx_log.topics[0] == ORDER_PLACEMENT:
@@ -68,16 +64,16 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         if tx_log.topics[0] == WITHDRAW:
             return self._decode_withdraw(tx_log, transaction, decoded_events, all_logs, action_items)  # noqa: E501
 
-        return None, None
+        return None, []
 
     def _decode_deposit(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         topic_data, log_data = self.contract.decode_event(
             tx_log=tx_log,
             event_name='Deposit',
@@ -85,7 +81,7 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         )
         deposited_asset = ethaddress_to_asset(topic_data[1])
         if deposited_asset is None:
-            return None, None
+            return None, []
         amount = asset_normalized_value(amount=log_data[0], asset=deposited_asset)
 
         for event in decoded_events:
@@ -97,16 +93,16 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
                 event.notes = f'Deposit {amount} {deposited_asset.symbol} to DXDao mesa exchange'  # noqa: E501
                 break
 
-        return None, None
+        return None, []
 
     def _decode_withdraw(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         topic_data, log_data = self.contract.decode_event(
             tx_log=tx_log,
             event_name='Withdraw',
@@ -114,7 +110,7 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         )
         withdraw_asset = ethaddress_to_asset(topic_data[1])
         if withdraw_asset is None:
-            return None, None
+            return None, []
         amount = asset_normalized_value(amount=log_data[0], asset=withdraw_asset)
 
         for event in decoded_events:
@@ -126,16 +122,16 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
                 event.notes = f'Withdraw {amount} {withdraw_asset.symbol} from DXDao mesa exchange'  # noqa: E501
                 break
 
-        return None, None
+        return None, []
 
     def _decode_withdraw_request(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         topic_data, log_data = self.contract.decode_event(
             tx_log=tx_log,
             event_name='WithdrawRequest',
@@ -143,11 +139,11 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         )
         user = topic_data[0]
         if not self.base.is_tracked(user):
-            return None, None
+            return None, []
 
         token = ethaddress_to_asset(topic_data[1])
         if token is None:
-            return None, None
+            return None, []
         amount = asset_normalized_value(amount=log_data[0], asset=token)
 
         event = HistoryBaseEntry(
@@ -164,16 +160,16 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
             event_subtype=HistoryEventSubType.REMOVE_ASSET,
             counterparty=CPT_DXDAO_MESA,
         )
-        return event, None
+        return event, []
 
     def _decode_order_placement(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         """Some docs: https://docs.gnosis.io/protocol/docs/tutorial-limit-orders/"""
         topic_data, log_data = self.contract.decode_event(
             tx_log=tx_log,
@@ -182,20 +178,19 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         )
         owner = topic_data[0]
         if not self.base.is_tracked(owner):
-            return None, None
+            return None, []
 
-        result = multicall_specific(
-            ethereum=self.ethereum,
+        result = self.ethereum.multicall_specific(
             contract=self.contract,
             method_name='tokenIdToAddressMap',
             arguments=[[topic_data[1]], [topic_data[2]]],
         )  # The resulting addresses are non checksumed but they can be found in the DB
         buy_token = ethaddress_to_asset(result[0][0])
         if buy_token is None:
-            return None, None
+            return None, []
         sell_token = ethaddress_to_asset(result[1][0])
         if sell_token is None:
-            return None, None
+            return None, []
 
         buy_amount = asset_normalized_value(amount=log_data[3], asset=buy_token)
         sell_amount = asset_normalized_value(amount=log_data[4], asset=sell_token)
@@ -213,13 +208,13 @@ class DxdaomesaDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
             event_subtype=HistoryEventSubType.PLACE_ORDER,
             counterparty=CPT_DXDAO_MESA,
         )
-        return event, None
+        return event, []
 
     # -- DecoderInterface methods
 
-    def addresses_to_decoders(self) -> Dict[ChecksumEthAddress, Tuple[Any, ...]]:
+    def addresses_to_decoders(self) -> Dict[ChecksumEvmAddress, Tuple[Any, ...]]:
         return {
-            self.contract.address: (self._decode_events,),  # noqa: E501
+            self.contract.address: (self._decode_events,),
         }
 
     def counterparties(self) -> List[str]:

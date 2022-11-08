@@ -11,7 +11,7 @@
           mdi-lock
         </v-icon>
       </template>
-      <span v-text="$t('overall_balances.premium_hint')" />
+      <span v-text="t('overall_balances.premium_hint')" />
     </v-tooltip>
     <v-chip
       v-for="(timeframe, i) in visibleTimeframes"
@@ -27,54 +27,47 @@
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import {
   TimeFramePersist,
   TimeFrameSetting
 } from '@rotki/common/lib/settings/graphs';
-import { defineComponent, PropType, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { getPremium } from '@/composables/session';
-
+import { PropType } from 'vue';
+import { usePremium } from '@/composables/premium';
 import { isPeriodAllowed } from '@/store/settings/utils';
 
-export default defineComponent({
-  name: 'TimeframeSelector',
-  props: {
-    value: { required: true, type: String as PropType<TimeFrameSetting> },
-    disabled: { required: false, type: Boolean, default: false },
-    visibleTimeframes: { required: true, type: Array }
-  },
-  emits: ['input'],
-  setup(props, { emit }) {
-    const { value } = toRefs(props);
-    const input = (_value: TimeFrameSetting) => {
-      emit('input', _value);
-    };
-
-    const premium = getPremium();
-
-    const worksWithoutPremium = (period: TimeFrameSetting): boolean => {
-      return isPeriodAllowed(period) || period === TimeFramePersist.REMEMBER;
-    };
-
-    const activeClass = (timeframePeriod: TimeFrameSetting): string => {
-      return timeframePeriod === get(value) ? 'timeframe-selector--active' : '';
-    };
-
-    return {
-      input,
-      premium,
-      worksWithoutPremium,
-      activeClass
-    };
+const props = defineProps({
+  value: { required: true, type: String as PropType<TimeFrameSetting> },
+  disabled: { required: false, type: Boolean, default: false },
+  visibleTimeframes: {
+    required: true,
+    type: Array as PropType<TimeFrameSetting[]>
   }
 });
+
+const emit = defineEmits<{ (e: 'input', value: TimeFrameSetting): void }>();
+
+const { value } = toRefs(props);
+const input = (_value: TimeFrameSetting) => {
+  emit('input', _value);
+};
+
+const premium = usePremium();
+
+const worksWithoutPremium = (period: TimeFrameSetting): boolean => {
+  return isPeriodAllowed(period) || period === TimeFramePersist.REMEMBER;
+};
+
+const activeClass = (timeframePeriod: TimeFrameSetting): string => {
+  return timeframePeriod === get(value) ? 'timeframe-selector--active' : '';
+};
+
+const { t } = useI18n();
 </script>
 
 <style scoped lang="scss">
 .timeframe-selector {
-  ::v-deep {
+  :deep() {
     .v-chip {
       cursor: pointer;
     }

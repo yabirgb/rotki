@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 from eth_typing import ChecksumAddress
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.fval import FVal
 from rotkehlchen.types import EVMTxHash, Timestamp
 
@@ -201,7 +201,7 @@ class ChannelWithdraw(AdexEvent):
     value: Balance
     channel_id: str
     pool_id: str
-    token: EthereumToken
+    token: EvmToken
     log_index: int
 
     def serialize(self) -> Dict[str, Any]:
@@ -248,9 +248,9 @@ class ADXStakingEvents(NamedTuple):
     def get_all(self) -> List[Union[Bond, Unbond, UnbondRequest, ChannelWithdraw]]:
         return (
             self.bonds +
-            self.unbonds +  # type: ignore # concatenating lists
-            self.unbond_requests +  # type: ignore # concatenating lists
-            self.channel_withdraws  # type: ignore # concatenating lists
+            self.unbonds +
+            self.unbond_requests +
+            self.channel_withdraws
         )
 
 

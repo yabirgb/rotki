@@ -9,7 +9,7 @@
     >
       <template #activator="{ on }">
         <menu-tooltip-button
-          :tooltip="$tc('user_dropdown.change_privacy_mode.label')"
+          :tooltip="tc('user_dropdown.change_privacy_mode.label')"
           class-name="privacy-mode-dropdown secondary--text text--lighten-4"
           @click="togglePrivacyMode"
         >
@@ -47,57 +47,34 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
 import MenuTooltipButton from '@/components/helper/MenuTooltipButton.vue';
 import { usePrivacyMode } from '@/composables/privacy';
-import i18n from '@/i18n';
+
+const { t, tc } = useI18n();
 
 const tickLabels: string[] = [
-  i18n.t('user_dropdown.change_privacy_mode.normal_mode.label').toString(),
-  i18n
-    .t('user_dropdown.change_privacy_mode.semi_private_mode.label')
-    .toString(),
-  i18n.t('user_dropdown.change_privacy_mode.private_mode.label').toString()
+  t('user_dropdown.change_privacy_mode.normal_mode.label').toString(),
+  t('user_dropdown.change_privacy_mode.semi_private_mode.label').toString(),
+  t('user_dropdown.change_privacy_mode.private_mode.label').toString()
 ];
 
 // TODO: Remove css variable for tick description in Vue3 and use State Driven Dynamic CSS
 // https://v3.vuejs.org/api/sfc-style.html#state-driven-dynamic-css
 const sliderWrapperStyle: { [key: string]: string } = {
-  '--tick-description-3': `'${i18n
-    .t('user_dropdown.change_privacy_mode.normal_mode.description')
-    .toString()}'`,
-  '--tick-description-2': `'${i18n
-    .t('user_dropdown.change_privacy_mode.semi_private_mode.description')
-    .toString()}'`,
-  '--tick-description-1': `'${i18n
-    .t('user_dropdown.change_privacy_mode.private_mode.description')
-    .toString()}'`
+  '--tick-description-3': `'${t(
+    'user_dropdown.change_privacy_mode.normal_mode.description'
+  ).toString()}'`,
+  '--tick-description-2': `'${t(
+    'user_dropdown.change_privacy_mode.semi_private_mode.description'
+  ).toString()}'`,
+  '--tick-description-1': `'${t(
+    'user_dropdown.change_privacy_mode.private_mode.description'
+  ).toString()}'`
 };
 
-export default defineComponent({
-  name: 'PrivacyModeDropdown',
-  components: {
-    MenuTooltipButton
-  },
-  setup() {
-    const {
-      privacyModeIcon,
-      privacyMode,
-      togglePrivacyMode,
-      changePrivacyMode
-    } = usePrivacyMode();
-
-    return {
-      privacyModeIcon,
-      privacyMode,
-      changePrivacyMode,
-      togglePrivacyMode,
-      tickLabels,
-      sliderWrapperStyle
-    };
-  }
-});
+const { privacyModeIcon, privacyMode, togglePrivacyMode, changePrivacyMode } =
+  usePrivacyMode();
 </script>
 <style scoped lang="scss">
 .privacy-mode-dropdown {
@@ -119,7 +96,7 @@ export default defineComponent({
 
     .slider-wrapper {
       .v-input {
-        ::v-deep {
+        :deep() {
           .v-slider {
             width: 210px;
 
@@ -200,7 +177,7 @@ export default defineComponent({
         /* stylelint-disable plugin/stylelint-bem-namics, rule-empty-line-before */
         @for $i from 0 through 2 {
           &.selected-#{$i} {
-            ::v-deep {
+            :deep() {
               .v-slider {
                 &__tick {
                   @for $j from 3-$i through 3 {
@@ -230,7 +207,7 @@ export default defineComponent({
       &__menu {
         .slider-wrapper {
           .v-input {
-            ::v-deep {
+            :deep() {
               .v-slider {
                 &__tick {
                   --color: var(--v-secondary-lighten2);

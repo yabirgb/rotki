@@ -6,6 +6,7 @@ from rotkehlchen.accounting.structures.types import HistoryEventSubType, History
 from rotkehlchen.chain.ethereum.constants import ZERO_ADDRESS
 from rotkehlchen.chain.ethereum.decoding.constants import CPT_GAS
 from rotkehlchen.chain.ethereum.modules.oneinch.constants import CPT_ONEINCH_V1, CPT_ONEINCH_V2
+from rotkehlchen.chain.ethereum.modules.uniswap.constants import CPT_UNISWAP_V2
 from rotkehlchen.constants.assets import A_DAI, A_ETH, A_USDC
 from rotkehlchen.fval import FVal
 from rotkehlchen.tests.utils.constants import A_CHI, A_PAN
@@ -15,14 +16,14 @@ from rotkehlchen.types import Location, deserialize_evm_tx_hash
 ADDY = '0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12'
 
 
-@pytest.mark.parametrize('ethereum_accounts', [[ADDY]])  # noqa: E501
+@pytest.mark.parametrize('ethereum_accounts', [[ADDY]])
 def test_1inchv1_swap(database, ethereum_manager, function_scope_messages_aggregator):
     """Data taken from
     https://etherscan.io/tx/0x8b8652c502e80ce7c5441cdedc9184ea8f07a9c13b4c3446a47ae08c6c1d6efa
     """
     # TODO: For faster tests hard-code the transaction and the logs here so no remote query needed
     tx_hash = deserialize_evm_tx_hash('0x8b8652c502e80ce7c5441cdedc9184ea8f07a9c13b4c3446a47ae08c6c1d6efa')  # noqa: E501
-    events = get_decoded_events_of_transaction(
+    events, _ = get_decoded_events_of_transaction(
         ethereum_manager=ethereum_manager,
         database=database,
         msg_aggregator=function_scope_messages_aggregator,
@@ -40,7 +41,7 @@ def test_1inchv1_swap(database, ethereum_manager, function_scope_messages_aggreg
             asset=A_ETH,
             balance=Balance(amount=FVal('0.00896373909')),
             location_label=ADDY,
-            notes=f'Burned 0.00896373909 ETH in gas from {ADDY}',
+            notes='Burned 0.00896373909 ETH for gas',
             counterparty=CPT_GAS,
         ), HistoryBaseEntry(
             event_identifier=tx_hash,
@@ -52,8 +53,8 @@ def test_1inchv1_swap(database, ethereum_manager, function_scope_messages_aggreg
             asset=A_USDC,
             balance=Balance(amount=FVal('138.75')),
             location_label=ADDY,
-            notes=f'Swap 138.75 USDC in 1inch-v1 from {ADDY}',
-            counterparty=CPT_ONEINCH_V1,
+            notes=f'Swap 138.75 USDC in uniswap-v2 from {ADDY}',
+            counterparty=CPT_UNISWAP_V2,
         ), HistoryBaseEntry(
             event_identifier=tx_hash,
             sequence_index=91,
@@ -95,7 +96,7 @@ def test_1inchv1_swap(database, ethereum_manager, function_scope_messages_aggreg
     assert expected_events == events
 
 
-@pytest.mark.parametrize('ethereum_accounts', [[ADDY]])  # noqa: E501
+@pytest.mark.parametrize('ethereum_accounts', [[ADDY]])
 def test_1inchv2_swap_for_eth(database, ethereum_manager, function_scope_messages_aggregator):
     """
     Test an 1inchv2 swap for ETH.
@@ -105,7 +106,7 @@ def test_1inchv2_swap_for_eth(database, ethereum_manager, function_scope_message
     """
     # TODO: For faster tests hard-code the transaction and the logs here so no remote query needed
     tx_hash = deserialize_evm_tx_hash('0x5edc23d5a05e347afc60e64a4d5831ed2551985c21dceb85d267926ca2e2c13e')  # noqa: E501
-    events = get_decoded_events_of_transaction(
+    events, _ = get_decoded_events_of_transaction(
         ethereum_manager=ethereum_manager,
         database=database,
         msg_aggregator=function_scope_messages_aggregator,
@@ -123,7 +124,7 @@ def test_1inchv2_swap_for_eth(database, ethereum_manager, function_scope_message
             asset=A_ETH,
             balance=Balance(amount=FVal('0.002618947')),
             location_label=ADDY,
-            notes=f'Burned 0.002618947 ETH in gas from {ADDY}',
+            notes='Burned 0.002618947 ETH for gas',
             counterparty=CPT_GAS,
         ), HistoryBaseEntry(
             event_identifier=tx_hash,

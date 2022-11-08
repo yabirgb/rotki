@@ -1,12 +1,12 @@
 <template>
   <progress-screen v-if="loading">
-    <template #message>{{ $t('borrowing.loading') }}</template>
+    <template #message>{{ tc('borrowing.loading') }}</template>
   </progress-screen>
   <div v-else>
     <v-row class="mt-8">
       <v-col>
         <refresh-header
-          :title="$t('borrowing.header')"
+          :title="tc('borrowing.header')"
           :loading="refreshing"
           @refresh="refresh()"
         >
@@ -22,7 +22,7 @@
           <template #first-col>
             <stat-card-column>
               <template #title>
-                {{ $t('borrowing.total_collateral_locked') }}
+                {{ tc('borrowing.total_collateral_locked') }}
               </template>
               <amount-display
                 :value="summary.totalCollateralUsd"
@@ -34,7 +34,7 @@
           <template #second-col>
             <stat-card-column>
               <template #title>
-                {{ $t('borrowing.total_outstanding_debt') }}
+                {{ tc('borrowing.total_outstanding_debt') }}
               </template>
               <amount-display
                 :value="summary.totalDebt"
@@ -53,7 +53,7 @@
             <v-autocomplete
               v-model="selection"
               class="borrowing__vault-selection"
-              :label="$t('borrowing.select_loan')"
+              :label="tc('borrowing.select_loan')"
               chips
               dense
               outlined
@@ -72,32 +72,25 @@
               </template>
             </v-autocomplete>
           </div>
-          <v-card-text>{{ $t('borrowing.select_loan_hint') }}</v-card-text>
+          <v-card-text>{{ tc('borrowing.select_loan_hint') }}</v-card-text>
         </v-card>
       </v-col>
       <v-col cols="12" md="6" class="ps-md-4 pt-8 pt-md-0">
         <defi-protocol-selector v-model="protocol" liabilities />
       </v-col>
     </v-row>
-    <loan-info v-if="selection" :loan="loan" />
+    <loan-info v-if="loan" :loan="loan" />
     <full-size-content v-else>
       <v-row align="center" justify="center">
-        <v-col class="text-h6">{{ $t('liabilities.no_selection') }}</v-col>
+        <v-col class="text-h6">{{ tc('liabilities.no_selection') }}</v-col>
       </v-row>
     </full-size-content>
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { DefiProtocol } from '@rotki/common/lib/blockchain';
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  PropType,
-  ref
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+import { PropType } from 'vue';
 import FullSizeContent from '@/components/common/FullSizeContent.vue';
 import ActiveModules from '@/components/defi/ActiveModules.vue';
 import DefiSelectorItem from '@/components/defi/DefiSelectorItem.vue';
@@ -108,89 +101,63 @@ import StatCardWide from '@/components/display/StatCardWide.vue';
 import DefiProtocolSelector from '@/components/helper/DefiProtocolSelector.vue';
 import ProgressScreen from '@/components/helper/ProgressScreen.vue';
 import RefreshHeader from '@/components/helper/RefreshHeader.vue';
-import { setupStatusChecking, useRoute } from '@/composables/common';
-import { Section } from '@/store/const';
+import { useSectionLoading } from '@/composables/common';
 import { useDefiSupportedProtocolsStore } from '@/store/defi/protocols';
 import { Module } from '@/types/modules';
+import { Section } from '@/types/status';
 
-export default defineComponent({
-  name: 'Borrowing',
-  components: {
-    FullSizeContent,
-    ActiveModules,
-    DefiSelectorItem,
-    DefiProtocolSelector,
-    RefreshHeader,
-    StatCardColumn,
-    AmountDisplay,
-    StatCardWide,
-    LoanInfo,
-    ProgressScreen
-  },
-  props: {
-    modules: { required: true, type: Array as PropType<Module[]> }
-  },
-  setup() {
-    const selection = ref<string>();
-    const protocol = ref<DefiProtocol | null>(null);
-    const store = useDefiSupportedProtocolsStore();
-    const route = useRoute();
+defineProps({
+  modules: { required: true, type: Array as PropType<Module[]> }
+});
 
-    const { shouldShowLoadingScreen, isSectionRefreshing } =
-      setupStatusChecking();
+const selection = ref<string>();
+const protocol = ref<DefiProtocol | null>(null);
+const store = useDefiSupportedProtocolsStore();
+const route = useRoute();
+const { tc } = useI18n();
 
-    const selectedProtocols = computed(() => {
-      const selected = get(protocol);
-      return selected ? [selected] : [];
-    });
+const { shouldShowLoadingScreen, isSectionRefreshing } = useSectionLoading();
 
-    const loan = computed(() => get(store.loan(get(selection))));
+const loading = shouldShowLoadingScreen(Section.DEFI_BORROWING);
 
-    const loans = computed(() => {
-      const protocols = get(selectedProtocols);
-      return get(store.loans(protocols));
-    });
+const selectedProtocols = computed(() => {
+  const selected = get(protocol);
+  return selected ? [selected] : [];
+});
 
-    const summary = computed(() => {
-      const protocols = get(selectedProtocols);
-      return get(store.loanSummary(protocols));
-    });
+const loan = computed(() => get(store.loan(get(selection))));
 
-    const refreshing = computed(() => {
-      return (
-        get(isSectionRefreshing(Section.DEFI_BORROWING)) ||
-        get(isSectionRefreshing(Section.DEFI_BORROWING_HISTORY))
-      );
-    });
+const loans = computed(() => {
+  const protocols = get(selectedProtocols);
+  return get(store.loans(protocols));
+});
 
-    const refresh = async () => {
-      await store.fetchBorrowing(true);
-    };
+const summary = computed(() => {
+  const protocols = get(selectedProtocols);
+  return get(store.loanSummary(protocols));
+});
 
-    onMounted(async () => {
-      const currentRoute = get(route);
-      const queryElement = currentRoute.query['protocol'];
-      const protocols = Object.values(DefiProtocol);
-      const protocolIndex = protocols.findIndex(
-        protocol => protocol === queryElement
-      );
-      if (protocolIndex >= 0) {
-        set(protocol, protocols[protocolIndex]);
-      }
-      await store.fetchBorrowing(false);
-    });
+const refreshing = computed(() => {
+  return (
+    get(isSectionRefreshing(Section.DEFI_BORROWING)) ||
+    get(isSectionRefreshing(Section.DEFI_BORROWING_HISTORY))
+  );
+});
 
-    return {
-      selection,
-      protocol,
-      selectedProtocols,
-      loan,
-      loans,
-      summary,
-      loading: shouldShowLoadingScreen(Section.DEFI_BORROWING),
-      refreshing,
-      refresh
-    };
+const refresh = async () => {
+  await store.fetchBorrowing(true);
+};
+
+onMounted(async () => {
+  const currentRoute = get(route);
+  const queryElement = currentRoute.query['protocol'];
+  const protocols = Object.values(DefiProtocol);
+  const protocolIndex = protocols.findIndex(
+    protocol => protocol === queryElement
+  );
+  if (protocolIndex >= 0) {
+    set(protocol, protocols[protocolIndex]);
   }
+  await store.fetchBorrowing(false);
 });
 </script>

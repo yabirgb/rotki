@@ -26,11 +26,12 @@ from rotkehlchen.accounting.accountant import Accountant
 from rotkehlchen.accounting.structures.balance import Balance, BalanceType
 from rotkehlchen.api.websockets.notifier import RotkiNotifier
 from rotkehlchen.api.websockets.typedefs import WSMessageType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles, CryptoAsset
 from rotkehlchen.balances.manual import (
     account_for_manually_tracked_asset_balances,
     get_manually_tracked_balances,
 )
+from rotkehlchen.chain.aggregator import ChainsAggregator
 from rotkehlchen.chain.avalanche.manager import AvalancheManager
 from rotkehlchen.chain.ethereum.accounting.aggregator import EVMAccountingAggregator
 from rotkehlchen.chain.ethereum.decoding import EVMTransactionDecoder
@@ -38,7 +39,6 @@ from rotkehlchen.chain.ethereum.manager import EthereumManager
 from rotkehlchen.chain.ethereum.oracles.saddle import SaddleOracle
 from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV2Oracle, UniswapV3Oracle
 from rotkehlchen.chain.ethereum.transactions import EthTransactions
-from rotkehlchen.chain.manager import BlockchainBalancesUpdate, ChainManager
 from rotkehlchen.chain.substrate.manager import SubstrateManager
 from rotkehlchen.chain.substrate.types import SubstrateChain
 from rotkehlchen.chain.substrate.utils import (
@@ -52,15 +52,18 @@ from rotkehlchen.data_import.manager import CSVDataImporter
 from rotkehlchen.data_migrations.manager import DataMigrationManager
 from rotkehlchen.db.settings import DBSettings, ModifiableDBSettings
 from rotkehlchen.errors.api import PremiumAuthenticationError
+from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.misc import EthSyncError, InputError, RemoteError, SystemPermissionError
 from rotkehlchen.exchanges.manager import ExchangeManager
 from rotkehlchen.externalapis.beaconchain import BeaconChain
 from rotkehlchen.externalapis.coingecko import Coingecko
 from rotkehlchen.externalapis.covalent import Covalent, chains_id
 from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+from rotkehlchen.externalapis.defillama import Defillama
 from rotkehlchen.externalapis.etherscan import Etherscan
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb import GlobalDBHandler
+from rotkehlchen.globaldb.manual_price_oracles import ManualCurrentOracle
 from rotkehlchen.globaldb.updates import AssetsUpdater
 from rotkehlchen.greenlets import GreenletManager
 from rotkehlchen.history.events import EventsHistorian
@@ -76,7 +79,7 @@ from rotkehlchen.types import (
     ApiKey,
     ApiSecret,
     BlockchainAccountData,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     ListOfBlockchainAddresses,
     Location,
     SupportedBlockchain,
@@ -146,6 +149,7 @@ class Rotkehlchen():
         )
         self.cryptocompare = Cryptocompare(data_directory=self.data_dir, database=None)
         self.coingecko = Coingecko()
+        self.defillama = Defillama()
         self.icon_manager = IconManager(data_dir=self.data_dir, coingecko=self.coingecko)
         self.assets_updater = AssetsUpdater(self.msg_aggregator)
         # Initialize the Inquirer singleton
@@ -153,6 +157,9 @@ class Rotkehlchen():
             data_dir=self.data_dir,
             cryptocompare=self.cryptocompare,
             coingecko=self.coingecko,
+            defillama=self.defillama,
+            manualcurrent=ManualCurrentOracle(),
+            msg_aggregator=self.msg_aggregator,
         )
         self.task_manager: Optional[TaskManager] = None
         self.shutdown_event = gevent.event.Event()
@@ -164,6 +171,8 @@ class Rotkehlchen():
         to sync premium databases we relogged in
         """
         self.cryptocompare.db = None
+        self.exchange_manager.delete_all_exchanges()
+        self.data.logout()
 
     def unlock_user(
             self,
@@ -182,7 +191,8 @@ class Rotkehlchen():
         - AuthenticationError if premium_credentials are given and are invalid
         or can't authenticate with the server
         - DBUpgradeError if the rotki DB version is newer than the software or
-        there is a DB upgrade and there is an error.
+        there is a DB upgrade and there is an error or if the version is older
+        than the one supported.
         - SystemPermissionError if the directory or DB file can not be accessed
         - sqlcipher.OperationalError: If some very weird error happens with the DB.
         For example unexpected schema.
@@ -211,6 +221,7 @@ class Rotkehlchen():
         self.premium_sync_manager = PremiumSyncManager(data=self.data, password=password)
         # set the DB in the external services instances that need it
         self.cryptocompare.set_database(self.data.db)
+        Inquirer()._manualcurrent.set_database(database=self.data.db)
 
         # Anything that was set above here has to be cleaned in case of failure in the next step
         # by reset_after_failed_account_creation_or_login()
@@ -251,6 +262,7 @@ class Rotkehlchen():
                 data_directory=self.data_dir,
                 cryptocompare=self.cryptocompare,
                 coingecko=self.coingecko,
+                defillama=self.defillama,
             )
             PriceHistorian().set_oracles_order(settings.historical_price_oracles)
 
@@ -261,7 +273,7 @@ class Rotkehlchen():
             )
             blockchain_accounts = self.data.db.get_blockchain_accounts(cursor)
 
-        ethereum_nodes = self.data.db.get_web3_nodes(only_active=True)
+        ethereum_nodes = self.data.db.get_web3_nodes(blockchain=SupportedBlockchain.ETHEREUM, only_active=True)  # noqa: E501
         # Initialize blockchain querying modules
         ethereum_manager = EthereumManager(
             etherscan=self.etherscan,
@@ -309,7 +321,7 @@ class Rotkehlchen():
         )
         Inquirer().set_oracles_order(settings.current_price_oracles)
 
-        self.chain_manager = ChainManager(
+        self.chains_aggregator = ChainsAggregator(
             blockchain_accounts=blockchain_accounts,
             ethereum_manager=ethereum_manager,
             kusama_manager=kusama_manager,
@@ -324,10 +336,10 @@ class Rotkehlchen():
             beaconchain=self.beaconchain,
             btc_derivation_gap_limit=settings.btc_derivation_gap_limit,
         )
-        self.evm_tx_decoder = EVMTransactionDecoder(
+        self.eth_tx_decoder = EVMTransactionDecoder(
             database=self.data.db,
             ethereum_manager=ethereum_manager,
-            eth_transactions=self.eth_transactions,
+            transactions=self.eth_transactions,
             msg_aggregator=self.msg_aggregator,
         )
         self.evm_accounting_aggregator = EVMAccountingAggregator(
@@ -345,9 +357,8 @@ class Rotkehlchen():
             db=self.data.db,
             msg_aggregator=self.msg_aggregator,
             exchange_manager=self.exchange_manager,
-            chain_manager=self.chain_manager,
-            evm_tx_decoder=self.evm_tx_decoder,
-            eth_transactions=self.eth_transactions,
+            chains_aggregator=self.chains_aggregator,
+            eth_tx_decoder=self.eth_tx_decoder,
         )
         self.task_manager = TaskManager(
             max_tasks_num=DEFAULT_MAX_TASKS_NUM,
@@ -356,13 +367,13 @@ class Rotkehlchen():
             database=self.data.db,
             cryptocompare=self.cryptocompare,
             premium_sync_manager=self.premium_sync_manager,
-            chain_manager=self.chain_manager,
+            chains_aggregator=self.chains_aggregator,
             exchange_manager=self.exchange_manager,
-            eth_transactions=self.eth_transactions,
-            evm_tx_decoder=self.evm_tx_decoder,
+            eth_tx_decoder=self.eth_tx_decoder,
             deactivate_premium=self.deactivate_premium_status,
             activate_premium=self.activate_premium_status,
             query_balances=self.query_balances,
+            update_curve_pools_cache=self.chains_aggregator.ethereum.curve_protocol_cache_is_queried,  # noqa: E501
             msg_aggregator=self.msg_aggregator,
         )
 
@@ -389,7 +400,7 @@ class Rotkehlchen():
 
         self.deactivate_premium_status()
         self.greenlet_manager.clear()
-        del self.chain_manager
+        del self.chains_aggregator
         self.exchange_manager.delete_all_exchanges()
 
         del self.accountant
@@ -435,7 +446,7 @@ class Rotkehlchen():
 
         self.premium_sync_manager.premium = self.premium
         self.accountant.activate_premium_status(self.premium)
-        self.chain_manager.activate_premium_status(self.premium)
+        self.chains_aggregator.activate_premium_status(self.premium)
 
         self.data.db.set_rotkehlchen_premium(credentials)
 
@@ -444,14 +455,14 @@ class Rotkehlchen():
         self.premium = None
         self.premium_sync_manager.premium = None
         self.accountant.deactivate_premium_status()
-        self.chain_manager.deactivate_premium_status()
+        self.chains_aggregator.deactivate_premium_status()
 
     def activate_premium_status(self, premium: Premium) -> None:
         """Activate premium in the current session if was deactivated"""
         self.premium = premium
         self.premium_sync_manager.premium = self.premium
         self.accountant.activate_premium_status(self.premium)
-        self.chain_manager.activate_premium_status(self.premium)
+        self.chains_aggregator.activate_premium_status(self.premium)
 
     def delete_premium_credentials(self) -> Tuple[bool, str]:
         """Deletes the premium credentials for rotki"""
@@ -484,11 +495,15 @@ class Rotkehlchen():
         if blockchain not in (SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH):
             return account_data
 
-        xpub_data = self.data.db.get_bitcoin_xpub_data(cursor)
+        xpub_data = self.data.db.get_bitcoin_xpub_data(
+            cursor=cursor,
+            blockchain=blockchain,  # type: ignore
+        )
         addresses_to_account_data = {x.address: x for x in account_data}
         address_to_xpub_mappings = self.data.db.get_addresses_to_xpub_mapping(
-            cursor,
-            list(addresses_to_account_data.keys()),  # type: ignore
+            cursor=cursor,
+            blockchain=blockchain,  # type: ignore
+            addresses=list(addresses_to_account_data.keys()),  # type: ignore
         )
 
         xpub_mappings: Dict['XpubData', List[BlockchainAccountData]] = {}
@@ -515,14 +530,13 @@ class Rotkehlchen():
             self,
             blockchain: SupportedBlockchain,
             account_data: List[BlockchainAccountData],
-    ) -> BlockchainBalancesUpdate:
+    ) -> None:
         """Adds new blockchain accounts
 
         Adds the accounts to the blockchain instance and queries them to get the
         updated balances. Also adds them in the DB
 
         May raise:
-        - EthSyncError from modify_blockchain_account
         - InputError if the given accounts list is empty.
         - TagConstraintError if any of the given account data contain unknown tags.
         - RemoteError if an external service such as Etherscan is queried and
@@ -536,7 +550,7 @@ class Rotkehlchen():
                 data_type='blockchain accounts',
             )
             address_type = blockchain.get_address_type()
-            updated_balances = self.chain_manager.add_blockchain_accounts(
+            self.chains_aggregator.add_blockchain_accounts(
                 blockchain=blockchain,
                 accounts=[address_type(entry.address) for entry in account_data],
             )
@@ -545,8 +559,6 @@ class Rotkehlchen():
                 blockchain=blockchain,
                 account_data=account_data,
             )
-
-        return updated_balances
 
     def edit_blockchain_accounts(
             self,
@@ -567,7 +579,7 @@ class Rotkehlchen():
         if len(account_data) == 0:
             raise InputError('Empty list of blockchain account data to edit was given')
         accounts = [x.address for x in account_data]
-        unknown_accounts = set(accounts).difference(self.chain_manager.accounts.get(blockchain))
+        unknown_accounts = set(accounts).difference(self.chains_aggregator.accounts.get(blockchain))  # noqa: E501
         if len(unknown_accounts) != 0:
             raise InputError(
                 f'Tried to edit unknown {blockchain.value} '
@@ -591,31 +603,26 @@ class Rotkehlchen():
             self,
             blockchain: SupportedBlockchain,
             accounts: ListOfBlockchainAddresses,
-    ) -> BlockchainBalancesUpdate:
+    ) -> None:
         """Removes blockchain accounts
 
-        Removes the accounts from the blockchain instance and queries them to get
-        the updated balances. Also removes them from the DB
+        Removes the accounts from the blockchain instance. Also removes them from the DB.
 
         May raise:
-        - RemoteError if an external service such as Etherscan is queried and
-          there is a problem with its query.
         - InputError if a non-existing account was given to remove
         """
-        balances_update = self.chain_manager.remove_blockchain_accounts(
+        self.chains_aggregator.remove_blockchain_accounts(
             blockchain=blockchain,
             accounts=accounts,
         )
-        eth_addresses: List[ChecksumEthAddress] = cast(List[ChecksumEthAddress], accounts) if blockchain == SupportedBlockchain.ETHEREUM else []  # noqa: E501
+        eth_addresses: List[ChecksumEvmAddress] = cast(List[ChecksumEvmAddress], accounts) if blockchain == SupportedBlockchain.ETHEREUM else []  # noqa: E501
         with contextlib.ExitStack() as stack:
             cursor = stack.enter_context(self.data.db.user_write())
             if blockchain == SupportedBlockchain.ETHEREUM:
                 stack.enter_context(self.eth_transactions.wait_until_no_query_for(eth_addresses))
                 stack.enter_context(self.eth_transactions.missing_receipts_lock)
-                stack.enter_context(self.evm_tx_decoder.undecoded_tx_query_lock)
+                stack.enter_context(self.eth_tx_decoder.undecoded_tx_query_lock)
             self.data.db.remove_blockchain_accounts(cursor, blockchain, accounts)
-
-        return balances_update
 
     def get_history_query_status(self) -> Dict[str, str]:
         if self.events_historian.progress < FVal('100'):
@@ -696,17 +703,20 @@ class Rotkehlchen():
                 )
             else:
                 location_str = str(exchange.location)
+                # TODO: Don't know why the type is not properly detected here. The expected one
+                # is Dict[Asset, Balance] and the one received
+                # Dict[AssetWithOracles, Balance]
                 if location_str not in balances:
-                    balances[location_str] = exchange_balances
+                    balances[location_str] = exchange_balances  # type: ignore
                 else:  # multiple exchange of same type. Combine balances
                     balances[location_str] = combine_dicts(
                         balances[location_str],
-                        exchange_balances,
+                        exchange_balances,  # type: ignore
                     )
 
         liabilities: Dict[Asset, Balance]
         try:
-            blockchain_result = self.chain_manager.query_balances(
+            blockchain_result = self.chains_aggregator.query_balances(
                 blockchain=None,
                 beaconchain_fetch_eth1=ignore_cache,
                 ignore_cache=ignore_cache,
@@ -733,9 +743,9 @@ class Rotkehlchen():
 
         liabilities = combine_dicts(liabilities, manual_liabilities_as_dict)
         # retrieve loopring balances if module is activated
-        if self.chain_manager.get_module('loopring'):
+        if self.chains_aggregator.get_module('loopring'):
             try:
-                loopring_balances = self.chain_manager.get_loopring_balances()
+                loopring_balances = self.chains_aggregator.get_loopring_balances()
             except RemoteError as e:
                 problem_free = False
                 self.msg_aggregator.add_message(
@@ -746,42 +756,21 @@ class Rotkehlchen():
                 if len(loopring_balances) != 0:
                     balances[str(Location.LOOPRING)] = loopring_balances
 
-        # retrieve uniswap v3 & v2 lps
-        uniswap = self.chain_manager.get_module('uniswap')
         uniswap_v3_balances = None
-        if uniswap is not None:
-            try:
-                uniswap_v3_balances = uniswap.get_v3_balances(
-                    addresses=self.chain_manager.queried_addresses_for_module('uniswap'),
-                )
-            except RemoteError as e:
-                log.error(
-                    f'At balance snapshot Uniswap V3 balances query failed due to {str(e)}. Error '
-                    f'is ignored and balance snapshot will still be saved.',
-                )
-            try:
-                uniswap_v2_balances = uniswap.get_balances(
-                    addresses=self.chain_manager.queried_addresses_for_module('uniswap'),
-                )
-            except RemoteError as e:
-                log.error(
-                    f'At balance snapshot Uniswap V2 balances query failed due to {str(e)}. Error '
-                    f'is ignored and balance snapshot will still be saved.',
-                )
-            else:
-                if str(Location.BLOCKCHAIN) not in balances:
-                    balances[str(Location.BLOCKCHAIN)] = {}
-
-                for uniswap_v2_lps in uniswap_v2_balances.values():
-                    for lp in uniswap_v2_lps:
-                        balances[str(Location.BLOCKCHAIN)][Asset(lp.address)] = lp.user_balance
+        try:
+            uniswap_v3_balances = self.chains_aggregator.query_ethereum_lp_balances(balances=balances)  # noqa: E501
+        except RemoteError as e:
+            log.error(
+                f'At balance snapshot LP balances query failed due to {str(e)}. Error '
+                f'is ignored and balance snapshot will still be saved.',
+            )
 
         # retrieve nft balances if module is activated
-        nfts = self.chain_manager.get_module('nfts')
+        nfts = self.chains_aggregator.get_module('nfts')
         if nfts is not None:
             try:
                 nft_mapping = nfts.get_balances(
-                    addresses=self.chain_manager.queried_addresses_for_module('nfts'),
+                    addresses=self.chains_aggregator.queried_addresses_for_module('nfts'),
                     uniswap_nfts=uniswap_v3_balances,
                     return_zero_values=False,
                     ignore_cache=False,
@@ -796,9 +785,9 @@ class Rotkehlchen():
                     if str(Location.BLOCKCHAIN) not in balances:
                         balances[str(Location.BLOCKCHAIN)] = {}
 
-                    for _, nft_balances in nft_mapping.items():
+                    for nft_balances in nft_mapping.values():
                         for balance_entry in nft_balances:
-                            balances[str(Location.BLOCKCHAIN)][Asset(
+                            balances[str(Location.BLOCKCHAIN)][CryptoAsset(
                                 balance_entry['id'])] = Balance(
                                 amount=ONE,
                                 usd_value=balance_entry['usd_price'],
@@ -873,17 +862,17 @@ class Rotkehlchen():
     def set_settings(self, settings: ModifiableDBSettings) -> Tuple[bool, str]:
         """Tries to set new settings. Returns True in success or False with message if error"""
         if settings.ksm_rpc_endpoint is not None:
-            result, msg = self.chain_manager.set_ksm_rpc_endpoint(settings.ksm_rpc_endpoint)
+            result, msg = self.chains_aggregator.set_ksm_rpc_endpoint(settings.ksm_rpc_endpoint)
             if not result:
                 return False, msg
 
         if settings.dot_rpc_endpoint is not None:
-            result, msg = self.chain_manager.set_dot_rpc_endpoint(settings.dot_rpc_endpoint)
+            result, msg = self.chains_aggregator.set_dot_rpc_endpoint(settings.dot_rpc_endpoint)
             if not result:
                 return False, msg
 
         if settings.btc_derivation_gap_limit is not None:
-            self.chain_manager.btc_derivation_gap_limit = settings.btc_derivation_gap_limit
+            self.chains_aggregator.btc_derivation_gap_limit = settings.btc_derivation_gap_limit
 
         if settings.current_price_oracles is not None:
             Inquirer().set_oracles_order(settings.current_price_oracles)
@@ -892,7 +881,7 @@ class Rotkehlchen():
             PriceHistorian().set_oracles_order(settings.historical_price_oracles)
 
         if settings.active_modules is not None:
-            self.chain_manager.process_new_modules_list(settings.active_modules)
+            self.chains_aggregator.process_new_modules_list(settings.active_modules)
 
         with self.data.db.user_write() as cursor:
             self.data.db.set_settings(cursor, settings)
@@ -910,7 +899,7 @@ class Rotkehlchen():
             api_secret: ApiSecret,
             passphrase: Optional[str] = None,
             kraken_account_type: Optional['KrakenAccountType'] = None,
-            PAIRS: Optional[List[str]] = None,  # noqa: N803
+            binance_selected_trade_pairs: Optional[List[str]] = None,
             ftx_subaccount: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """
@@ -924,7 +913,7 @@ class Rotkehlchen():
             database=self.data.db,
             passphrase=passphrase,
             ftx_subaccount=ftx_subaccount,
-            PAIRS=PAIRS,
+            binance_selected_trade_pairs=binance_selected_trade_pairs,
         )
 
         if is_success:
@@ -936,7 +925,7 @@ class Rotkehlchen():
                 api_secret=api_secret,
                 passphrase=passphrase,
                 kraken_account_type=kraken_account_type,
-                PAIRS=PAIRS,
+                binance_selected_trade_pairs=binance_selected_trade_pairs,
                 ftx_subaccount=ftx_subaccount,
             )
         return is_success, msg
@@ -961,7 +950,7 @@ class Rotkehlchen():
         if self.user_is_logged_in:
             with self.data.db.conn.read_ctx() as cursor:
                 result['last_balance_save'] = self.data.db.get_last_balance_save_time(cursor)
-                result['connected_eth_nodes'] = [node.name for node in self.chain_manager.ethereum.get_connected_nodes()]  # noqa: E501
+                result['connected_eth_nodes'] = [node.name for node in self.chains_aggregator.ethereum.get_connected_nodes()]  # noqa: E501
                 result['last_data_upload_ts'] = Timestamp(self.premium_sync_manager.last_data_upload_ts)  # noqa : E501
         return result
 
@@ -972,8 +961,8 @@ class Rotkehlchen():
     def create_oracle_cache(
             self,
             oracle: HistoricalPriceOracle,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             purge_old: bool,
     ) -> None:
         """Creates the cache of the given asset pair from the start of time
@@ -988,4 +977,11 @@ class Rotkehlchen():
         if oracle != HistoricalPriceOracle.CRYPTOCOMPARE:
             return  # only for cryptocompare for now
 
-        self.cryptocompare.create_cache(from_asset, to_asset, purge_old)
+        try:
+            self.cryptocompare.create_cache(
+                from_asset=from_asset,
+                to_asset=to_asset,
+                purge_old=purge_old,
+            )
+        except UnknownAsset:
+            pass  # means that assets are not crypto or fiat, so we can't query cryptocompare

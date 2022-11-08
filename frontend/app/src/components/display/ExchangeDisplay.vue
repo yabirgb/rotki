@@ -7,46 +7,31 @@
   </div>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import AdaptiveWrapper from '@/components/display/AdaptiveWrapper.vue';
-import { tradeLocations } from '@/components/history/consts';
-import { TradeLocationData } from '@/components/history/type';
 import { SupportedExchange } from '@/types/exchanges';
+import { TradeLocationData, useTradeLocations } from '@/types/trades';
 import { toSentenceCase } from '@/utils/text';
 
-export default defineComponent({
-  name: 'ExchangeDisplay',
-  components: { AdaptiveWrapper },
-  props: {
-    exchange: { required: true, type: String as PropType<SupportedExchange> }
-  },
-  setup(props) {
-    const { exchange } = toRefs(props);
-    const locations = tradeLocations;
+const props = defineProps({
+  exchange: { required: true, type: String as PropType<SupportedExchange> }
+});
 
-    const location = computed<TradeLocationData | undefined>(() => {
-      return locations.find(({ identifier }) => identifier === get(exchange));
-    });
+const { exchange } = toRefs(props);
+const { tradeLocations } = useTradeLocations();
 
-    const name = computed<string>(() => {
-      return get(location)?.name ?? toSentenceCase(get(exchange));
-    });
+const location = computed<TradeLocationData | undefined>(() => {
+  return get(tradeLocations).find(
+    ({ identifier }) => identifier === get(exchange)
+  );
+});
 
-    const icon = computed<string>(() => {
-      return get(location)?.icon ?? '';
-    });
+const name = computed<string>(() => {
+  return get(location)?.name ?? toSentenceCase(get(exchange));
+});
 
-    return {
-      icon,
-      name
-    };
-  }
+const icon = computed<string>(() => {
+  return get(location)?.icon ?? '';
 });
 </script>

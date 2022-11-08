@@ -1,5 +1,6 @@
 import { Balance, BigNumber } from '@rotki/common';
 import { DefiProtocol } from '@rotki/common/lib/blockchain';
+import { assetSymbolToIdentifierMap } from '@rotki/common/lib/data';
 import {
   AaveBalances,
   AaveBorrowingEventType,
@@ -11,17 +12,12 @@ import {
   AaveLendingEventType,
   isAaveLiquidationEvent
 } from '@rotki/common/lib/defi/aave';
-import { computed, ComputedRef } from '@vue/composition-api';
-import { get } from '@vueuse/core';
 import sortBy from 'lodash/sortBy';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import { getPremium } from '@/composables/session';
+import { ComputedRef } from 'vue';
+import { usePremium } from '@/composables/premium';
 import { truncateAddress } from '@/filters';
 import { ProtocolVersion } from '@/services/defi/consts';
-import { CompoundBalances, CompoundLoan } from '@/services/defi/types/compound';
-import { YearnVaultsHistory } from '@/services/defi/types/yearn';
-import { useAssetInfoRetrieval } from '@/store/assets';
-import { Section, Status } from '@/store/const';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
 import { useAaveStore } from '@/store/defi/aave';
 import { useCompoundStore } from '@/store/defi/compound';
 import { useLiquityStore } from '@/store/defi/liquity';
@@ -30,22 +26,27 @@ import { useMakerDaoStore } from '@/store/defi/makerdao';
 import {
   AaveLoan,
   BaseDefiBalance,
-  Collateral,
   DefiBalance,
   DefiLendingHistory,
-  DefiLoan,
-  DSRBalances,
-  DSRHistory,
-  LoanSummary,
-  MakerDAOVaultDetails,
-  MakerDAOVaultModel
+  LoanSummary
 } from '@/store/defi/types';
 import { balanceUsdValueSum } from '@/store/defi/utils';
 import { useYearnStore } from '@/store/defi/yearn';
-import { getStatus, isLoading, setStatus } from '@/store/utils';
+import { getStatus, setStatus } from '@/store/status';
+import { isLoading } from '@/store/utils';
 import { Writeable } from '@/types';
+import { Collateral, DefiLoan } from '@/types/defi';
+import { CompoundBalances, CompoundLoan } from '@/types/defi/compound';
+import {
+  DSRBalances,
+  DSRHistory,
+  MakerDAOVaultDetails,
+  MakerDAOVaultModel
+} from '@/types/defi/maker';
+import { YearnVaultsHistory } from '@/types/defi/yearn';
+import { Section, Status } from '@/types/status';
 import { assert } from '@/utils/assertions';
-import { Zero } from '@/utils/bignumbers';
+import { Zero, zeroBalance } from '@/utils/bignumbers';
 import { uniqueStrings } from '@/utils/data';
 
 const isLendingEvent = (value: AaveHistoryEvents): value is AaveEvent => {
@@ -55,8 +56,8 @@ const isLendingEvent = (value: AaveHistoryEvents): value is AaveEvent => {
 export const useDefiSupportedProtocolsStore = defineStore(
   'defi/supportedProtocols',
   () => {
-    const { getAssetIdentifierForSymbol, assetInfo } = useAssetInfoRetrieval();
-    const premium = getPremium();
+    const { assetInfo } = useAssetInfoRetrieval();
+    const premium = usePremium();
 
     const liquityStore = useLiquityStore();
     const yearnStore = useYearnStore();
@@ -99,7 +100,7 @@ export const useDefiSupportedProtocolsStore = defineStore(
                 eventType: movement.movementType,
                 protocol: DefiProtocol.MAKERDAO_DSR,
                 address,
-                asset: getAssetIdentifierForSymbol('DAI'),
+                asset: assetSymbolToIdentifierMap.DAI,
                 value: movement.value,
                 blockNumber: movement.blockNumber,
                 timestamp: movement.timestamp,
@@ -395,7 +396,13 @@ export const useDefiSupportedProtocolsStore = defineStore(
             details => details.identifier.toString().toLocaleLowerCase() === id
           );
 
-          return details ? { ...vault, ...details, asset: 'DAI' } : vault;
+          return details
+            ? {
+                ...vault,
+                ...details,
+                asset: assetSymbolToIdentifierMap.DAI
+              }
+            : vault;
         }
 
         if (loan.protocol === DefiProtocol.AAVE) {
@@ -407,7 +414,7 @@ export const useDefiSupportedProtocolsStore = defineStore(
           let selectedLoan = {
             stableApr: '-',
             variableApr: '-',
-            balance: { amount: Zero, usdValue: Zero }
+            balance: zeroBalance()
           };
 
           let lending: AaveLending = {};
@@ -499,7 +506,7 @@ export const useDefiSupportedProtocolsStore = defineStore(
           const asset = loan.asset ?? '';
 
           let apy: string = '0%';
-          let debt: Balance = { amount: Zero, usdValue: Zero };
+          let debt: Balance = zeroBalance();
           let collateral: Collateral<string>[] = [];
 
           const compBalances = get(compoundBalances) as CompoundBalances;
@@ -644,7 +651,7 @@ export const useDefiSupportedProtocolsStore = defineStore(
             balances.push({
               address,
               protocol: DefiProtocol.MAKERDAO_DSR,
-              asset: getAssetIdentifierForSymbol('DAI'),
+              asset: assetSymbolToIdentifierMap.DAI,
               balance: { ...balance },
               effectiveInterestRate: `${format}%`
             });

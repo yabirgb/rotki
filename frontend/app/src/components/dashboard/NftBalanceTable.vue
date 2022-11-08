@@ -1,7 +1,12 @@
 <template>
   <dashboard-expandable-table>
     <template #title>
-      {{ $t('nft_balance_table.title') }}
+      <refresh-button
+        :loading="loading"
+        :tooltip="tc('nft_balance_table.refresh')"
+        @refresh="refresh"
+      />
+      {{ tc('nft_balance_table.title') }}
       <v-btn :to="nonFungibleRoute" icon class="ml-2">
         <v-icon>mdi-chevron-right</v-icon>
       </v-btn>
@@ -15,14 +20,14 @@
       >
         <template #activator="{ on }">
           <menu-tooltip-button
-            :tooltip="$t('dashboard_asset_table.select_visible_columns')"
+            :tooltip="tc('dashboard_asset_table.select_visible_columns')"
             class-name="ml-4 nft_balance_table__column-filter__button"
             :on-menu="on"
           >
             <v-icon>mdi-dots-vertical</v-icon>
           </menu-tooltip-button>
         </template>
-        <visible-columns-selector group="NFT" />
+        <visible-columns-selector :group="group" />
       </v-menu>
     </template>
     <template #shortDetails>
@@ -43,7 +48,7 @@
       </template>
       <template #item.priceInAsset="{ item }">
         <amount-display
-          v-if="item.priceAsset !== currency"
+          v-if="item.priceAsset !== currencySymbol"
           :value="item.priceInAsset"
           :asset="item.priceAsset"
         />
@@ -51,6 +56,8 @@
       </template>
       <template #item.usdPrice="{ item }">
         <amount-display
+          :price-asset="item.priceAsset"
+          :amount="item.priceInAsset"
           :value="item.usdPrice"
           show-currency="symbol"
           fiat-currency="USD"
@@ -65,7 +72,7 @@
       <template #body.append="{ isMobile }">
         <row-append
           label-colspan="2"
-          :label="$t('common.total')"
+          :label="tc('common.total')"
           :right-patch-colspan="tableHeaders.length - 3"
           :is-mobile="isMobile"
         >
@@ -80,166 +87,113 @@
   </dashboard-expandable-table>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import {
-  computed,
-  defineAsyncComponent,
-  defineComponent,
-  Ref
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import { DataTableHeader } from 'vuetify';
-import { setupGeneralBalances } from '@/composables/balances';
-import { setupStatusChecking } from '@/composables/common';
-import i18n from '@/i18n';
+import DashboardExpandableTable from '@/components/dashboard/DashboardExpandableTable.vue';
+import VisibleColumnsSelector from '@/components/dashboard/VisibleColumnsSelector.vue';
+import NftDetails from '@/components/helper/NftDetails.vue';
+import RefreshButton from '@/components/helper/RefreshButton.vue';
+import RowAppend from '@/components/helper/RowAppend.vue';
+import { useSectionLoading } from '@/composables/common';
 import { Routes } from '@/router/routes';
-import { BalanceActions } from '@/store/balances/action-types';
-import { Section } from '@/store/const';
+import { useNonFungibleBalancesStore } from '@/store/balances/non-fungible';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useStatisticsStore } from '@/store/statistics';
-import { useStore } from '@/store/utils';
-import {
-  DashboardTablesVisibleColumns,
-  DashboardTableType
-} from '@/types/frontend-settings';
+import { DashboardTableType } from '@/types/frontend-settings';
+import { Section } from '@/types/status';
 import { TableColumn } from '@/types/table-column';
 import { calculatePercentage } from '@/utils/calculation';
 
-const tableHeaders = (
-  symbol: Ref<string>,
-  dashboardTablesVisibleColumns: Ref<DashboardTablesVisibleColumns>
-) => {
-  return computed<DataTableHeader[]>(() => {
-    const visibleColumns = get(dashboardTablesVisibleColumns)[
-      DashboardTableType.NFT
-    ];
+const nonFungibleRoute = Routes.ACCOUNTS_BALANCES_NON_FUNGIBLE;
 
-    const headers: DataTableHeader[] = [
-      {
-        text: i18n.t('common.name').toString(),
-        value: 'name',
-        cellClass: 'text-no-wrap'
-      },
-      {
-        text: i18n.t('nft_balance_table.column.price_in_asset').toString(),
-        value: 'priceInAsset',
-        align: 'end',
-        width: '75%',
-        class: 'text-no-wrap'
-      },
-      {
-        text: i18n
-          .t('common.price_in_symbol', {
-            symbol: get(symbol)
-          })
-          .toString(),
-        value: 'usdPrice',
-        align: 'end',
-        class: 'text-no-wrap'
-      }
-    ];
+const statistics = useStatisticsStore();
+const { totalNetWorthUsd } = storeToRefs(statistics);
+const balancesStore = useNonFungibleBalancesStore();
+const { nonFungibleBalances } = storeToRefs(balancesStore);
+const { nonFungibleTotalValue, fetchNonFungibleBalances } = balancesStore;
+const { isSectionRefreshing } = useSectionLoading();
 
-    if (visibleColumns.includes(TableColumn.PERCENTAGE_OF_TOTAL_NET_VALUE)) {
-      headers.push({
-        text: i18n.t('nft_balance_table.column.percentage').toString(),
-        value: 'percentageOfTotalNetValue',
-        align: 'end',
-        class: 'text-no-wrap',
-        sortable: false
-      });
+const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const total = nonFungibleTotalValue();
+const { tc } = useI18n();
+
+const group = DashboardTableType.NFT;
+const loading = isSectionRefreshing(Section.NON_FUNGIBLE_BALANCES);
+
+const tableHeaders = computed<DataTableHeader[]>(() => {
+  const visibleColumns = get(dashboardTablesVisibleColumns)[group];
+
+  const headers: DataTableHeader[] = [
+    {
+      text: tc('common.name'),
+      value: 'name',
+      cellClass: 'text-no-wrap'
+    },
+    {
+      text: tc('nft_balance_table.column.price_in_asset'),
+      value: 'priceInAsset',
+      align: 'end',
+      width: '75%',
+      class: 'text-no-wrap'
+    },
+    {
+      text: tc('common.price_in_symbol', 0, {
+        symbol: get(currencySymbol)
+      }),
+      value: 'usdPrice',
+      align: 'end',
+      class: 'text-no-wrap'
     }
+  ];
 
-    if (
-      visibleColumns.includes(TableColumn.PERCENTAGE_OF_TOTAL_CURRENT_GROUP)
-    ) {
-      headers.push({
-        text: i18n
-          .t(
-            'dashboard_asset_table.headers.percentage_of_total_current_group',
-            {
-              group: 'NFT'
-            }
-          )
-          .toString(),
-        value: 'percentageOfTotalCurrentGroup',
-        align: 'end',
-        class: 'text-no-wrap',
-        sortable: false
-      });
-    }
+  if (visibleColumns.includes(TableColumn.PERCENTAGE_OF_TOTAL_NET_VALUE)) {
+    headers.push({
+      text: tc('nft_balance_table.column.percentage'),
+      value: 'percentageOfTotalNetValue',
+      align: 'end',
+      class: 'text-no-wrap',
+      sortable: false
+    });
+  }
 
-    return headers;
-  });
+  if (visibleColumns.includes(TableColumn.PERCENTAGE_OF_TOTAL_CURRENT_GROUP)) {
+    headers.push({
+      text: tc(
+        'dashboard_asset_table.headers.percentage_of_total_current_group',
+        0,
+        {
+          group
+        }
+      ),
+      value: 'percentageOfTotalCurrentGroup',
+      align: 'end',
+      class: 'text-no-wrap',
+      sortable: false
+    });
+  }
+
+  return headers;
+});
+
+const percentageOfTotalNetValue = (value: BigNumber) => {
+  return calculatePercentage(value, get(totalNetWorthUsd) as BigNumber);
 };
 
-export default defineComponent({
-  name: 'NftBalanceTable',
-  components: {
-    NftDetails: defineAsyncComponent(
-      () => import('@/components/helper/NftDetails.vue')
-    ),
-    RowAppend: defineAsyncComponent(
-      () => import('@/components/helper/RowAppend.vue')
-    ),
-    VisibleColumnsSelector: defineAsyncComponent(
-      () => import('@/components/dashboard/VisibleColumnsSelector.vue')
-    ),
-    MenuTooltipButton: defineAsyncComponent(
-      () => import('@/components/helper/MenuTooltipButton.vue')
-    ),
-    DashboardExpandableTable: defineAsyncComponent(
-      () => import('@/components/dashboard/DashboardExpandableTable.vue')
-    )
-  },
-  setup() {
-    const store = useStore();
-    const statistics = useStatisticsStore();
-    const { totalNetWorthUsd } = storeToRefs(statistics);
-    const { nfBalances: balances, nfTotalValue } = setupGeneralBalances();
+const percentageOfCurrentGroup = (value: BigNumber) => {
+  return calculatePercentage(value, get(total));
+};
 
-    const { shouldShowLoadingScreen } = setupStatusChecking();
+const refresh = async () => {
+  return await fetchNonFungibleBalances({ ignoreCache: true });
+};
 
-    const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const { dashboardTablesVisibleColumns } = storeToRefs(
+  useFrontendSettingsStore()
+);
 
-    const total = nfTotalValue();
-
-    const percentageOfTotalNetValue = (value: BigNumber) => {
-      return calculatePercentage(value, get(totalNetWorthUsd) as BigNumber);
-    };
-
-    const percentageOfCurrentGroup = (value: BigNumber) => {
-      return calculatePercentage(value, get(total));
-    };
-
-    const refresh = async () => {
-      return await store.dispatch(
-        `balances/${BalanceActions.FETCH_NF_BALANCES}`,
-        true
-      );
-    };
-
-    const { dashboardTablesVisibleColumns } = storeToRefs(
-      useFrontendSettingsStore()
-    );
-
-    const filteredBalances = computed(() => {
-      return get(balances).filter(item => !item.isLp);
-    });
-
-    return {
-      filteredBalances,
-      tableHeaders: tableHeaders(currencySymbol, dashboardTablesVisibleColumns),
-      currency: currencySymbol,
-      refresh,
-      total,
-      loading: shouldShowLoadingScreen(Section.NON_FUNGIBLE_BALANCES),
-      nonFungibleRoute: Routes.ACCOUNTS_BALANCES_NON_FUNGIBLE.route,
-      percentageOfTotalNetValue,
-      percentageOfCurrentGroup
-    };
-  }
+const filteredBalances = computed(() => {
+  return get(nonFungibleBalances).filter(item => !item.isLp);
 });
 </script>

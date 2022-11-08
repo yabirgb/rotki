@@ -31,7 +31,7 @@ from requests.adapters import Response
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import (
     BITFINEX_EXCHANGE_TEST_ASSETS,
     BITFINEX_TO_WORLD,
@@ -465,7 +465,7 @@ class Bitfinex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except (UnknownAsset, UnsupportedAsset) as e:
                 msg = (
                     f'Found {self.name} {case} with unknown/unsupported '
-                    f'asset {e.asset_name}'
+                    f'asset {e.identifier}'
                 )
                 log.warning(f'{msg}. raw_data={raw_result}')
                 self.msg_aggregator.add_warning(f'{msg}. Ignoring {case}')
@@ -891,7 +891,7 @@ class Bitfinex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         # Wallet items indices
         currency_index = 1
         balance_index = 2
-        assets_balance: DefaultDict[Asset, Balance] = defaultdict(Balance)
+        assets_balance: DefaultDict[AssetWithOracles, Balance] = defaultdict(Balance)
         for wallet in response_list:
             if len(wallet) < API_WALLET_MIN_RESULT_LENGTH:
                 log.error(
@@ -916,7 +916,7 @@ class Bitfinex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except (UnknownAsset, UnsupportedAsset) as e:
                 asset_tag = 'unknown' if isinstance(e, UnknownAsset) else 'unsupported'
                 self.msg_aggregator.add_warning(
-                    f'Found {asset_tag} {self.name} asset {e.asset_name} due to: {str(e)}. '
+                    f'Found {asset_tag} {self.name} asset {e.identifier} due to: {str(e)}. '
                     f'Ignoring its balance query.',
                 )
                 continue

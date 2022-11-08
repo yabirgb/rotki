@@ -6,7 +6,7 @@
     </td>
     <slot name="custom-columns" />
     <td
-      v-if="$slots.default"
+      v-if="slots.default"
       class="text-end"
       :class="{ 'd-flex align-center': isMobile }"
     >
@@ -18,40 +18,38 @@
     />
   </tr>
 </template>
-<script lang="ts">
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
+<script setup lang="ts">
+import { PropType } from 'vue';
 
-export default defineComponent({
-  name: 'RowAppend',
-  props: {
-    className: { required: false, type: [String, Object], default: '' },
-    label: { required: false, type: String, default: '' },
-    labelColspan: { required: false, type: [Number, String], default: 1 },
-    leftPatchColspan: { required: false, type: [Number, String], default: 0 },
-    isMobile: { required: true, type: Boolean },
-    rightPatchColspan: { required: false, type: [Number, String], default: 0 }
+const props = defineProps({
+  className: {
+    required: false,
+    type: [String, Object] as PropType<string | Record<string, any>>,
+    default: ''
   },
-  setup(props) {
-    const { className, isMobile } = toRefs(props);
+  label: { required: false, type: String, default: '' },
+  labelColspan: { required: false, type: [Number, String], default: 1 },
+  leftPatchColspan: { required: false, type: [Number, String], default: 0 },
+  isMobile: { required: true, type: Boolean },
+  rightPatchColspan: { required: false, type: [Number, String], default: 0 }
+});
 
-    const formattedClassName = computed(() => {
-      const propClassName =
-        typeof className.value === 'object'
-          ? className.value
-          : {
-              [className.value]: true
-            };
+const { className, isMobile } = toRefs(props);
 
-      return {
-        'd-flex justify-space-between': isMobile.value,
-        ...propClassName
-      };
-    });
+const slots = useSlots();
 
-    return {
-      formattedClassName
-    };
-  }
+const formattedClassName = computed(() => {
+  const propClassName =
+    typeof className.value === 'object'
+      ? className.value
+      : {
+          [className.value]: true
+        };
+
+  return {
+    'd-flex justify-space-between': isMobile.value,
+    ...propClassName
+  };
 });
 </script>
 <style scoped lang="scss">

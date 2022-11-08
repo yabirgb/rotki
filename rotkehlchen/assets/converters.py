@@ -1,33 +1,32 @@
 from typing import Callable, Dict, Optional
 
-from rotkehlchen.assets.asset import (
-    WORLD_TO_BINANCE,
-    WORLD_TO_BITFINEX,
-    WORLD_TO_BITPANDA,
-    WORLD_TO_BITSTAMP,
-    WORLD_TO_BITTREX,
-    WORLD_TO_COINBASE,
-    WORLD_TO_COINBASE_PRO,
-    WORLD_TO_CRYPTOCOM,
-    WORLD_TO_FTX,
-    WORLD_TO_GEMINI,
-    WORLD_TO_ICONOMI,
-    WORLD_TO_KRAKEN,
-    WORLD_TO_KUCOIN,
-    WORLD_TO_NEXO,
-    WORLD_TO_POLONIEX,
-    WORLD_TO_UPHOLD,
-    Asset,
-)
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
+from rotkehlchen.assets.exchanges_mappings.binance import WORLD_TO_BINANCE
+from rotkehlchen.assets.exchanges_mappings.bitfinex import WORLD_TO_BITFINEX
+from rotkehlchen.assets.exchanges_mappings.bitpanda import WORLD_TO_BITPANDA
+from rotkehlchen.assets.exchanges_mappings.bitstamp import WORLD_TO_BITSTAMP
+from rotkehlchen.assets.exchanges_mappings.bittrex import WORLD_TO_BITTREX
+from rotkehlchen.assets.exchanges_mappings.blockfi import WORLD_TO_BLOCKFI
+from rotkehlchen.assets.exchanges_mappings.coinbase import WORLD_TO_COINBASE
+from rotkehlchen.assets.exchanges_mappings.coinbase_pro import WORLD_TO_COINBASE_PRO
+from rotkehlchen.assets.exchanges_mappings.cryptocom import WORLD_TO_CRYPTOCOM
+from rotkehlchen.assets.exchanges_mappings.ftx import WORLD_TO_FTX
+from rotkehlchen.assets.exchanges_mappings.gemeni import WORLD_TO_GEMINI
+from rotkehlchen.assets.exchanges_mappings.iconomi import WORLD_TO_ICONOMI
+from rotkehlchen.assets.exchanges_mappings.kraken import WORLD_TO_KRAKEN
+from rotkehlchen.assets.exchanges_mappings.kucoin import WORLD_TO_KUCOIN
+from rotkehlchen.assets.exchanges_mappings.nexo import WORLD_TO_NEXO
+from rotkehlchen.assets.exchanges_mappings.poloniex import WORLD_TO_POLONIEX
+from rotkehlchen.assets.exchanges_mappings.uphold import WORLD_TO_UPHOLD
 from rotkehlchen.assets.utils import symbol_to_asset_or_token
 from rotkehlchen.constants.assets import A_DAI, A_SAI
 from rotkehlchen.constants.resolver import strethaddress_to_identifier
-from rotkehlchen.db.upgrades.v7_v8 import COINBASE_DAI_UPGRADE_END_TS
 from rotkehlchen.errors.asset import UnsupportedAsset
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.types import Location, Timestamp
 from rotkehlchen.utils.misc import ts_now
 
+COINBASE_DAI_UPGRADE_END_TS = 1575244800  # December 2
 UNSUPPORTED_POLONIEX_ASSETS = (
     'ACH1',  # neither in coingecko nor cryptocompare
     # This was a super shortlived coin.
@@ -351,6 +350,7 @@ UNSUPPORTED_POLONIEX_ASSETS = (
     'SUNX',  # neither in coingecko nor cryptocompare
     'SQUID',  # neither in coingecko nor cryptocompare
     'XCNOLD',  # No info in the exchange about this asset
+    'USDTEARN1',  # neither in coingecko nor cryptocompare
 )
 
 UNSUPPORTED_BITTREX_ASSETS = (
@@ -511,6 +511,11 @@ UNSUPPORTED_BITTREX_ASSETS = (
     'GIGX',
     'GPX',
     'IQO',
+    'CAIZ',
+    'SIRS',
+    'VOLTINU',
+    'TZBTC',
+    'DST',  # Daystarter but no cc/cryptocompare data
 )
 
 
@@ -616,6 +621,8 @@ UNSUPPORTED_FTX_ASSETS = (
     'KBTT',  # no cryptocompare/coingecko data
     'KSOS',  # no cryptocompare/coingecko data
     'GALFAN',  # no cc/coingecko data
+    'APEAMC',  # no cc/coingecko data
+    'WAXL',  # no cc/coingecko data
 )
 
 # https://api.kucoin.com/api/v1/currencies
@@ -728,6 +735,10 @@ UNSUPPORTED_KUCOIN_ASSETS = (
     'RBP',  # no cryptocompare/coingecko data
     'IDLENFT',  # no cryptocompare/coingecko data
     'RBS',  # no cryptocompare/coingecko data
+    'HIMAYC',  # no cryptocompare/coingecko data
+    'PRMX',  # no cryptocompare/coingecko data
+    'ASTROBOY',  # no cc/coingecko data
+    'HIOD',  # no cc/coingecko data
 )
 
 # https://api.iconomi.com/v1/assets marks delisted assets
@@ -780,6 +791,7 @@ GEMINI_TO_WORLD = {v: k for k, v in WORLD_TO_GEMINI.items()}
 NEXO_TO_WORLD = {v: k for k, v in WORLD_TO_NEXO.items()}
 BITPANDA_TO_WORLD = {v: k for k, v in WORLD_TO_BITPANDA.items()}
 CRYPTOCOM_TO_WORLD = {v: k for k, v in WORLD_TO_CRYPTOCOM.items()}
+BLOCKFI_TO_WORLD = {v: k for k, v in WORLD_TO_BLOCKFI.items()}
 
 RENAMED_BINANCE_ASSETS = {
     # The old BCC in binance forked into BCHABC and BCHSV
@@ -794,7 +806,7 @@ RENAMED_BINANCE_ASSETS = {
 }
 
 
-def asset_from_kraken(kraken_name: str) -> Asset:
+def asset_from_kraken(kraken_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnknownAsset
@@ -827,7 +839,7 @@ def asset_from_kraken(kraken_name: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_poloniex(poloniex_name: str) -> Asset:
+def asset_from_poloniex(poloniex_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -847,7 +859,7 @@ def asset_from_bitfinex(
         bitfinex_name: str,
         currency_map: Dict[str, str],
         is_currency_map_updated: bool = True,
-) -> Asset:
+) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -869,7 +881,7 @@ def asset_from_bitfinex(
     return symbol_to_asset_or_token(symbol)
 
 
-def asset_from_bitstamp(bitstamp_name: str) -> Asset:
+def asset_from_bitstamp(bitstamp_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -878,11 +890,12 @@ def asset_from_bitstamp(bitstamp_name: str) -> Asset:
     if not isinstance(bitstamp_name, str):
         raise DeserializationError(f'Got non-string type {type(bitstamp_name)} for bitstamp asset')
 
-    name = BITSTAMP_TO_WORLD.get(bitstamp_name, bitstamp_name)
+    # bitstamp assets are read as lowercase from the exchange
+    name = BITSTAMP_TO_WORLD.get(bitstamp_name.upper(), bitstamp_name)
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_bittrex(bittrex_name: str) -> Asset:
+def asset_from_bittrex(bittrex_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -898,7 +911,7 @@ def asset_from_bittrex(bittrex_name: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_coinbasepro(coinbase_pro_name: str) -> Asset:
+def asset_from_coinbasepro(coinbase_pro_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -913,7 +926,7 @@ def asset_from_coinbasepro(coinbase_pro_name: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_binance(binance_name: str) -> Asset:
+def asset_from_binance(binance_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -926,13 +939,13 @@ def asset_from_binance(binance_name: str) -> Asset:
         raise UnsupportedAsset(binance_name)
 
     if binance_name in RENAMED_BINANCE_ASSETS:
-        return Asset(RENAMED_BINANCE_ASSETS[binance_name])
+        return Asset(RENAMED_BINANCE_ASSETS[binance_name]).resolve_to_asset_with_oracles()
 
     name = BINANCE_TO_WORLD.get(binance_name, binance_name)
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_coinbase(cb_name: str, time: Optional[Timestamp] = None) -> Asset:
+def asset_from_coinbase(cb_name: str, time: Optional[Timestamp] = None) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnknownAsset
@@ -941,15 +954,15 @@ def asset_from_coinbase(cb_name: str, time: Optional[Timestamp] = None) -> Asset
     # wallet for the new DAI during the transition period. We should be able to handle this
     # https://support.coinbase.com/customer/portal/articles/2982947
     if cb_name == 'MCDAI':
-        return A_DAI
+        return A_DAI.resolve_to_asset_with_oracles()
     if cb_name == 'DAI':
         # If it's dai and it's queried from the exchange before the end of the upgrade
         if not time:
             time = ts_now()
         if time < COINBASE_DAI_UPGRADE_END_TS:
             # Then it should be the single collateral version
-            return A_SAI
-        return A_DAI
+            return A_SAI.resolve_to_asset_with_oracles()
+        return A_DAI.resolve_to_asset_with_oracles()
 
     if not isinstance(cb_name, str):
         raise DeserializationError(f'Got non-string type {type(cb_name)} for coinbase asset')
@@ -958,7 +971,7 @@ def asset_from_coinbase(cb_name: str, time: Optional[Timestamp] = None) -> Asset
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_ftx(ftx_name: str) -> Asset:
+def asset_from_ftx(ftx_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -977,7 +990,7 @@ def asset_from_ftx(ftx_name: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_kucoin(kucoin_name: str) -> Asset:
+def asset_from_kucoin(kucoin_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -993,7 +1006,7 @@ def asset_from_kucoin(kucoin_name: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_gemini(symbol: str) -> Asset:
+def asset_from_gemini(symbol: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1009,7 +1022,19 @@ def asset_from_gemini(symbol: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_iconomi(symbol: str) -> Asset:
+def asset_from_blockfi(symbol: str) -> AssetWithOracles:
+    """May raise:
+    - DeserializationError
+    - UnknownAsset
+    """
+    if not isinstance(symbol, str):
+        raise DeserializationError(f'Got non-string type {type(symbol)} for blockfi asset')
+
+    name = BLOCKFI_TO_WORLD.get(symbol, symbol)
+    return symbol_to_asset_or_token(name)
+
+
+def asset_from_iconomi(symbol: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1024,7 +1049,7 @@ def asset_from_iconomi(symbol: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_uphold(symbol: str) -> Asset:
+def asset_from_uphold(symbol: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1037,7 +1062,7 @@ def asset_from_uphold(symbol: str) -> Asset:
     return symbol_to_asset_or_token(name)
 
 
-def asset_from_nexo(nexo_name: str) -> Asset:
+def asset_from_nexo(nexo_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1050,7 +1075,7 @@ def asset_from_nexo(nexo_name: str) -> Asset:
     return symbol_to_asset_or_token(our_name)
 
 
-def asset_from_bitpanda(bitpanda_name: str) -> Asset:
+def asset_from_bitpanda(bitpanda_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1063,7 +1088,7 @@ def asset_from_bitpanda(bitpanda_name: str) -> Asset:
     return symbol_to_asset_or_token(our_name)
 
 
-def asset_from_cryptocom(cryptocom_name: str) -> Asset:
+def asset_from_cryptocom(cryptocom_name: str) -> AssetWithOracles:
     """May raise:
     - DeserializationError
     - UnsupportedAsset
@@ -1078,13 +1103,12 @@ def asset_from_cryptocom(cryptocom_name: str) -> Asset:
     return symbol_to_asset_or_token(symbol)
 
 
-LOCATION_TO_ASSET_MAPPING: Dict[Location, Callable[[str], Asset]] = {
+LOCATION_TO_ASSET_MAPPING: Dict[Location, Callable[[str], AssetWithOracles]] = {
     Location.BINANCE: asset_from_binance,
     Location.CRYPTOCOM: asset_from_cryptocom,
     Location.BITPANDA: asset_from_bitpanda,
     Location.COINBASEPRO: asset_from_coinbasepro,
     Location.KRAKEN: asset_from_kraken,
-    Location.BITSTAMP: asset_from_bitstamp,
     Location.FTX: asset_from_ftx,
     Location.BITSTAMP: asset_from_bitstamp,
     Location.GEMINI: asset_from_gemini,

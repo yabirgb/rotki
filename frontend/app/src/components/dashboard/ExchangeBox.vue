@@ -25,33 +25,18 @@
   </v-list-item>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import {
-  defineAsyncComponent,
-  defineComponent,
-  PropType
-} from '@vue/composition-api';
-import { exchangeName } from '@/components/history/consts';
-import { TradeLocation } from '@/services/history/types';
+import { PropType } from 'vue';
+import { TradeLocation } from '@/types/history/trade-location';
+import { useTradeLocations } from '@/types/trades';
 
-export default defineComponent({
-  name: 'ExchangeBox',
-  components: {
-    AmountDisplay: defineAsyncComponent(
-      () => import('@/components/display/AmountDisplay.vue')
-    )
-  },
-  props: {
-    location: { required: true, type: String as PropType<TradeLocation> },
-    amount: { required: true, type: BigNumber }
-  },
-  setup() {
-    return {
-      exchangeName
-    };
-  }
+defineProps({
+  location: { required: true, type: String as PropType<TradeLocation> },
+  amount: { required: true, type: BigNumber }
 });
+
+const { exchangeName } = useTradeLocations();
 </script>
 <style scoped lang="scss">
 .exchange-box {

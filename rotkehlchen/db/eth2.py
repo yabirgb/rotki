@@ -16,7 +16,7 @@ from rotkehlchen.db.utils import form_query_to_filter_timestamps
 from rotkehlchen.errors.misc import InputError
 from rotkehlchen.fval import FVal
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress, Timestamp, Tuple, Union
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp, Tuple, Union
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler
@@ -36,6 +36,8 @@ class DBEth2():
     def get_validators_to_query_for_stats(self, up_to_ts: Timestamp) -> List[Tuple[int, Timestamp]]:  # noqa: E501
         """Gets a list of validators that need to be queried for new daily stats
 
+        Validators need to be queried if last time they are queried was more than 2 days.
+
         Returns a list of tuples. First entry is validator index and second entry is
         last queried timestamp for daily stats of that validator.
         """
@@ -50,7 +52,10 @@ class DBEth2():
         cursor = self.db.conn.cursor()
         result = cursor.execute(
             query_str,
-            (up_to_ts, DAY_IN_SECONDS),
+            # 2 days since stats page only appears once day is over. So if today is
+            # 27/10 19:46 the last full day it has is 26/10 00:00, which is more than a day
+            # but less than 2
+            (up_to_ts, DAY_IN_SECONDS * 2 + 1),
         )
         return result.fetchall()
 
@@ -87,7 +92,7 @@ class DBEth2():
             cursor: 'DBCursor',
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-            address: Optional[ChecksumEthAddress] = None,
+            address: Optional[ChecksumEvmAddress] = None,
     ) -> List[Eth2Deposit]:
         """Returns a list of Eth2Deposit filtered by time and address"""
         query = (

@@ -1,8 +1,9 @@
 import warnings as test_warnings
 from unittest.mock import patch
 
-from rotkehlchen.assets.asset import WORLD_TO_ICONOMI, Asset
+from rotkehlchen.assets.asset import Asset
 from rotkehlchen.assets.converters import UNSUPPORTED_ICONOMI_ASSETS, asset_from_iconomi
+from rotkehlchen.assets.exchanges_mappings.iconomi import WORLD_TO_ICONOMI
 from rotkehlchen.constants.assets import A_ETH, A_EUR, A_REP
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.exchanges.iconomi import Iconomi
@@ -114,6 +115,6 @@ def test_iconomi_assets_are_known(
             _ = asset_from_iconomi(ticker)
         except UnknownAsset as e:
             test_warnings.warn(UserWarning(
-                f'Found unknown asset {e.asset_name} in ICONOMI. '
+                f'Found unknown asset {e.identifier} in ICONOMI. '
                 f'Support for it has to be added',
             ))

@@ -28,7 +28,7 @@ from eth_utils.address import to_checksum_address
 
 from rotkehlchen.errors.serialization import ConversionError, DeserializationError
 from rotkehlchen.fval import FVal
-from rotkehlchen.types import ChecksumEthAddress, Timestamp, TimestampMS
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp, TimestampMS
 
 log = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ def hexstr_to_int(value: str) -> int:
     return int_value
 
 
-def hex_or_bytes_to_int(value: Union[bytes, str]) -> int:
+def hex_or_bytes_to_int(value: Union[bytes, str], signed: bool = False) -> int:
     """Turns a bytes/HexBytes or a hexstring into an int
 
     May raise:
@@ -266,7 +266,7 @@ def hex_or_bytes_to_int(value: Union[bytes, str]) -> int:
     type is given.
     """
     if isinstance(value, bytes):
-        int_value = int.from_bytes(value, byteorder='big', signed=False)
+        int_value = int.from_bytes(value, byteorder='big', signed=signed)
     elif isinstance(value, str):
         int_value = hexstr_to_int(value)
     else:
@@ -285,7 +285,7 @@ def hex_or_bytes_to_str(value: Union[bytes, str]) -> str:
     return hexstr
 
 
-def hex_or_bytes_to_address(value: Union[bytes, str]) -> ChecksumEthAddress:
+def hex_or_bytes_to_address(value: Union[bytes, str]) -> ChecksumEvmAddress:
     """Turns a 32bit bytes/HexBytes or a hexstring into an address
 
     May raise:
@@ -297,14 +297,14 @@ def hex_or_bytes_to_address(value: Union[bytes, str]) -> ChecksumEthAddress:
     except ConversionError as e:
         raise DeserializationError(f'Could not turn {value!r} to an ethereum address') from e
     try:
-        return ChecksumEthAddress(to_checksum_address('0x' + hexstr[24:]))
+        return ChecksumEvmAddress(to_checksum_address('0x' + hexstr[24:]))
     except ValueError as e:
         raise DeserializationError(
             f'Invalid ethereum address: {hexstr[24:]}',
         ) from e
 
 
-def address_to_bytes32(address: ChecksumEthAddress) -> str:
+def address_to_bytes32(address: ChecksumEvmAddress) -> str:
     return '0x' + 24 * '0' + address.lower()[2:]
 
 
@@ -375,12 +375,13 @@ def is_valid_ethereum_tx_hash(val: str) -> bool:
 
 def create_order_by_rules_list(
         data: Dict[str, Any],
-        timestamp_field: str = 'timestamp',
+        default_order_by_field: str = 'timestamp',
+        is_ascending_by_default: bool = False,
 ) -> List[Tuple[str, bool]]:
     """Create a list of attributes and sorting order taking values from DBOrderBySchema
-    to be used by the filters that allow sorting. By default the attribute used for sorting is
+    to be used by the filters that allow sorting. By default, the attribute used for sorting is
     timestamp and the ascending value for this field is False.
     """
-    order_by_attribute = data['order_by_attributes'] if data['order_by_attributes'] is not None else [timestamp_field]  # noqa: E501
-    ascending = data['ascending'] if data['ascending'] is not None else [False]
+    order_by_attribute = data['order_by_attributes'] if data['order_by_attributes'] is not None else [default_order_by_field]  # noqa: E501
+    ascending = data['ascending'] if data['ascending'] is not None else [is_ascending_by_default]
     return list(zip(order_by_attribute, ascending))

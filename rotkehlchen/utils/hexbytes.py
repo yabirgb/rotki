@@ -43,7 +43,10 @@ class HexBytes(bytes):
         2. Returns hex with prefix '0x' from :meth:`HexBytes.hex`
         3. The representation at console is in hex
     """
-    def __new__(cls: Type[bytes], val: Union[Web3HexBytes, bytearray, bytes, str]) -> 'HexBytes':
+    def __new__(
+            cls: Type[bytes],
+            val: Union[Web3HexBytes, bytearray, bytes, str],
+    ) -> 'HexBytes':
         bytesval = to_bytes(val)
         return cast(HexBytes, super().__new__(cls, bytesval))  # type: ignore  # https://github.com/python/typeshed/issues/2630  # noqa: E501
 
@@ -62,11 +65,11 @@ class HexBytes(bytes):
     def __getitem__(self, key: int) -> int:
         ...
 
-    @overload  # noqa: F811
+    @overload
     def __getitem__(self, key: slice) -> 'HexBytes':
         ...
 
-    def __getitem__(self, key: Union[int, slice]) -> Union[int, bytes, 'HexBytes']:  # noqa: F811
+    def __getitem__(self, key: Union[int, slice]) -> Union[int, bytes, 'HexBytes']:
         result = super().__getitem__(key)
         if hasattr(result, 'hex'):
             return type(self)(result)  # type: ignore  # cant be an int

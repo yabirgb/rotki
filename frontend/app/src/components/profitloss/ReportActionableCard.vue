@@ -18,7 +18,7 @@
           }"
         >
           {{
-            $t('profit_loss_report.actionable.issues_found', {
+            t('profit_loss_report.actionable.issues_found', {
               total: actionableItemsLength.total
             })
           }}
@@ -42,10 +42,10 @@
             </v-btn>
           </template>
           <span v-if="isPinned">
-            {{ $t('profit_loss_report.actionable.actions.unpin_section') }}
+            {{ t('profit_loss_report.actionable.actions.unpin_section') }}
           </span>
           <span v-else>
-            {{ $t('profit_loss_report.actionable.actions.pin_section') }}
+            {{ t('profit_loss_report.actionable.actions.pin_section') }}
           </span>
         </v-tooltip>
       </v-toolbar>
@@ -118,7 +118,7 @@
                           text
                           @click="step = step - 1"
                         >
-                          {{ $tc('common.actions.back') }}
+                          {{ tc('common.actions.back') }}
                         </v-btn>
                         <v-btn
                           v-if="step < stepperContents.length"
@@ -128,7 +128,7 @@
                           elevation="1"
                           @click="step = step + 1"
                         >
-                          {{ $tc('common.actions.next') }}
+                          {{ tc('common.actions.next') }}
                         </v-btn>
                         <template v-if="step === stepperContents.length">
                           <v-btn
@@ -139,7 +139,7 @@
                             :small="isPinned"
                             @click="setDialog(false)"
                           >
-                            {{ $tc('common.actions.close') }}
+                            {{ tc('common.actions.close') }}
                           </v-btn>
                           <v-btn
                             v-else-if="content.key !== 'missingAcquisitions'"
@@ -149,7 +149,7 @@
                             elevation="1"
                             @click="submitActionableItems(items)"
                           >
-                            {{ $tc('common.actions.finish') }}
+                            {{ tc('common.actions.finish') }}
                           </v-btn>
                         </template>
                       </div>
@@ -168,15 +168,13 @@
           <div v-if="filledMissingPrices === 0">
             <v-icon class="mr-2" color="red">mdi-alert</v-icon>
             {{
-              $tc(
-                'profit_loss_report.actionable.missing_prices.no_filled_prices'
-              )
+              t('profit_loss_report.actionable.missing_prices.no_filled_prices')
             }}
           </div>
           <div v-else-if="skippedMissingPrices">
             <v-icon class="mr-2" color="red">mdi-alert</v-icon>
             {{
-              $t(
+              t(
                 'profit_loss_report.actionable.missing_prices.total_skipped_prices',
                 {
                   total: skippedMissingPrices
@@ -187,7 +185,7 @@
           <div v-else>
             <v-icon class="mr-2" color="green">mdi-check</v-icon>
             {{
-              $tc(
+              t(
                 'profit_loss_report.actionable.missing_prices.all_prices_filled'
               )
             }}
@@ -196,15 +194,15 @@
         <div>
           <div v-if="filledMissingPrices === 0">
             {{
-              $tc(
+              tc(
                 'profit_loss_report.actionable.missing_prices.skipped_all_events_confirmation'
               )
             }}
           </div>
           <div v-else-if="skippedMissingPrices">
-            {{ $tc('profit_loss_report.actionable.missing_prices.if_sure') }}
+            {{ tc('profit_loss_report.actionable.missing_prices.if_sure') }}
             {{
-              $tc(
+              tc(
                 'profit_loss_report.actionable.missing_prices.regenerate_report_nudge'
               )
             }}
@@ -212,7 +210,7 @@
           <div v-else>
             {{
               toSentenceCase(
-                $tc(
+                tc(
                   'profit_loss_report.actionable.missing_prices.regenerate_report_nudge'
                 )
               )
@@ -222,225 +220,179 @@
         <template #buttons>
           <v-spacer />
           <v-btn text class="mr-2" @click="confirmationDialogOpen = false">
-            {{ $tc('common.actions.cancel') }}
+            {{ tc('common.actions.cancel') }}
           </v-btn>
           <v-btn
             v-if="filledMissingPrices"
             color="primary"
             @click="regenerateReport"
           >
-            {{ $tc('profit_loss_report.actionable.actions.regenerate_report') }}
+            {{ tc('profit_loss_report.actionable.actions.regenerate_report') }}
           </v-btn>
           <v-btn v-else color="primary" @click="ignoreIssues">
-            {{ $tc('common.actions.yes') }}
+            {{ tc('common.actions.yes') }}
           </v-btn>
         </template>
       </card>
     </v-dialog>
   </div>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { Nullable } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  ref,
-  toRefs
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+import { PropType } from 'vue';
 import ReportMissingAcquisitions from '@/components/profitloss/ReportMissingAcquisitions.vue';
-import ReportMissingPrices, {
-  EditableMissingPrice
-} from '@/components/profitloss/ReportMissingPrices.vue';
-import { useRouter } from '@/composables/common';
-import i18n from '@/i18n';
+import ReportMissingPrices from '@/components/profitloss/ReportMissingPrices.vue';
 import { Routes } from '@/router/routes';
 import { useReports } from '@/store/reports';
-import { useSessionStore } from '@/store/session';
 import { Pinned } from '@/store/session/types';
+import { useAreaVisibilityStore } from '@/store/session/visibility';
+import { EditableMissingPrice } from '@/types/prices';
 import { SelectedReport } from '@/types/reports';
 import { toSentenceCase } from '@/utils/text';
 
-export default defineComponent({
-  name: 'ReportActionableCard',
-  components: {
-    ReportMissingAcquisitions,
-    ReportMissingPrices
+const props = defineProps({
+  report: {
+    required: true,
+    type: Object as PropType<SelectedReport>
   },
-  props: {
-    report: {
-      required: true,
-      type: Object as PropType<SelectedReport>
-    },
-    isPinned: { required: false, type: Boolean, default: false }
-  },
-  emits: ['set-dialog'],
-  setup(props, { emit }) {
-    const { report, isPinned } = toRefs(props);
-    const router = useRouter();
-    const { pinned } = storeToRefs(useSessionStore());
-
-    const setDialog = (dialog: boolean) => {
-      emit('set-dialog', dialog);
-    };
-
-    const reportsStore = useReports();
-    const { actionableItems } = toRefs(reportsStore);
-
-    const actionableItemsLength = computed(() => {
-      let missingAcquisitionsLength: number = 0;
-      let missingPricesLength: number = 0;
-      let total: number = 0;
-
-      const items = get(actionableItems);
-
-      if (items) {
-        missingAcquisitionsLength = items.missingAcquisitions.length;
-        missingPricesLength = items.missingPrices.length;
-        total = missingAcquisitionsLength + missingPricesLength;
-      }
-
-      if (!missingAcquisitionsLength || !missingPricesLength) {
-        set(step, 1);
-      }
-
-      return {
-        missingAcquisitionsLength,
-        missingPricesLength,
-        total
-      };
-    });
-
-    const setPinned = (pin: Nullable<Pinned>) => {
-      set(pinned, pin);
-    };
-
-    const pinSection = () => {
-      const pinned: Pinned = {
-        name: 'report-actionable-card',
-        props: {
-          report: get(report),
-          isPinned: true
-        }
-      };
-
-      setPinned(pinned);
-      setDialog(false);
-    };
-
-    const step = ref<number>(1);
-
-    const stepperContents = computed(() => {
-      const contents = [];
-
-      const missingAcquisitionsLength = get(
-        actionableItemsLength
-      ).missingAcquisitionsLength;
-      if (missingAcquisitionsLength > 0) {
-        contents.push({
-          key: 'missingAcquisitions',
-          title: i18n
-            .t('profit_loss_report.actionable.missing_acquisitions.title', {
-              total: missingAcquisitionsLength
-            })
-            .toString(),
-          hint: i18n
-            .t('profit_loss_report.actionable.missing_acquisitions.hint')
-            .toString(),
-          selector: 'report-missing-acquisitions',
-          items: get(actionableItems).missingAcquisitions
-        });
-      }
-
-      const missingPricesLength = get(
-        actionableItemsLength
-      ).missingPricesLength;
-      if (missingPricesLength > 0) {
-        contents.push({
-          key: 'missingPrices',
-          title: i18n
-            .t('profit_loss_report.actionable.missing_prices.title', {
-              total: missingPricesLength
-            })
-            .toString(),
-          hint: i18n
-            .t('profit_loss_report.actionable.missing_prices.hint')
-            .toString(),
-          selector: 'report-missing-prices',
-          items: get(actionableItems).missingPrices
-        });
-      }
-
-      return contents;
-    });
-
-    const totalMissingPrices = ref<number>(0);
-    const filledMissingPrices = ref<number>(0);
-    const skippedMissingPrices = ref<number>(0);
-    const confirmationDialogOpen = ref<boolean>(false);
-
-    const submitActionableItems = (missingPrices: EditableMissingPrice[]) => {
-      const total = missingPrices.length;
-      const filled = missingPrices.filter(
-        (missingPrice: EditableMissingPrice) => {
-          return !!missingPrice.price;
-        }
-      ).length;
-      set(totalMissingPrices, total);
-      set(filledMissingPrices, filled);
-      set(skippedMissingPrices, total - filled);
-
-      set(confirmationDialogOpen, true);
-    };
-
-    const ignoreIssues = () => {
-      if (get(isPinned)) {
-        setPinned(null);
-      }
-      set(confirmationDialogOpen, false);
-      setDialog(false);
-    };
-
-    const regenerateReport = () => {
-      router.push({
-        path: Routes.PROFIT_LOSS_REPORTS.route,
-        query: {
-          regenerate: 'true',
-          start: get(report).start.toString(),
-          end: get(report).end.toString()
-        }
-      });
-    };
-
-    const close = () => {
-      if (get(isPinned)) {
-        setPinned(null);
-      } else {
-        setDialog(false);
-      }
-    };
-
-    return {
-      setDialog,
-      pinSection,
-      setPinned,
-      close,
-      actionableItemsLength,
-      step,
-      stepperContents,
-      totalMissingPrices,
-      filledMissingPrices,
-      skippedMissingPrices,
-      confirmationDialogOpen,
-      submitActionableItems,
-      ignoreIssues,
-      regenerateReport,
-      toSentenceCase
-    };
-  }
+  isPinned: { required: false, type: Boolean, default: false }
 });
+
+const emit = defineEmits<{ (e: 'set-dialog', value: boolean): void }>();
+const { t, tc } = useI18n();
+const { report, isPinned } = toRefs(props);
+const router = useRouter();
+const { pinned } = storeToRefs(useAreaVisibilityStore());
+
+const setDialog = (dialog: boolean) => {
+  emit('set-dialog', dialog);
+};
+
+const reportsStore = useReports();
+const { actionableItems } = toRefs(reportsStore);
+
+const actionableItemsLength = computed(() => {
+  let missingAcquisitionsLength: number = 0;
+  let missingPricesLength: number = 0;
+  let total: number = 0;
+
+  const items = get(actionableItems);
+
+  if (items) {
+    missingAcquisitionsLength = items.missingAcquisitions.length;
+    missingPricesLength = items.missingPrices.length;
+    total = missingAcquisitionsLength + missingPricesLength;
+  }
+
+  if (!missingAcquisitionsLength || !missingPricesLength) {
+    set(step, 1);
+  }
+
+  return {
+    missingAcquisitionsLength,
+    missingPricesLength,
+    total
+  };
+});
+
+const setPinned = (pin: Nullable<Pinned>) => {
+  set(pinned, pin);
+};
+
+const pinSection = () => {
+  const pinned: Pinned = {
+    name: 'report-actionable-card',
+    props: {
+      report: get(report),
+      isPinned: true
+    }
+  };
+
+  setPinned(pinned);
+  setDialog(false);
+};
+
+const step = ref<number>(1);
+
+const stepperContents = computed(() => {
+  const contents = [];
+
+  const missingAcquisitionsLength = get(
+    actionableItemsLength
+  ).missingAcquisitionsLength;
+  if (missingAcquisitionsLength > 0) {
+    contents.push({
+      key: 'missingAcquisitions',
+      title: t('profit_loss_report.actionable.missing_acquisitions.title', {
+        total: missingAcquisitionsLength
+      }).toString(),
+      hint: t(
+        'profit_loss_report.actionable.missing_acquisitions.hint'
+      ).toString(),
+      selector: ReportMissingAcquisitions,
+      items: get(actionableItems).missingAcquisitions
+    });
+  }
+
+  const missingPricesLength = get(actionableItemsLength).missingPricesLength;
+  if (missingPricesLength > 0) {
+    contents.push({
+      key: 'missingPrices',
+      title: t('profit_loss_report.actionable.missing_prices.title', {
+        total: missingPricesLength
+      }).toString(),
+      hint: t('profit_loss_report.actionable.missing_prices.hint').toString(),
+      selector: ReportMissingPrices,
+      items: get(actionableItems).missingPrices
+    });
+  }
+
+  return contents;
+});
+
+const totalMissingPrices = ref<number>(0);
+const filledMissingPrices = ref<number>(0);
+const skippedMissingPrices = ref<number>(0);
+const confirmationDialogOpen = ref<boolean>(false);
+
+const submitActionableItems = (missingPrices: EditableMissingPrice[]) => {
+  const total = missingPrices.length;
+  const filled = missingPrices.filter((missingPrice: EditableMissingPrice) => {
+    return !!missingPrice.price;
+  }).length;
+  set(totalMissingPrices, total);
+  set(filledMissingPrices, filled);
+  set(skippedMissingPrices, total - filled);
+
+  set(confirmationDialogOpen, true);
+};
+
+const ignoreIssues = () => {
+  if (get(isPinned)) {
+    setPinned(null);
+  }
+  set(confirmationDialogOpen, false);
+  setDialog(false);
+};
+
+const regenerateReport = async () => {
+  await router.push({
+    path: Routes.PROFIT_LOSS_REPORTS,
+    query: {
+      regenerate: 'true',
+      start: get(report).start.toString(),
+      end: get(report).end.toString()
+    }
+  });
+};
+
+const close = () => {
+  if (get(isPinned)) {
+    setPinned(null);
+  } else {
+    setDialog(false);
+  }
+};
 </script>
 <style module lang="scss">
 .pinned {

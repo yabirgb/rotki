@@ -3,8 +3,9 @@
     <app-messages
       :startup-error="startupErrorMessage"
       :macos-unsupported="isMacOsVersionUnsupported"
+      :win-unsupported="isWinVersionUnsupported"
     >
-      <theme-checker v-if="premium" @update:dark-mode="updateDarkMode" />
+      <theme-checker v-if="showComponents" @update:dark-mode="updateDarkMode" />
       <app-update-popup />
       <app-core v-if="logged" />
     </app-messages>
@@ -12,6 +13,7 @@
     <v-fade-transition>
       <account-management
         v-if="startupErrorMessage.length === 0 && !loginIn"
+        :key="adaptiveLanguage"
         :logged="logged"
         @login-complete="completeLogin(true)"
         @about="showAbout = true"
@@ -24,142 +26,123 @@
   </app-host>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineAsyncComponent,
-  defineComponent,
-  onBeforeMount,
-  ref,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
 import { useBackendManagement } from '@/composables/backend';
-import { useRoute, useRouter, useTheme } from '@/composables/common';
-import { useDarkMode } from '@/composables/session';
+import { useTheme } from '@/composables/common';
+import { useDarkMode } from '@/composables/dark-mode';
+import { useSessionStateCleaner } from '@/composables/logout';
 import { useInterop } from '@/electron-interop';
 import { BackendCode } from '@/electron-main/backend-code';
-import i18n from '@/i18n';
 import { ThemeChecker } from '@/premium/premium';
-import { monitor } from '@/services/monitoring';
 import { useMainStore } from '@/store/main';
+import { useMonitorStore } from '@/store/monitor';
 import { useSessionStore } from '@/store/session';
 import { usePremiumStore } from '@/store/session/premium';
 import { useAreaVisibilityStore } from '@/store/session/visibility';
+import { checkIfDevelopment } from '@/utils/env-utils';
 import { logger } from '@/utils/logging';
-import 'chartjs-adapter-moment';
+import '@/utils/chartjs-adapter-dayjs';
 
-export default defineComponent({
-  name: 'App',
-  components: {
-    AppHost: defineAsyncComponent(() => import('@/components/app/AppHost.vue')),
-    AppMessages: defineAsyncComponent(
-      () => import('@/components/app/AppMessages.vue')
-    ),
-    AppCore: defineAsyncComponent(() => import('@/components/app/AppCore.vue')),
-    About: defineAsyncComponent(() => import('@/components/About.vue')),
-    FrontendUpdateNotifier: defineAsyncComponent(
-      () => import('@/components/status/FrontendUpdateNotifier.vue')
-    ),
-    AppUpdatePopup: defineAsyncComponent(
-      () => import('@/components/status/update/AppUpdatePopup.vue')
-    ),
-    ThemeChecker,
-    AccountManagement: defineAsyncComponent(
-      () => import('@/components/AccountManagement.vue')
-    )
-  },
-  setup() {
-    const startupErrorMessage = ref('');
-    const isMacOsVersionUnsupported = ref(false);
+const AppHost = defineAsyncComponent(
+  () => import('@/components/app/AppHost.vue')
+);
+const AppMessages = defineAsyncComponent(
+  () => import('@/components/app/AppMessages.vue')
+);
+const AppCore = defineAsyncComponent(
+  () => import('@/components/app/AppCore.vue')
+);
+const About = defineAsyncComponent(() => import('@/components/About.vue'));
+const FrontendUpdateNotifier = defineAsyncComponent(
+  () => import('@/components/status/FrontendUpdateNotifier.vue')
+);
+const AppUpdatePopup = defineAsyncComponent(
+  () => import('@/components/status/update/AppUpdatePopup.vue')
+);
+const AccountManagement = defineAsyncComponent(
+  () => import('@/components/AccountManagement.vue')
+);
 
-    const { connect } = useMainStore();
-    const { showAbout, showDrawer } = storeToRefs(useAreaVisibilityStore());
-    const { logged, username, loginComplete } = storeToRefs(useSessionStore());
-    const { premium } = storeToRefs(usePremiumStore());
-    const { setupListeners, isPackaged } = useInterop();
-    const { isMobile } = useTheme();
+const startupErrorMessage = ref('');
+const isMacOsVersionUnsupported = ref(false);
+const isWinVersionUnsupported = ref(false);
 
-    const router = useRouter();
-    const route = useRoute();
+const { connect } = useMainStore();
+const { showAbout, showDrawer } = storeToRefs(useAreaVisibilityStore());
+const { logged, loginComplete, adaptiveLanguage } = storeToRefs(
+  useSessionStore()
+);
+const { showComponents } = storeToRefs(usePremiumStore());
+const { setupListeners, isPackaged } = useInterop();
+const { isMobile } = useTheme();
+const { updateDarkMode } = useDarkMode();
 
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    const loginIn = computed(() => get(logged) && get(loginComplete));
+const router = useRouter();
+const route = useRoute();
 
-    const completeLogin = async (complete: boolean) => {
-      set(loginComplete, complete);
-    };
+const isDevelopment = checkIfDevelopment();
+const loginIn = computed(() => get(logged) && get(loginComplete));
+useSessionStateCleaner();
 
-    const { restartBackend } = useBackendManagement();
+const completeLogin = async (complete: boolean) => {
+  set(loginComplete, complete);
+};
 
-    onBeforeMount(async () => {
-      setupListeners({
-        onError: (backendOutput: string | Error, code: BackendCode) => {
-          logger.error(backendOutput, code);
-          if (code === BackendCode.TERMINATED) {
-            const message =
-              typeof backendOutput === 'string'
-                ? backendOutput
-                : backendOutput.message;
-            set(startupErrorMessage, message);
-          } else if (code === BackendCode.MACOS_VERSION) {
-            set(isMacOsVersionUnsupported, true);
-          }
-        },
-        onAbout: () => set(showAbout, true),
-        onRestart: async () => {
-          set(startupErrorMessage, '');
-          await restartBackend();
-        },
-        onProcessDetected: pids => {
-          set(
-            startupErrorMessage,
-            i18n
-              .t('error.process_running', {
-                pids: pids.join(', ')
-              })
-              .toString()
-          );
-        }
-      });
+const { restartBackend } = useBackendManagement();
+const { start } = useMonitorStore();
+const { t } = useI18n();
 
-      await connect();
-      if (isDevelopment && get(logged)) {
-        monitor.start();
+onBeforeMount(async () => {
+  setupListeners({
+    onError: (backendOutput: string | Error, code: BackendCode) => {
+      logger.error(backendOutput, code);
+      if (code === BackendCode.TERMINATED) {
+        const message =
+          typeof backendOutput === 'string'
+            ? backendOutput
+            : backendOutput.message;
+        set(startupErrorMessage, message);
+      } else if (code === BackendCode.MACOS_VERSION) {
+        set(isMacOsVersionUnsupported, true);
+      } else if (code === BackendCode.WIN_VERSION) {
+        set(isWinVersionUnsupported, true);
       }
-      const search = window.location.search;
-      const skipUpdate = search.indexOf('skip_update') >= 0;
-      if (skipUpdate) {
-        sessionStorage.setItem('skip_update', '1');
-      }
-    });
+    },
+    onAbout: () => set(showAbout, true),
+    onRestart: async () => {
+      set(startupErrorMessage, '');
+      await restartBackend();
+    },
+    onProcessDetected: pids => {
+      set(
+        startupErrorMessage,
+        t('error.process_running', {
+          pids: pids.join(', ')
+        }).toString()
+      );
+    }
+  });
 
-    watch(logged, async logged => {
-      if (!logged) {
-        await completeLogin(false);
-      } else {
-        set(showDrawer, !get(isMobile));
-      }
+  await connect();
+  if (isDevelopment && get(logged)) {
+    start();
+  }
+  const search = window.location.search;
+  const skipUpdate = search.indexOf('skip_update') >= 0;
+  if (skipUpdate) {
+    sessionStorage.setItem('skip_update', '1');
+  }
+});
 
-      if (get(route).name !== 'dashboard') {
-        router.push({ name: 'dashboard' });
-      }
-    });
+watch(logged, async logged => {
+  if (!logged) {
+    await completeLogin(false);
+  } else {
+    set(showDrawer, !get(isMobile));
+  }
 
-    return {
-      username,
-      loginIn,
-      logged,
-      loginComplete,
-      startupErrorMessage,
-      isMacOsVersionUnsupported,
-      isPackaged,
-      showAbout,
-      premium,
-      completeLogin,
-      ...useDarkMode()
-    };
+  if (get(route).name !== 'dashboard') {
+    await router.push({ name: 'dashboard' });
   }
 });
 </script>

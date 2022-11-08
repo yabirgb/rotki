@@ -19,7 +19,11 @@ from rotkehlchen.constants.assets import (
     A_EUR,
     A_USD,
 )
-from rotkehlchen.externalapis.cryptocompare import CRYPTOCOMPARE_HOURQUERYLIMIT, Cryptocompare
+from rotkehlchen.externalapis.cryptocompare import (
+    CRYPTOCOMPARE_HOURQUERYLIMIT,
+    CRYPTOCOMPARE_SPECIAL_CASES_MAPPING,
+    Cryptocompare,
+)
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.types import HistoricalPrice, HistoricalPriceOracle
@@ -30,8 +34,8 @@ from rotkehlchen.types import Price, Timestamp
 def test_cryptocompare_query_pricehistorical(cryptocompare):
     """Test that cryptocompare price historical query works fine"""
     price = cryptocompare.query_endpoint_pricehistorical(
-        from_asset=A_SNGLS,
-        to_asset=A_BTC,
+        from_asset=A_SNGLS.resolve_to_asset_with_oracles(),
+        to_asset=A_BTC.resolve_to_asset_with_oracles(),
         timestamp=1475413990,
     )
     # Just test a price is returned
@@ -106,8 +110,8 @@ def test_cryptocompare_histohour_data_going_forward(data_dir, database, freezer)
     freezer.move_to(datetime.fromtimestamp(now_ts))
     cc = Cryptocompare(data_directory=data_dir, database=database)
     cc.query_and_store_historical_data(
-        from_asset=A_BTC,
-        to_asset=A_USD,
+        from_asset=A_BTC.resolve_to_asset_with_oracles(),
+        to_asset=A_USD.resolve_to_asset_with_oracles(),
         timestamp=now_ts - 3600 * 2 - 55,
     )
 
@@ -123,8 +127,8 @@ def test_cryptocompare_histohour_data_going_forward(data_dir, database, freezer)
     now_ts = now_ts + 3600 * 2000 * 2 + 4700
     freezer.move_to(datetime.fromtimestamp(now_ts))
     cc.query_and_store_historical_data(
-        from_asset=A_BTC,
-        to_asset=A_USD,
+        from_asset=A_BTC.resolve_to_asset_with_oracles(),
+        to_asset=A_USD.resolve_to_asset_with_oracles(),
         timestamp=now_ts - 3600 * 4 - 55,
     )
     result = get_globaldb_cache_entries(from_asset=A_BTC, to_asset=A_USD)
@@ -169,8 +173,8 @@ def test_cryptocompare_histohour_data_going_backward(data_dir, database, freezer
     freezer.move_to(datetime.fromtimestamp(now_ts))
     cc = Cryptocompare(data_directory=data_dir, database=database)
     cc.query_and_store_historical_data(
-        from_asset=A_BTC,
-        to_asset=A_USD,
+        from_asset=A_BTC.resolve_to_asset_with_oracles(),
+        to_asset=A_USD.resolve_to_asset_with_oracles(),
         timestamp=now_ts - 3600 * 2 - 55,
     )
     result = get_globaldb_cache_entries(from_asset=A_BTC, to_asset=A_USD)
@@ -220,14 +224,14 @@ def test_cryptocompare_historical_data_price(
     cc = Cryptocompare(data_directory=data_dir, database=database)
     # Get lots of historical prices from at least 1 query after the ts we need
     cc.query_and_store_historical_data(
-        from_asset=from_asset,
-        to_asset=to_asset,
+        from_asset=from_asset.resolve(),
+        to_asset=to_asset.resolve(),
         timestamp=timestamp + 2020 * 3600,
     )
     # Query the ts we need directly from the cached data
     price_cache_entry = GlobalDBHandler().get_historical_price(
-        from_asset=from_asset,
-        to_asset=to_asset,
+        from_asset=from_asset.resolve(),
+        to_asset=to_asset.resolve(),
         timestamp=timestamp,
         max_seconds_distance=3600,
         source=HistoricalPriceOracle.CRYPTOCOMPARE,
@@ -286,24 +290,26 @@ def test_cryptocompare_query_compound_tokens(
     The test always uses a clean caching directory so requests are ALWAYS made to cryptocompare
     to test that everything works.
     """
+    usd = A_USD.resolve()
     asset = run['asset']
     expected_price1 = run['expected_price1']
     expected_price2 = run['expected_price2']
     price = cryptocompare.query_historical_price(
         from_asset=asset,
-        to_asset=A_USD,
+        to_asset=usd,
         timestamp=1576195200,
     )
     assert price == expected_price1
     price = cryptocompare.query_endpoint_pricehistorical(
-        from_asset=asset,
-        to_asset=A_USD,
+        from_asset=asset.resolve(),
+        to_asset=usd,
         timestamp=1584662400,
     )
     assert price == expected_price2
-    price = cryptocompare.query_current_price(
-        from_asset=asset,
-        to_asset=A_USD,
+    price, _ = cryptocompare.query_current_price(
+        from_asset=asset.resolve(),
+        to_asset=usd,
+        match_main_currency=False,
     )
     assert price is not None
 
@@ -318,5 +324,18 @@ def test_cryptocompare_query_with_api_key(cryptocompare):
     response = cryptocompare._api_query('v2/news/')
     assert response and isinstance(response, list)
     # call to endpoint with args
-    price = cryptocompare.query_current_price(A_ETH, A_USD)
+    price, _ = cryptocompare.query_current_price(
+        from_asset=A_ETH.resolve_to_asset_with_oracles(),
+        to_asset=A_USD.resolve_to_asset_with_oracles(),
+        match_main_currency=False,
+    )
+    assert price is not None
+    # call to endpoint for a special asset to go into the special asset handling
+    special_asset = A_CDAI
+    assert special_asset in CRYPTOCOMPARE_SPECIAL_CASES_MAPPING
+    price, _ = cryptocompare.query_current_price(
+        from_asset=special_asset.resolve_to_asset_with_oracles(),
+        to_asset=A_USD.resolve_to_asset_with_oracles(),
+        match_main_currency=False,
+    )
     assert price is not None

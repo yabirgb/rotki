@@ -5,8 +5,9 @@ import {
   IPC_DEBUG_SETTINGS,
   IPC_REQUEST_RESTART
 } from '@/electron-main/ipc-commands';
+import { checkIfDevelopment } from '@/utils/env-utils';
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
+const isDevelopment = checkIfDevelopment();
 const isMac = process.platform === 'darwin';
 
 export type MenuActions = { displayTray: (display: boolean) => void };
@@ -209,16 +210,16 @@ export function getUserMenu(showPremium: boolean, menuActions: MenuActions) {
             {
               label: 'Get rotki Premium',
               id: 'premium-button',
-              click: () => {
-                shell.openExternal('https://rotki.com/products/');
+              click: async () => {
+                await shell.openExternal('https://rotki.com/products/');
               }
             }
           ]
         }
       : {
           id: 'premium-button',
-          click: () => {
-            shell.openExternal('https://rotki.com/products/');
+          click: async () => {
+            await shell.openExternal('https://rotki.com/products/');
           }
         })
   };

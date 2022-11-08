@@ -7,11 +7,11 @@
       :user-db="userDb"
     />
     <card outlined-body class="mt-8">
-      <template #title>{{ $t('backup_manager.title') }}</template>
+      <template #title>{{ t('backup_manager.title') }}</template>
       <template #details>
         <refresh-button
           :loading="loading"
-          :tooltip="$t('database_manager.refresh_tooltip')"
+          :tooltip="tc('database_manager.refresh_tooltip')"
           @refresh="loadInfo"
         />
       </template>
@@ -31,7 +31,7 @@
           :loading="saving"
           @click="backup"
         >
-          {{ $t('backup_manager.backup_button') }}
+          {{ t('backup_manager.backup_button') }}
         </v-btn>
         <v-btn
           v-if="selected.length > 0"
@@ -39,15 +39,15 @@
           color="error"
           @click="showConfirmMassDelete = true"
         >
-          {{ $t('backup_manager.delete_selected') }}
+          {{ t('backup_manager.delete_selected') }}
         </v-btn>
       </template>
     </card>
     <confirm-dialog
       :display="!!showConfirmMassDelete"
-      :title="$t('database_backups.confirm.title')"
+      :title="tc('database_backups.confirm.title')"
       :message="
-        $t('database_backups.confirm.mass_message', {
+        tc('database_backups.confirm.mass_message', 0, {
           length: selected.length
         })
       "
@@ -57,25 +57,17 @@
   </fragment>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { Severity } from '@rotki/common/lib/messages';
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  Ref,
-  ref
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+import { Ref } from 'vue';
 import Fragment from '@/components/helper/Fragment';
 import RefreshButton from '@/components/helper/RefreshButton.vue';
 import DatabaseBackups from '@/components/settings/data-security/backups/DatabaseBackups.vue';
 import DatabaseInfoDisplay from '@/components/settings/data-security/backups/DatabaseInfoDisplay.vue';
-import { getFilepath } from '@/components/settings/data-security/backups/utils';
-import i18n from '@/i18n';
-import { DatabaseInfo, UserDbBackup } from '@/services/backup/types';
-import { api } from '@/services/rotkehlchen-api';
+import { useBackupApi } from '@/services/backup';
 import { useNotifications } from '@/store/notifications';
+import { DatabaseInfo, UserDbBackup } from '@/types/backup';
+import { getFilepath } from '@/utils/backups';
 import { size } from '@/utils/data';
 import { logger } from '@/utils/logging';
 
@@ -88,6 +80,7 @@ const isSameEntry = (firstDb: UserDbBackup, secondDb: UserDbBackup) => {
 };
 
 const setupBackupInfo = () => {
+  const { t } = useI18n();
   const backupInfo = ref<DatabaseInfo | null>();
   const loading = ref(false);
 
@@ -116,33 +109,33 @@ const setupBackupInfo = () => {
     const info = get(backupInfo);
     return {
       size: info ? size(info.userdb.info.size) : '0',
-      version: info ? info.userdb.info.version : '0'
+      version: info ? info.userdb.info.version.toString() : '0'
     };
   });
 
   const globalDb = computed(() => {
     const info = get(backupInfo);
     return {
-      schema: info ? info.globaldb.globaldbSchemaVersion : '0',
-      assets: info ? info.globaldb.globaldbAssetsVersion : '0'
+      schema: info ? info.globaldb.globaldbSchemaVersion.toString() : '0',
+      assets: info ? info.globaldb.globaldbAssetsVersion.toString() : '0'
     };
   });
+
+  const { info } = useBackupApi();
 
   const loadInfo = async () => {
     try {
       set(loading, true);
-      set(backupInfo, await api.backups.info());
+      set(backupInfo, await info());
     } catch (e: any) {
       logger.error(e);
       const { notify } = useNotifications();
       notify({
         display: true,
-        title: i18n.t('database_backups.load_error.title').toString(),
-        message: i18n
-          .t('database_backups.load_error.message', {
-            message: e.message
-          })
-          .toString()
+        title: t('database_backups.load_error.title').toString(),
+        message: t('database_backups.load_error.message', {
+          message: e.message
+        }).toString()
       });
     } finally {
       set(loading, false);
@@ -167,10 +160,12 @@ const setupBackupActions = (
   selected: Ref<UserDbBackup[]>,
   showConfirmMassDelete: Ref<boolean>
 ) => {
+  const { t } = useI18n();
+  const { deleteBackup } = useBackupApi();
   const massRemove = async () => {
     const filepaths = get(selected).map(db => getFilepath(db, directory));
     try {
-      await api.backups.deleteBackup(filepaths);
+      await deleteBackup(filepaths);
       if (get(backupInfo)) {
         const info: DatabaseInfo = { ...get(backupInfo)! };
         get(selected).forEach((db: UserDbBackup) => {
@@ -187,12 +182,10 @@ const setupBackupActions = (
       const { notify } = useNotifications();
       notify({
         display: true,
-        title: i18n.t('database_backups.delete_error.title').toString(),
-        message: i18n
-          .t('database_backups.delete_error.mass_message', {
-            message: e.message
-          })
-          .toString()
+        title: t('database_backups.delete_error.title').toString(),
+        message: t('database_backups.delete_error.mass_message', {
+          message: e.message
+        }).toString()
       });
     }
 
@@ -202,7 +195,7 @@ const setupBackupActions = (
   const remove = async (db: UserDbBackup) => {
     const filepath = getFilepath(db, directory);
     try {
-      await api.backups.deleteBackup([filepath]);
+      await deleteBackup([filepath]);
       if (get(backupInfo)) {
         const info: DatabaseInfo = { ...get(backupInfo)! };
         const index = info.userdb.backups.findIndex(backup =>
@@ -223,33 +216,30 @@ const setupBackupActions = (
       const { notify } = useNotifications();
       notify({
         display: true,
-        title: i18n.t('database_backups.delete_error.title').toString(),
-        message: i18n
-          .t('database_backups.delete_error.message', {
-            file: filepath,
-            message: e.message
-          })
-          .toString()
+        title: t('database_backups.delete_error.title').toString(),
+        message: t('database_backups.delete_error.message', {
+          file: filepath,
+          message: e.message
+        }).toString()
       });
     }
   };
 
   const saving = ref(false);
+  const { createBackup } = useBackupApi();
 
   const backup = async () => {
     try {
       set(saving, true);
-      const filepath = await api.backups.createBackup();
+      const filepath = await createBackup();
       const { notify } = useNotifications();
       notify({
         display: true,
         severity: Severity.INFO,
-        title: i18n.t('database_backups.backup.title').toString(),
-        message: i18n
-          .t('database_backups.backup.message', {
-            filepath
-          })
-          .toString()
+        title: t('database_backups.backup.title').toString(),
+        message: t('database_backups.backup.message', {
+          filepath
+        }).toString()
       });
 
       await refresh();
@@ -258,12 +248,10 @@ const setupBackupActions = (
       const { notify } = useNotifications();
       notify({
         display: true,
-        title: i18n.t('database_backups.backup_error.title').toString(),
-        message: i18n
-          .t('database_backups.backup_error.message', {
-            message: e.message
-          })
-          .toString()
+        title: t('database_backups.backup_error.title').toString(),
+        message: t('database_backups.backup_error.message', {
+          message: e.message
+        }).toString()
       });
     } finally {
       set(saving, false);
@@ -272,39 +260,22 @@ const setupBackupActions = (
   return { remove, massRemove, backup, saving };
 };
 
-const BackupManager = defineComponent({
-  name: 'BackupManager',
-  components: {
-    Fragment,
-    RefreshButton,
-    DatabaseInfoDisplay,
-    DatabaseBackups
-  },
-  setup() {
-    const getBackupInfo = setupBackupInfo();
-    const { backupInfo, directory } = getBackupInfo;
+const showConfirmMassDelete = ref<boolean>(false);
+const selected = ref<UserDbBackup[]>([]);
 
-    const showConfirmMassDelete = ref<boolean>(false);
+const { t, tc } = useI18n();
+const { backupInfo, directory, loadInfo, loading, backups, userDb, globalDb } =
+  setupBackupInfo();
 
-    const selected = ref<UserDbBackup[]>([]);
-    const onSelectedChange = (newSelected: UserDbBackup[]) => {
-      set(selected, newSelected);
-    };
+const onSelectedChange = (newSelected: UserDbBackup[]) => {
+  set(selected, newSelected);
+};
 
-    return {
-      ...getBackupInfo,
-      ...setupBackupActions(
-        directory,
-        backupInfo,
-        getBackupInfo.loadInfo,
-        selected,
-        showConfirmMassDelete
-      ),
-      selected,
-      showConfirmMassDelete,
-      onSelectedChange
-    };
-  }
-});
-export default BackupManager;
+const { backup, saving, remove, massRemove } = setupBackupActions(
+  directory,
+  backupInfo,
+  loadInfo,
+  selected,
+  showConfirmMassDelete
+);
 </script>

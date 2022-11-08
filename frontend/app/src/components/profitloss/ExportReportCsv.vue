@@ -16,8 +16,8 @@
       <span>
         {{
           packaged
-            ? $t('profit_loss_report.export_csv')
-            : $t('profit_loss_report.download_csv')
+            ? t('profit_loss_report.export_csv')
+            : t('profit_loss_report.download_csv')
         }}
       </span>
     </v-tooltip>
@@ -29,74 +29,64 @@
     color="primary"
     @click="exportCSV()"
   >
+    <v-icon small class="mr-2"> mdi-export </v-icon>
     {{
       packaged
-        ? $t('profit_loss_report.export_csv')
-        : $t('profit_loss_report.download_csv')
+        ? t('profit_loss_report.export_csv')
+        : t('profit_loss_report.download_csv')
     }}
   </v-btn>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent } from '@vue/composition-api';
-import { useInterop } from '@/electron-interop';
-import i18n from '@/i18n';
+<script setup lang="ts">
+import { interop } from '@/electron-interop';
 import { api } from '@/services/rotkehlchen-api';
-import { useMainStore } from '@/store/main';
+import { useMessageStore } from '@/store/message';
 import { useReports } from '@/store/reports';
 
-export default defineComponent({
-  name: 'ExportReportCsv',
-  props: {
-    icon: {
-      required: false,
-      type: Boolean,
-      default: false
-    }
-  },
-  setup() {
-    const { createCsv } = useReports();
-    const { setMessage } = useMainStore();
-
-    const showMessage = (description: string) => {
-      setMessage({
-        title: i18n.t('profit_loss_report.csv_export_error').toString(),
-        description: description,
-        success: false
-      });
-    };
-
-    const exportCSV = async () => {
-      try {
-        if (interop.isPackaged && api.defaultBackend) {
-          const directory = await interop.openDirectory(
-            i18n.t('profit_loss_report.select_directory').toString()
-          );
-          if (!directory) {
-            return;
-          }
-          await createCsv(directory);
-        } else {
-          const result = await api.downloadCSV();
-          if (!result.success) {
-            showMessage(
-              result.message ??
-                i18n.t('profit_loss_report.download_failed').toString()
-            );
-          }
-        }
-      } catch (e: any) {
-        showMessage(e.message);
-      }
-    };
-
-    const interop = useInterop();
-    const packaged = computed(() => interop.isPackaged);
-
-    return {
-      exportCSV,
-      packaged
-    };
+defineProps({
+  icon: {
+    required: false,
+    type: Boolean,
+    default: false
   }
 });
+
+const { createCsv } = useReports();
+const { setMessage } = useMessageStore();
+
+const { t } = useI18n();
+
+const showMessage = (description: string) => {
+  setMessage({
+    title: t('profit_loss_report.csv_export_error').toString(),
+    description: description,
+    success: false
+  });
+};
+
+const exportCSV = async () => {
+  try {
+    if (interop.isPackaged && api.defaultBackend) {
+      const directory = await interop.openDirectory(
+        t('profit_loss_report.select_directory').toString()
+      );
+      if (!directory) {
+        return;
+      }
+      await createCsv(directory);
+    } else {
+      const result = await api.reports.downloadReportCSV();
+      if (!result.success) {
+        showMessage(
+          result.message ?? t('profit_loss_report.download_failed').toString()
+        );
+      }
+    }
+  } catch (e: any) {
+    showMessage(e.message);
+  }
+};
+
+const packaged = computed(() => interop.isPackaged);
 </script>

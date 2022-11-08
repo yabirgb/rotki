@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 import requests
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.constants.assets import A_AVAX, A_BTC, A_ETH, A_EUR, A_USD
 from rotkehlchen.db.settings import ModifiableDBSettings
 from rotkehlchen.db.snapshots import (
@@ -280,7 +280,7 @@ def _create_snapshot_with_invalid_headers(directory: str, timestamp: Timestamp) 
 def assert_csv_export_response(
         response,
         csv_dir,
-        main_currency: Asset,
+        main_currency: AssetWithOracles,
         is_download=False,
         expected_entries=2,
 ):
@@ -362,7 +362,12 @@ def test_export_snapshot(rotkehlchen_api_server, tmpdir_factory):
                 action='export',
             ),
         )
-        assert_csv_export_response(response, csv_dir, main_currency=A_EUR, is_download=False)
+        assert_csv_export_response(
+            response=response,
+            csv_dir=csv_dir,
+            main_currency=A_EUR.resolve_to_asset_with_oracles(),
+            is_download=False,
+        )
 
         db.set_settings(cursor, ModifiableDBSettings(main_currency=A_ETH))
         response = requests.get(
@@ -374,7 +379,12 @@ def test_export_snapshot(rotkehlchen_api_server, tmpdir_factory):
                 action='export',
             ),
         )
-        assert_csv_export_response(response, csv_dir2, main_currency=A_ETH, is_download=False)
+        assert_csv_export_response(
+            response=response,
+            csv_dir=csv_dir2,
+            main_currency=A_ETH.resolve_to_asset_with_oracles(),
+            is_download=False,
+        )
 
         db.set_settings(cursor, ModifiableDBSettings(main_currency=A_USD))
         response = requests.get(
@@ -411,7 +421,7 @@ def test_export_snapshot_unknown_asset(rotkehlchen_api_server, tmpdir_factory):
         assert_csv_export_response(
             response,
             csv_dir,
-            main_currency=A_EUR,
+            main_currency=A_EUR.resolve_to_asset_with_oracles(),
             is_download=False,
             expected_entries=1,
         )
@@ -442,7 +452,12 @@ def test_download_snapshot(rotkehlchen_api_server):
         tempzipfile.write_bytes(response.content)
         with zipfile.ZipFile(tempzipfile, 'r') as zip_ref:
             zip_ref.extractall(extractdir)
-        assert_csv_export_response(response, extractdir, main_currency=A_EUR, is_download=True)
+        assert_csv_export_response(
+            response=response,
+            csv_dir=extractdir,
+            main_currency=A_EUR.resolve_to_asset_with_oracles(),
+            is_download=True,
+        )
 
 
 def test_import_snapshot(rotkehlchen_api_server, tmpdir_factory):
@@ -494,7 +509,12 @@ def test_import_snapshot(rotkehlchen_api_server, tmpdir_factory):
             path=csv_dir3,
         ),
     )
-    assert_csv_export_response(response, csv_dir3, main_currency=A_EUR, is_download=False)
+    assert_csv_export_response(
+        response=response,
+        csv_dir=csv_dir3,
+        main_currency=A_EUR.resolve_to_asset_with_oracles(),
+        is_download=False,
+    )
     response = requests.put(
         api_url_for(
             rotkehlchen_api_server,

@@ -726,39 +726,39 @@ Getting backend arguments
       HTTP/1.1 200 OK
       Content-Type: application/json
 
-    {
-      "result":{
-        "max_size_in_mb_all_logs":{
-          "value":300,
-          "is_default":true
-        },
-        "max_logfiles_num":{
-          "value":3,
-          "is_default":true
-        },
-        "sqlite_instructions":{
-          "value":5000,
-          "is_default":true
-        }
-      },
-      "message":""
-    }
+      {
+           "result": {
+                   "max_size_in_mb_all_logs": {
+                           "value": 300,
+                           "is_default": true
+                   },
+                   "max_logfiles_num": {
+                           "value": 3,
+                           "is_default": true
+                   },
+                   "sqlite_instructions": {
+                           "value": 5000,
+                           "is_default": true
+                   }
+           },
+           "message": ""
+       }
 
    :resjson object max_size_in_mb_all_logs: Maximum size in megabytes that will be used for all rotki logs.
    :resjson object max_num_log_files: Maximum number of logfiles to keep.
-   :resjson object sqlite_instructions: Instructions per sqlite context switch. 0 means disabled. 
+   :resjson object sqlite_instructions: Instructions per sqlite context switch. 0 means disabled.
    :resjson int value: Value used for the configuration.
    :resjson bool is_default: `true` if the setting was not modified and `false` if it was.
 
    :statuscode 200: Querying of the backend configuration was successful
    :statuscode 500: Internal rotki error
 
-Adding information for ethereum nodes
-=====================================
+Adding information for web3 nodes
+=================================
 
-.. http:get:: /api/(version)/blockchains/ETH/nodes
+.. http:get:: /api/(version)/blockchains/(blockchain)/nodes
 
-   By querying this endpoint the information for all the nodes in the database will be returned
+   By querying this endpoint the information for the nodes in the database will be returned
 
    **Example Request**:
 
@@ -769,7 +769,7 @@ Adding information for ethereum nodes
 
    **Example Response**:
 
-   The following is an example response of querying ethereum nodes information.
+   The following is an example response of querying Ethereum nodes information.
 
    .. sourcecode:: http
 
@@ -784,7 +784,8 @@ Adding information for ethereum nodes
                 "endpoint": "",
                 "owned": false,
                 "weight": "40.00",
-                "active": true
+                "active": true,
+                "blockchain": "ETH"
             },
             {
                 "identifier": 2,
@@ -792,7 +793,8 @@ Adding information for ethereum nodes
                 "endpoint": "https://api.mycryptoapi.com/eth",
                 "owned": false,
                 "weight": "20.00",
-                "active": true
+                "active": true,
+                "blockchain": "ETH"
             },
             {
                 "identifier": 3,
@@ -800,7 +802,8 @@ Adding information for ethereum nodes
                 "endpoint": "https://mainnet-nethermind.blockscout.com/",
                 "owned": false,
                 "weight": "20.00",
-                "active": true
+                "active": true,
+                "blockchain": "ETH"
             },
             {
                 "identifier": 4,
@@ -808,13 +811,14 @@ Adding information for ethereum nodes
                 "endpoint": "https://mainnet.eth.cloud.ava.do/",
                 "owned": false,
                 "weight": "20.00",
-                "active": true
+                "active": true,
+                "blockchain": "ETH"
             }
         ],
         "message": ""
       }
 
-   :resjson list result: A list with information about the ethereum nodes.
+   :resjson list result: A list with information about the web3 nodes.
    :resjson string name: Name and primary key of the node.
    :resjson string endpoint: rpc endpoint of the node. Will be used to query it.
    :resjson string weight: Weight of the node in the range of 0 to 100 with 2 decimals.
@@ -825,7 +829,7 @@ Adding information for ethereum nodes
    :statuscode 409: No user is logged.
    :statuscode 500: Internal rotki error
 
-.. http:put:: /api/(version)/blockchains/ETH/nodes
+.. http:put:: /api/(version)/blockchains/(blockchain)/nodes
 
    By doing a PUT on this endpoint you will be able to add a new node to the list of nodes.
 
@@ -855,15 +859,15 @@ Adding information for ethereum nodes
    :statuscode 409: No user is logged or entrie couldn't be created.
    :statuscode 500: Internal rotki error
 
-.. http:post:: /api/(version)/blockchains/ETH/nodes
+.. http:patch:: /api/(version)/blockchains/(blockchain)/nodes
 
-   By doing a POST on this endpoint you will be able to edit an already existing node entry with the information provided.
+   By doing a PATCH on this endpoint you will be able to edit an already existing node entry with the information provided.
 
    **Example Request**:
 
    .. http:example:: curl wget httpie python-requests
 
-      PUT /api/1/blockchains/ETH/nodes HTTP/1.1
+      PATCH /api/1/blockchains/ETH/nodes HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json
 
@@ -887,7 +891,7 @@ Adding information for ethereum nodes
    :statuscode 409: No user is logged or entrie couldn't be updated.
    :statuscode 500: Internal rotki error
 
-.. http:delete:: /api/(version)/blockchains/ETH/nodes
+.. http:delete:: /api/(version)/blockchains/(blockchain)/nodes
 
    By doing a DELETE on this endpoint you will be able to delete an already existing node.
 
@@ -1025,13 +1029,14 @@ Query the result of an ongoing backend task
    :statuscode 404: There is no task with the given task id
    :statuscode 409: No user is currently logged in
    :statuscode 500: Internal rotki error
+   :statuscode 502: Problem contacting a remote service
 
-Query the current price of assets
+Query the latest price of assets
 ===================================
 
-.. http:post:: /api/(version)/assets/prices/current
+.. http:post:: /api/(version)/assets/prices/latest
 
-   Querying this endpoint with a list of assets and a target asset will return an object with the the price of the assets in the target asset currency. Providing an empty list or no target asset is an error.
+   Querying this endpoint with a list of assets and a target asset will return a mapping of assets to their prices in the target asset and an integer representing the oracle the price was gotten from. Providing an empty list or no target asset is an error.
 
    .. note::
       This endpoint can also be queried asynchronously by using ``"async_query": true``.
@@ -1040,20 +1045,20 @@ Query the current price of assets
 
    .. http:example:: curl wget httpie python-requests
 
-      POST /api/1/assets/prices/current HTTP/1.1
+      POST /api/1/assets/prices/latest HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
       {
-          "assets": ["BTC", "ETH", "_ceth_0x514910771AF9Ca656af840dff83E8264EcF986CA", "USD", "EUR"],
+          "assets": ["BTC", "ETH", "eip155:1/erc20:0x514910771AF9Ca656af840dff83E8264EcF986CA", "USD", "EUR"],
           "target_asset": "USD",
           "ignore_cache": true
       }
 
-   :reqjson list assets: A list of assets to query their current price.
+   :reqjson list assets: A list of assets to query their latest price.
    :reqjson string target_asset: The target asset against which to return the price of each asset in the list.
    :reqjson bool async_query: A boolean denoting whether the query should be made asynchronously or not. Missing defaults to false.
-   :reqjson bool ignore_cache: A boolean denoting whether to ignore the current price query cache. Missing defaults to false.
+   :reqjson bool ignore_cache: A boolean denoting whether to ignore the latest price query cache. Missing defaults to false.
 
    **Example Response**:
 
@@ -1065,39 +1070,51 @@ Query the current price of assets
       {
           "result": {
               "assets": {
-                  "BTC": "34758.11",
-                  "ETH": "1302.62",
-                  "EUR": "1.209",
-                  "GBP": "1.362",
-                  "_ceth_0x514910771AF9Ca656af840dff83E8264EcF986CA": "20.29",
-                  "USD": "1"
+                  "BTC": ["34758.11", 1],
+                  "ETH": ["1302.62", 2],
+                  "EUR": ["1.209", 8],
+                  "GBP": ["1.362", 8],
+                  "eip155:1/erc20:0x514910771AF9Ca656af840dff83E8264EcF986CA": ["20.29", 1],
+                  "USD": ["1", 8]
               },
-              "target_asset": "USD"
+              "target_asset": "USD",
+              "oracles": {
+                "coingecko": 1,
+                "cryptocompare": 2,
+                "uniswapv2": 3,
+                "uniswapv3": 4,
+                "saddle": 5,
+                "manualcurrent": 6,
+                "blockchain": 7,
+                "fiat": 8
+              }
           },
           "message": ""
       }
 
-   :resjson object result: A JSON object that contains the price of the assets in the target asset currency.
+   :resjson object result: A JSON object that contains the price of the assets in the target asset currency and the oracle used to query it.
    :resjson object assets: A map between an asset and its price.
    :resjson string target_asset: The target asset against which to return the price of each asset in the list.
+   :resjson object oracles: A mapping of oracles to their integer id used.
    :statuscode 200: The USD prices have been successfully returned
    :statuscode 400: Provided JSON is in some way malformed.
    :statuscode 500: Internal rotki error
    :statuscode 502: An external service used in the query such as cryptocompare/coingecko could not be reached or returned unexpected response.
 
-Get current price and custom price for assets
-=============================================
 
-.. http:get:: /api/(version)/assets/prices/current
+Get current price and custom price for NFT assets
+==================================================
 
-   Get current prices and whether they have been manually input or not for all assets. At the moment this only works for nfts.
+.. http:get:: /api/(version)/nfts/prices
+
+   Get current prices and whether they have been manually input or not for NFT assets.
 
 
    **Example Request**:
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/assets/prices/current HTTP/1.1
+      GET /api/1/nfts/prices HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
@@ -1135,6 +1152,57 @@ Get current price and custom price for assets
    :statuscode 409: Nft module is not activated.
    :statuscode 500: Internal rotki error
    :statuscode 502: An external service used in the query such as cryptocompare/coingecko could not be reached or returned unexpected response.
+
+
+Get all manually input latest prices
+====================================
+
+.. http:post:: /api/(version)/assets/prices/latest/all
+
+   Retrieve all the manually input latest prices stored in the database.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      POST /api/1/assets/prices/latest/all HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {"to_asset": "EUR"}
+
+   :reqjson string from_asset: Optional. Asset identifier to use as filter in the `from` side of the prices.
+   :reqjson string to_asset: Optional. Asset identifier to use as filter in the `to` side of the prices.
+
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": [
+            {
+              "from_asset": "ETH",
+              "to_asset": "EUR",
+              "price": "5"
+            },
+            {
+              "from_asset": "USD",
+              "to_asset": "EUR",
+              "price": "25"
+            }
+          ]
+          "message": ""
+      }
+
+   :resjson object result: A list of results with the prices along their `from_asset` and `to_asset`.
+   :statuscode 200: Successful query
+   :statuscode 409: No user is logged in.
+   :statuscode 500: Internal rotki error
+
 
 Add manual current price for an asset
 =============================================
@@ -1224,7 +1292,7 @@ Query the current exchange rate for select assets
 
 .. http:get:: /api/(version)/exchange_rates
 
-   Querying this endpoint with a list of strings representing some assets will return a dictionary of their current exchange rates compared to USD.
+   Querying this endpoint with a list of strings representing some assets will return a dictionary of their current exchange rates compared to USD. If an asset's price could not be queried then zero will be returned as the price.
 
    .. note::
       This endpoint also accepts parameters as query arguments. List as a query argument here would be given as: ``?currencies=EUR,CNY,GBP``
@@ -1338,7 +1406,7 @@ Query the historical price of assets
       Content-Type: application/json;charset=UTF-8
 
        {
-            "from_asset": "_ceth_0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
+            "from_asset": "eip155:1/erc20:0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
             "to_asset": "USD",
             "timestamp": 1611166335,
             "price": "1.20"
@@ -1383,7 +1451,7 @@ Query the historical price of assets
       Content-Type: application/json;charset=UTF-8
 
        {
-            "from_asset": "_ceth_0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
+            "from_asset": "eip155:1/erc20:0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
             "to_asset": "USD",
             "timestamp": 1611166335,
             "price": "1.20"
@@ -1428,7 +1496,7 @@ Query the historical price of assets
       Content-Type: application/json;charset=UTF-8
 
        {
-          "from_asset": "_ceth_0xD71eCFF9342A5Ced620049e616c5035F1dB98620"
+          "from_asset": "eip155:1/erc20:0xD71eCFF9342A5Ced620049e616c5035F1dB98620"
        }
 
    :reqjson string from_asset: Optional. The from_asset for which the price is retrieved.
@@ -1445,13 +1513,13 @@ Query the historical price of assets
       {
           "result": [
             {
-              "from_asset": "_ceth_0xD533a949740bb3306d119CC777fa900bA034cd52",
+              "from_asset": "eip155:1/erc20:0xD533a949740bb3306d119CC777fa900bA034cd52",
               "to_asset": "USD",
               "timestamp": 1611166335,
               "price": "1.20"
             },
             {
-              "from_asset": "_ceth_0xD533a949740bb3306d119CC777fa900bA034cd52",
+              "from_asset": "eip155:1/erc20:0xD533a949740bb3306d119CC777fa900bA034cd52",
               "to_asset": "USD",
               "timestamp": 1611166340,
               "price": "1.40"
@@ -1480,7 +1548,7 @@ Query the historical price of assets
       Content-Type: application/json;charset=UTF-8
 
        {
-        "from_asset": "_ceth_0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
+        "from_asset": "eip155:1/erc20:0xD71eCFF9342A5Ced620049e616c5035F1dB98620",
         "to_asset": "USD",
         "timestamp": 1611166335
        }
@@ -2074,7 +2142,7 @@ Get supported oracles
 Query supported ethereum modules
 =====================================
 
-.. http:get:: /api/(version)/blockchains/ETH/modules/
+.. http:get:: /api/(version)/blockchains/ETH/modules
 
    Doing a GET on this endpoint will return all supported ethereum modules
 
@@ -2184,7 +2252,7 @@ Querying ethereum transactions
                 "event_type": "spend",
                 "location": "blockchain",
                 "location_label": "0x6e15887E2CEC81434C16D587709f64603b39b545",
-                "notes": "Burned 0.00863351371344 ETH in gas from 0x6e15887E2CEC81434C16D587709f64603b39b545",
+                "notes": "Burned 0.00863351371344 ETH for gas",
                 "sequence_index": 0,
                 "timestamp": 1642802807
               },
@@ -2232,7 +2300,7 @@ Querying ethereum transactions
                 "event_type": "spend",
                 "location": "blockchain",
                 "location_label": "0x6e15887E2CEC81434C16D587709f64603b39b545",
-                "notes": "Burned 0.00863351371344 ETH in gas from 0x6e15887E2CEC81434C16D587709f64603b39b545",
+                "notes": "Burned 0.00863351371344 ETH for gas",
                 "sequence_index": 0,
                 "timestamp": 1642802807
               },
@@ -2614,10 +2682,10 @@ Querying onchain balances
                    "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
                        "assets": {
                            "ETH": {"amount": "10", "usd_value": "1650.53"},
-                           "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "15", "usd_value": "15.21"}
+                           "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "15", "usd_value": "15.21"}
                        },
                        "liabilities": {
-                           "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "20", "usd_value": "20.35"}
+                           "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "20", "usd_value": "20.35"}
                        }
                   }},
                    "ETH2": { "0x9675faa8d15665e30d31dc10a332828fa15e2c7490f7d1894d9092901b139801ce476810f8e1e0c7658a9abdb9c4412e": {
@@ -2635,10 +2703,10 @@ Querying onchain balances
                       "BTC": {"amount": "1", "usd_value": "7540.15"},
                       "ETH": {"amount": "10", "usd_value": "1650.53"},
                       "ETH2": {"amount": "65.57", "usd_value": "85484.76"},
-                      "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "15", "usd_value": "15.21"}
+                      "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "15", "usd_value": "15.21"}
                   },
                   "liabilities": {
-                      "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "20", "usd_value": "20.35"}
+                      "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "20", "usd_value": "20.35"}
                   }
               }
           },
@@ -2666,7 +2734,7 @@ Querying all balances
    .. note::
       This endpoint uses a cache. If queried within the ``CACHE_TIME`` the cached value will be returned. If you want to skip the cache add the ``ignore_cache: true`` argument. Can also be passed as a query argument.
 
-.. http:get:: /api/(version)/balances/
+.. http:get:: /api/(version)/balances
 
    Doing a GET on the balances endpoint will query all balances/debt across all locations for the user. That is exchanges, blockchains and all manually tracked balances. And it will return an overview of all queried balances. This also includes any debt/liabilities.
 
@@ -2675,7 +2743,7 @@ Querying all balances
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/balances/ HTTP/1.1
+      GET /api/1/balances HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
@@ -2717,7 +2785,7 @@ Querying all balances
                    }
                },
                "liabilities": {
-                   "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {
+                   "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {
                        "amount": "100",
                        "usd_value": "102.5",
                        "percentage_of_net_value": "1%"
@@ -2751,31 +2819,157 @@ Querying all balances
 Querying all supported assets
 ================================
 
-.. http:get:: /api/(version)/assets/all
+.. http:post:: /api/(version)/assets/all
 
-   Doing a GET on the all assets endpoint will return a mapping of all supported assets and their details. The keys are the unique symbol identifier and the values are the details for each asset.
+   Doing a POST on the all assets endpoint will return a list of all supported assets and their details.
 
-The details of each asset can contain the following keys:
-
-- **type**: The type of asset. Valid values are ethereum token, own chain, omni token and more. For all valid values check here: https://github.com/rotki/rotki/blob/develop/rotkehlchen/assets/resolver.py#L7
-- **started**: An optional unix timestamp denoting where we know price data for the asset started
-- **name**: The long name of the asset. Does not need to be the same as the unique symbol identifier
-- **forked**: An optional attribute representing another asset out of which this asset forked from. For example ``ETC`` would have ``ETH`` here.
-- **swapped_for**: An optional attribute representing another asset for which this asset was swapped for. For example ``VEN`` tokens were at some point swapped for ``VET`` tokens.
-- **symbol**: The symbol used for this asset. This is not guaranteed to be unique. Unfortunately some assets use the same symbol as others.
-- **ethereum_address**: If the type is ``ethereum_token`` then this will be the hexadecimal address of the token's contract.
-- **ethereum_token_decimals**: If the type is ``ethereum_token`` then this will be the number of decimals the token has
-- **cryptocompare**: The cryptocompare identifier for the asset. can be missing if not known. If missing the symbol is attempted to be queried.
-- **coingecko**: The coingecko identifier for the asset. can be missing if not known.
-- **protocol**: An optional string for ethereum tokens denoting the protocol they belong to. For example uniswap, for uniswap LP tokens.
-- **underlying_tokens**: Optional. If the token is an LP token or a token set or something similar which represents a pool of multiple other tokens, then this is a list of the underlying token addresses and a percentage that each token contributes to the pool.
 
    **Example Request**:
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/assets/all HTTP/1.1
+      POST /api/1/assets/all HTTP/1.1
       Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {
+        "asset_type": "own chain",
+        "limit": 15,
+        "offset": 0
+      }
+
+   :reqjson int limit: This signifies the limit of records to return as per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson int offset: This signifies the offset from which to start the return of records per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson list[string] order_by_attributes: This is the list of attributes of the asset by which to order the results. By default we sort using ``name``.
+   :reqjson list[bool] ascending: Should the order be ascending? This is the default. If set to false, it will be on descending order.
+   :reqjson string name: The name of asset to be used to filter the result data. Optional.
+   :reqjson string symbol: An asset symbol to be used to filter the result data. Optional.
+   :reqjson string asset_type: The category of an asset to be used to filter the result data. Optional.
+   :reqjson bool show_user_owned_assets_only: A flag to specify if only user owned assets should be returned. Defaults to ``"false"``. Optional.
+   :reqjson string ignored_assets_handling: A flag to specify how to handle ignored assets. Possible values are `'none'`, `'exclude'` and `'show_only'`. You can write 'none' in order to not handle them in any special way (meaning to show them too). This is the default. You can write 'exclude' if you want to exlude them from the result. And you can write 'show_only' if you want to only see the ignored assets in the result.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": [
+              {
+                  "identifier": "eip155:1/erc20:0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
+                  "evm_address": "0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
+                  "chain":"ethereum",
+                  "token_kind":"erc20",
+                  "decimals": 8,
+                  "name": "0xBitcoin",
+                  "started": 1517875200,
+                  "symbol": "0xBTC",
+                  "type": "ethereum token"
+                  "cryptocompare":"0xbtc",
+                  "coingecko":"0xbtc",
+                  "protocol":"None"
+              },
+              {
+                  "identifier": "DCR",
+                  "name": "Decred",
+                  "started": 1450137600,
+                  "symbol": "DCR",
+                  "type": "own chain"
+              },
+              {
+                  "identifier": "eip155:1/erc20:0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38",
+                  "evm_address": "0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38",
+                  "chain":"ethereum",
+                  "token_kind":"erc20",
+                  "decimals": 18,
+                  "name": "DigitalDevelopersFund",
+                  "started": 1498504259,
+                  "symbol": "DDF",
+                  "type": "ethereum token"
+                  "cryptocompare":"DDF",
+                  "coingecko":"ddf",
+                  "protocol":"None"
+              },
+              {
+                  "identifier": "ETC",
+                  "forked": "ETH",
+                  "name": "Ethereum classic",
+                  "started": 1469020840,
+                  "symbol": "ETC",
+                  "type": "own chain"
+              },
+              {
+                  "identifier": "KRW",
+                  "name": "Korean won",
+                  "symbol": "KRW",
+                  "type": "fiat"
+              },
+              {
+                  "identifier": "eip155:1/erc20:0xD850942eF8811f2A866692A623011bDE52a462C1",
+                  "evm_address": "0xD850942eF8811f2A866692A623011bDE52a462C1",
+                  "chain":"ethereum",
+                  "token_kind":"erc20",
+                  "decimals": 18,
+                  "name": "Vechain Token",
+                  "started": 1503360000,
+                  "swapped_for": "VET",
+                  "symbol": "VEN",
+                  "type": "ethereum token",
+                  "coingecko": "vechain"
+                  "cryptocompare":"VET",
+                  "coingecko":"vet",
+                  "protocol":"None"
+              }
+          ],
+          "message": ""
+      }
+
+   :resjson list result: A list of assets that match the query with their respective asset details.
+   :resjson string type: The type of asset. Valid values are ethereum token, own chain, omni token and more. For all valid values check `here <https://github.com/rotki/rotki/blob/8387c96eb77f9904b44a1ddd0eb2acbf3f8d03f6/rotkehlchen/assets/types.py#L10>`_.
+   :resjson integer started: An optional unix timestamp denoting when we know the asset started to have a price.
+   :resjson string name: The long name of the asset. Does not need to be the same as the unique identifier.
+   :resjson string forked: An optional attribute representing another asset out of which this asset forked from. For example ``ETC`` would have ``ETH`` here.
+   :resjson string swapped_for: An optional attribute representing another asset for which this asset was swapped for. For example ``VEN`` tokens were at some point swapped for ``VET`` tokens.
+   :resjson string symbol: The symbol used for this asset. This is not guaranteed to be unique.
+   :resjson string evm_address: If the type is ``evm_token`` then this will be the hexadecimal address of the token's contract.
+   :resjson string chain: If the type is ``evm_token`` then this will be the chain in the form of string in which the token is.
+   :resjson string token_kind:  If the type is ``evm_token`` then this will be the token type, for example ``erc20``.
+   :resjson integer decimals: If the type is ``evm_token`` then this will be the number of decimals the token has.
+   :resjson string cryptocompare: The cryptocompare identifier for the asset. can be missing if not known. If missing a query by symbol is attempted.
+   :resjson string coingecko: The coingecko identifier for the asset. can be missing if not known.
+   :resjson string protocol: An optional string for evm tokens denoting the protocol they belong to. For example uniswap, for uniswap LP tokens.
+   :resjson object underlying_tokens: Optional. If the token is an LP token or a token set or something similar which represents a pool of multiple other tokens, then this is a list of the underlying token addresses and a percentage(value in the range of 0 to 100) that each token contributes to the pool.
+   :resjson string notes: If the type is ``custom_asset`` this is a string field with notes added by the user.
+   :resjson string custom_asset_type: If the type is ``custom_asset`` this field contains the custom type set by the user for the asset.
+   :statuscode 200: Assets successfully queried.
+   :statuscode 409: One or more of the requested identifiers don't exist in the database.
+   :statuscode 500: Internal rotki error
+
+
+Get asset identifiers mappings
+================================
+
+.. http:post:: /api/(version)/assets/mappings
+
+   Doing a POST on the assets mappings endpoint with a list of of identifiers will return a mapping of those identifiers to their respective name and symbols.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      POST /api/1/assets/mappings HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {
+        "identifiers": [
+            "eip155:1/erc20:0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
+            "DCR",
+            "eip155:1/erc20:0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38"
+        ]
+      }
 
    **Example Response**:
 
@@ -2786,58 +2980,164 @@ The details of each asset can contain the following keys:
 
       {
           "result": {
-              "_ceth_0xB6eD7644C69416d67B522e20bC294A9a9B405B31": {
-                  "ethereum_address": "0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
-                  "ethereum_token_decimals": 8,
+              "eip155:1/erc20:0xB6eD7644C69416d67B522e20bC294A9a9B405B31": {
                   "name": "0xBitcoin",
-                  "started": 1517875200,
                   "symbol": "0xBTC",
-                  "type": "ethereum token"
+                  "is_custom_asset": false
               },
               "DCR": {
                   "name": "Decred",
-                  "started": 1450137600,
                   "symbol": "DCR",
-                  "type": "own chain"
+                  "is_custom_asset": false
               },
-              "_ceth_0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38": {
-                  "ethereum_address": "0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38",
-                  "ethereum_token_decimals": 18,
+              "eip155:1/erc20:0xcC4eF9EEAF656aC1a2Ab886743E98e97E090ed38": {
                   "name": "DigitalDevelopersFund",
-                  "started": 1498504259,
                   "symbol": "DDF",
-                  "type": "ethereum token"
-              },
-              "ETC": {
-                  "forked": "ETH",
-                  "name": "Ethereum classic",
-                  "started": 1469020840,
-                  "symbol": "ETC",
-                  "type": "own chain"
-              },
-              "KRW": {
-                  "name": "Korean won",
-                  "symbol": "KRW",
-                  "type": "fiat"
-              },
-              "_ceth_0xD850942eF8811f2A866692A623011bDE52a462C1": {
-                  "ethereum_address": "0xD850942eF8811f2A866692A623011bDE52a462C1",
-                  "ethereum_token_decimals": 18,
-                  "name": "Vechain Token",
-                  "started": 1503360000,
-                  "swapped_for": "VET",
-                  "symbol": "VEN",
-                  "type": "ethereum token",
-                  "coingecko": "vechain"
-              },
+                  "evm_chain": "ethereum",
+                  "is_custom_asset": false
+              }
           },
           "message": ""
       }
 
-
-   :resjson object result: A mapping of asset symbol identifiers to asset details
+   :resjson object result: A mapping of identifiers to their name, symbol & chain(if available).
+   :resjson string name: Name of the asset.
+   :resjson string symbol: Symbol of the asset.
+   :resjson string evm_chain: This value might not be included in all the results. Full name of the EVM chain where the asset is located if the asset is an EVM token.
+   :resjson string custom_asset_type: This value might not be included in all the results. It represents the custom asset type for a custom asset.
+   :resjson bool is_custom_asset: A boolean to represent whether the asset is a custom asset or not.
    :statuscode 200: Assets successfully queried.
-   :statuscode 500: Internal rotki error
+   :statuscode 400: One of the identifiers is not valid. Provided JSON is in some way malformed.
+   :statuscode 500: Internal rotki error.
+
+Search for assets
+===================
+
+.. http:post:: /api/(version)/assets/search
+
+   Doing a POST on the assets search endpoint will return a list of objects containing an asset's name, symbol and identifier in ascending order of the assets' names by default.
+   The result returned is based on the search keyword and column specified to search.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      POST /api/1/assets/search HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {
+        "value": "bitcoin",
+        "search_column": "name",
+        "limit": 50,
+        "order_by_attributes": ["symbol"],
+        "ascending": [false]
+      }
+
+   :reqjson int limit: This signifies the limit of records to return as per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson list[string] order_by_attributes: This is the list of attributes of the asset by which to order the results. By default we sort using ``name``.
+   :reqjson list[bool] ascending: Should the order be ascending? This is the default. If set to false, it will be on descending order.
+   :reqjson string value: A string to be used search the assets. Required.
+   :reqjson string search_column: A column on the assets table to perform the search on. One of ``"name"`` or ``"symbol"``. Required.
+   :reqjson bool return_exact_matches: A flag that specifies whether the result returned should match the search keyword. Defaults to ``"false"``.
+   :reqjson string[optional] evm_chain: A string representing the name of a supported EVM chain used to filter the result. e.g "ethereum", "optimism", "binance", etc.
+
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": [
+              {
+                  "identifier": "eip155:1/erc20:0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
+                  "name": "0xBitcoin",
+                  "symbol": "0xBTC"
+                  "chain": "ethereum",
+                  "is_custom_asset": false
+              },
+              {
+                  "identifier": "BTC",
+                  "name": "bitcoin",
+                  "symbol": "BTC",
+                  "is_custom_asset": false
+              }
+          ],
+          "message": ""
+      }
+
+   :resjson object result: A list of objects that contain the asset details which match the search keyword.
+   :resjson string identifier: Identifier of the asset.
+   :resjson string name: Name of the asset.
+   :resjson string symbol: Symbol of the asset.
+   :resjson string evm_chain: This value might not be included in all the results. Full name of the EVM chain where the asset is located if the asset is an EVM token.
+   :resjson string custom_asset_type: This value might not be included in all the results. It represents the custom asset type for a custom asset.
+   :resjson bool is_custom_asset: A boolean to represent whether the asset is a custom asset or not.
+   :statuscode 200: Assets successfully queried.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 500: Internal rotki error.
+
+
+Search for assets(Levenshtein)
+===============================
+
+.. http:post:: /api/(version)/assets/search/levenshtein
+
+   Doing a POST on the assets search endpoint will return a list of objects containing an asset's name, symbol and identifier based on the search keyword provided. This approach using Levenshtein distance for the search functionality and returns them by the closest match first.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      POST /api/1/assets/search/levenshtein HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {
+        "value": "bitcoin",
+        "limit": 50
+      }
+
+   :reqjson int limit: This signifies the limit of records to return as per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson list[string] order_by_attributes: This is the list of attributes of the asset by which to order the results. By default we sort using ``name``.
+   :reqjson list[bool] ascending: Should the order be ascending? This is the default. If set to false, it will be on descending order.
+   :reqjson string value: A string to be used to search the assets. Required.
+   :reqjson string[optional] evm_chain: A string representing the name of a supported EVM chain used to filter the result. e.g "ethereum", "optimism", "binance", etc.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": [
+              {
+                  "identifier": "eip155:1/erc20:0xB6eD7644C69416d67B522e20bC294A9a9B405B31",
+                  "name": "0xBitcoin",
+                  "symbol": "0xBTC"
+                  "evm_chain": "ethereum",
+                  "is_custom_asset": false
+              }
+          ],
+          "message": ""
+      }
+
+   :resjson object result: A list of objects that contain the asset details which match the search keyword ordered by distance to search keyword.
+   :resjson string identifier: Identifier of the asset.
+   :resjson string name: Name of the asset.
+   :resjson string symbol: Symbol of the asset.
+   :resjson string evm_chain: This value might not be included in all the results. Full name of the EVM chain where the asset is located if the asset is an EVM token.
+   :resjson string custom_asset_type: This value might not be included in all the results. It represents the custom asset type for a custom asset.
+   :resjson bool is_custom_asset: A boolean to represent whether the asset is a custom asset or not.
+   :statuscode 200: Assets successfully queried.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 500: Internal rotki error.
+
 
 Querying owned assets
 ======================
@@ -2873,15 +3173,15 @@ Querying owned assets
    :statuscode 409: No user is currently logged in.
    :statuscode 500: Internal rotki error
 
-Detecting owned ethereum tokens
-===============================
+Detecting owned tokens
+======================
 
-.. http:post:: /api/(version)/blockchains/ETH/tokens/detect
+.. http:post:: /api/(version)/blockchains/(blockchain)/tokens/detect
 
-   Doing POST on the detect tokens endpoint will detect ethereum tokens owned by the provided addresses. If no addresses provided, tokens for all user's ethereum addresses will be detected.
+   Doing POST on the detect tokens endpoint will detect tokens owned by the provided addresses on the specified blockchain. If no addresses provided, tokens for all user's addresses will be detected.
 
-.. note::
-      This endpoint can also be queried asynchronously by using ``"async_query": true``
+    .. note::
+          This endpoint can also be queried asynchronously by using ``"async_query": true``
 
   **Example Request**:
 
@@ -2895,7 +3195,7 @@ Detecting owned ethereum tokens
 
   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
   :reqjson bool only_cache: Boolean denoting whether to use only cache or re-detect tokens.
-  :reqjson list addresses: A list of addresses to detect tokens for. 
+  :reqjson list addresses: A list of addresses to detect tokens for.
 
 
   **Example Response**:
@@ -2909,7 +3209,7 @@ Detecting owned ethereum tokens
         "result": {
             "0x31F05553be0EBBf7774241603Cc7b28771F989B3": {
                 "tokens": [
-                    "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F", "_ceth_0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+                    "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F", "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
                 ],
                 "last_update_timestamp": 1658764910,
             },
@@ -2924,12 +3224,12 @@ Detecting owned ethereum tokens
   :statuscode 409: No user is currently logged in.
   :statuscode 500: Internal rotki error
 
-Getting custom ethereum tokens
+Getting custom EVM tokens
 ==================================
 
 .. http:get:: /api/(version)/assets/ethereum
 
-   Doing a GET on the ethereum assets endpoint will return a list of all custom ethereum tokens. You can also optionally specify an ethereum address to get its token details. If you query by address only a single object is returned. If you query without, a list of objects.
+   Doing a GET on the ethereum assets endpoint will return a list of all custom EVM tokens. You can also optionally specify an ethereum address to get its token details. If you query by address only a single object is returned. If you query without, a list of objects.
 
    **Example Request**:
 
@@ -2939,7 +3239,7 @@ Getting custom ethereum tokens
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"address": "0x1169C72f36A843cD3a3713a76019FAB9503B2807"}
+      {"address": "0x1169C72f36A843cD3a3713a76019FAB9503B2807", "chain": "ethereum"}
 
    :reqjson string address: An optional address to query for ethereum token info. If given only token info of this address are returned. As an object. **not a list**. If not given, a list of all known tokens is returned.
 
@@ -2951,9 +3251,11 @@ Getting custom ethereum tokens
       Content-Type: application/json
 
       {
-          "result": [{
-              "identifier": "_ceth_0x1169C72f36A843cD3a3713a76019FAB9503B2807",
+          "result": {
+              "identifier": "eip155:1/erc20:0x1169C72f36A843cD3a3713a76019FAB9503B2807",
               "address": "0x1169C72f36A843cD3a3713a76019FAB9503B2807",
+              "chain":"ethereum",
+              "token_kind":"erc20",
               "decimals": 18,
               "name": "foo",
               "symbol": "FTK",
@@ -2963,14 +3265,11 @@ Getting custom ethereum tokens
               "cryptocompare": "FOO",
               "protocol": "uniswap",
               "underlying_tokens": [
-                  {"address": "0x4a363BDcF9C139c0B77d929C8c8c5f971a38490c", "weight": "15.45"},
-                  {"address": "0xf627B24754583896AbB6376b1e231A3B26d86c99", "weight": "35.65"},
-                  {"address": "0x2B18982803EF09529406e738f344A0c1A54fA1EB", "weight": "39"}
+                  {"address": "0x4a363BDcF9C139c0B77d929C8c8c5f971a38490c", "chain":"ethereum", "token_kind":"erc20", "weight": "15.45"},
+                  {"address": "0xf627B24754583896AbB6376b1e231A3B26d86c99", "chain":"ethereum", "token_kind":"erc20", "weight": "35.65"},
+                  {"address": "0x2B18982803EF09529406e738f344A0c1A54fA1EB", "chain":"ethereum", "token_kind":"erc20", "weight": "39"}
               ]
-          }, {
-              "address": "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
-              "decimals": 4
-          }],
+          },
           "message": ""
       }
 
@@ -2978,7 +3277,9 @@ Getting custom ethereum tokens
 
    :resjson list result: A list of ethereum tokens
    :resjsonarr string identifier: The rotki identifier of the token. This is only returned from the GET endpoint and not input from the add/edit one.
-   :resjsonarr string address: The address of the token. Can not be optional.
+   :resjsonarr string address: The address of the token. This is a required field.
+   :resjsonarr string chain: The chain where the token is deployed. This is a required field.
+   :resjsonarr string token_kind: The kind of the token. This is a required field.
    :resjsonarr integer decimals: Ethereum token decimals. Can be missing if not known.
    :resjsonarr string name: Asset name. Can be missing if not known.
    :resjsonarr string symbol: Asset symbol. Can be missing if not known.
@@ -2987,7 +3288,7 @@ Getting custom ethereum tokens
    :resjsonarr string coingecko: The coingecko identifier for the asset. can be missing if not known.
    :resjsonarr string cryptocompare: The cryptocompare identifier for the asset. can be missing if not known.
    :resjsonarr string protocol: A name for the protocol the token belongs to. For example uniswap for all uniswap LP tokens. Can be missing if not known or there is no protocol the token belongs to.
-   :resjsonarr list underlying_tokens: Optional. If the token is an LP token or a token set or something similar which represents a pool of multiple other tokens, then this is a list of the underlying token addresses and a percentage that each token contributes to the pool.
+   :resjsonarr list underlying_tokens: Optional. If the token is an LP token or a token set or something similar which represents a pool of multiple other tokens, then this is a list of the underlying token addresses, chain, token kind and a percentage that each token contributes to the pool.
    :statuscode 200: Assets successfully queried.
    :statuscode 400: Provided JSON is in some way malformed
    :statuscode 404: Queried by address and no token was found.
@@ -2998,7 +3299,7 @@ Adding custom ethereum tokens
 
 .. http:put:: /api/(version)/assets/ethereum
 
-   Doing a PUT on the ethereum assets endpoint will allow you to add a new ethereum token in the global rotki DB. Returns the asset identifier of the new custom token. For ethereum ones it's ``_ceth_0xADDRESS``
+   Doing a PUT on the ethereum assets endpoint will allow you to add a new ethereum token in the global rotki DB. Returns the asset identifier of the new custom token. For ethereum ones it's ``eip155:1/erc20:0xADDRESS``
 
    **Example Request**:
 
@@ -3010,6 +3311,8 @@ Adding custom ethereum tokens
 
       {"token": {
           "address": "0x1169C72f36A843cD3a3713a76019FAB9503B2807",
+          "chain":"ethereum",
+          "token_kind":"erc20",
           "decimals": 18,
           "name": "foo",
           "symbol": "FTK",
@@ -3019,9 +3322,9 @@ Adding custom ethereum tokens
           "cryptocompare": "FOO",
           "protocol": "uniswap",
           "underlying_tokens": [
-              {"address": "0x4a363BDcF9C139c0B77d929C8c8c5f971a38490c", "weight": "15.45"},
-                  {"address": "0xf627B24754583896AbB6376b1e231A3B26d86c99", "weight": "35.65"},
-                  {"address": "0x2B18982803EF09529406e738f344A0c1A54fA1EB", "weight": "39"}
+              {"address": "0x4a363BDcF9C139c0B77d929C8c8c5f971a38490c", "token_kind":"erc20", "weight": "15.45"},
+              {"address": "0xf627B24754583896AbB6376b1e231A3B26d86c99", "token_kind":"erc20", "weight": "35.65"},
+              {"address": "0x2B18982803EF09529406e738f344A0c1A54fA1EB", "token_kind":"erc20", "weight": "39"}
          ]
        }}
 
@@ -3035,7 +3338,7 @@ Adding custom ethereum tokens
       Content-Type: application/json
 
       {
-          "result": {"identifier": "_ceth_0x1169C72f36A843cD3a3713a76019FAB9503B2807"},
+          "result": {"identifier": "eip155:1/erc20:0x1169C72f36A843cD3a3713a76019FAB9503B2807"},
           "message": ""
       }
 
@@ -3085,7 +3388,7 @@ Editing custom ethereum tokens
       Content-Type: application/json
 
       {
-          "result": {"identifier": "_ceth_0x1169C72f36A843cD3a3713a76019FAB9503B2807"},
+          "result": {"identifier": "eip155:1/erc20:0x1169C72f36A843cD3a3713a76019FAB9503B2807"},
           "message": ""
       }
 
@@ -3376,8 +3679,8 @@ Performing an asset update
           "async_query": true,
           "up_to_version": 5,
           "conflicts": {
-              "_ceth_0xD178b20c6007572bD1FD01D205cC20D32B4A6015": "local",
-              "_ceth_0xD178b20c6007572bD1FD01D205cC20D32B4A6015": "remote",
+              "eip155:1/erc20:0xD178b20c6007572bD1FD01D205cC20D32B4A6015": "local",
+              "eip155:1/erc20:0xD178b20c6007572bD1FD01D205cC20D32B4A6015": "remote",
               "Fas-23-da20": "local"
           }
       }
@@ -3534,18 +3837,19 @@ Replacing an asset
 Querying asset icons
 ======================
 
-.. http:get:: /api/(version)/assets/(identifier)/icon
+.. http:post:: /api/(version)/assets/icon
 
-   Doing a GET on the asset icon endpoint will return the icon of the given asset.
-   If we have no icon for an asset a 404 is returned.
+   Doing a GET on the asset icon endpoint will return the icon of the given asset. If we have no icon for an asset a 404 is returned
 
 
    **Example Request**:
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/assets/_ceth_0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e/icon HTTP/1.1
+      GET /api/1/assets/icon?asset=eip155:1/erc20:3A0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e HTTP/1.1
       Host: localhost:5042
+
+   :reqquery string asset: Identifier of the asset to be queried.
 
    **Example Response**:
 
@@ -3565,8 +3869,8 @@ Querying asset icons
 Uploading custom asset icons
 ===============================
 
-.. http:put:: /api/(version)/assets/(identifier)/icon
-.. http:post:: /api/(version)/assets/(identifier)/icon
+.. http:put:: /api/(version)/assets/icon/modify
+.. http:post:: /api/(version)/assets/icon/modify
 
    Doing either a PUT or a POST on the asset icon endpoint with appropriate arguments will upload a custom icon for an asset. That icon will take precedence over what rotki already knows for the asset if anything.
 
@@ -3575,13 +3879,14 @@ Uploading custom asset icons
 
    .. http:example:: curl wget httpie python-requests
 
-      PUT /api/1/assets/ACUSTOMICON/icon/large HTTP/1.1
+      PUT /api/1/assets/icon/modify HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"file": "/path/to/file"}
+      {"file": "/path/to/file", "asset": "eip155:1/erc20:0x6810e776880C02933D47DB1b9fc05908e5386b96"}
 
    :reqjson string file: The path to the image file to upload for PUT. The file itself for POST.
+   :reqjson string asset: Identifier of the asset to be updated.
 
    **Example Response**:
 
@@ -3590,7 +3895,7 @@ Uploading custom asset icons
       HTTP/1.1 200 OK
       Content-Type: application/json
 
-      {"result": {"identifier": "_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96"}, "message": ""}
+      {"result": {"identifier": "eip155:1/erc20:0x6810e776880C02933D47DB1b9fc05908e5386b96"}, "message": ""}
 
    :resjson strin identifier: The identifier of the asset for which the icon was uploaded.
    :statuscode 200: Icon successfully uploaded
@@ -3600,7 +3905,7 @@ Uploading custom asset icons
 Refreshing asset icons
 ===============================
 
-.. http:patch:: /api/(version)/assets/(identifier)/icon
+.. http:patch:: /api/(version)/assets/icon/modify
 
    Doing a PATCH on the asset icon endpoint will refresh the icon of the given asset.
    First, the cache of the icon of the given asset is deleted and then requeried from CoinGecko and saved to the filesystem.
@@ -3610,8 +3915,13 @@ Refreshing asset icons
 
    .. http:example:: curl wget httpie python-requests
 
-      PATCH /api/1/assets/_ceth_0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e/icon HTTP/1.1
+      PATCH /api/1/assets/icon/modify HTTP/1.1
       Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {"asset": "eip155:1/erc20:0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"}
+
+   :reqjson string asset: Identifier of the asset to be refreshed.
 
    **Example Response**:
 
@@ -3671,31 +3981,31 @@ Statistics for netvalue over time
 Statistics for asset balance over time
 ======================================
 
-.. http:get:: /api/(version)/statistics/balance/(asset identifier)
+.. http:post:: /api/(version)/statistics/balance
 
    .. note::
       This endpoint is only available for premium users
 
-   .. note::
-      This endpoint also accepts parameters as query arguments.
 
-   Doing a GET on the statistics asset balance over time endpoint will return all saved balance entries for an asset. Optionally you can filter for a specific time range by providing appropriate arguments.
+   Doing a POST on the statistics asset balance over time endpoint will return all saved balance entries for an asset. Optionally you can filter for a specific time range by providing appropriate arguments.
 
 
    **Example Request**:
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/statistics/balance/BTC HTTP/1.1
+      POST /api/1/statistics/balance HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"from_timestamp": 1514764800, "to_timestamp": 1572080165}
+      {"from_timestamp": 1514764800, "to_timestamp": 1572080165, "asset": "BTC"}
 
    :reqjson int from_timestamp: The timestamp after which to return saved balances for the asset. If not given zero is considered as the start.
    :reqjson int to_timestamp: The timestamp until which to return saved balances for the asset. If not given all balances until now are returned.
+   :reqjson string asset: Identifier of the asset.
    :param int from_timestamp: The timestamp after which to return saved balances for the asset. If not given zero is considered as the start.
    :param int to_timestamp: The timestamp until which to return saved balances for the asset. If not given all balances until now are returned.
+   :param string asset: Identifier of the asset.
 
    **Example Response**:
 
@@ -4118,9 +4428,9 @@ Dealing with trades
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      { "trade_id" : "dsadfasdsad"}
+      { "trades_ids" : ["dsadfasdsad"]}
 
-   :reqjson string trade_id: The ``trade_id`` of the trade to delete.
+   :reqjson string trades_ids: The list of identifiers for trades to delete.
 
    **Example Response**:
 
@@ -4134,7 +4444,8 @@ Dealing with trades
           "message": ""
       }
 
-   :resjson bool result: Boolean indicating success or failure of the request.
+   :resjson bool result: Returns ``true`` if all identifiers were found and deleted, otherwise returns ``false``.
+   :resjson string message: Returns ``""`` if ``result`` is ``True`` else returns the error message.
    :statuscode 200: Trades was successfully deleted.
    :statuscode 400: Provided JSON is in some way malformed.
    :statuscode 409: No user is logged in. The given trade identifier to delete does not exist.
@@ -4277,7 +4588,7 @@ Dealing with ledger actions
                       "action_type": "loss",
                       "location": "blockchain",
                       "amount": "1550",
-                      "asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                      "asset": "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F",
                       "rate": "0.85",
                       "rate_asset": "EUR",
                       "link": "https://etherscan.io/tx/0xea5594ad7a1e552f64e427b501676cbba66fd91bac372481ff6c6f1162b8a109"
@@ -4431,9 +4742,9 @@ Dealing with ledger actions
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"identifier" : 55}
+      {"identifiers" : [55]}
 
-   :reqjson integer identifier: The ``identifier`` of the action to delete.
+   :reqjson integer identifiers: The list of identifiers of the actions to delete.
 
    **Example Response**:
 
@@ -4442,31 +4753,10 @@ Dealing with ledger actions
       HTTP/1.1 200 OK
       Content-Type: application/json
 
-      {
-          "result": {
-              "entries": [{
-                  "entry": {
-                      "identifier": 35,
-                      "timestamp": 1491606401,
-                      "action_type": "income"
-                      "location": "external",
-                      "amount": "2",
-                      "asset": "ETH",
-                      "rate": "650",
-                      "rate_asset": "EUR",
-                      "link": "Optional unique identifier",
-                      "notes": "Eth I received for being pretty"
-                  },
-                  "ignored_in_accounting": false
-              }],
-              "entries_found": 1,
-              "entries_limit": 50,
-          "message": ""
-      }
+      {"result": true, "message": ""}
 
-   :resjson object entries: An array of action objects after deletion. Same schema as the get method.
-   :resjson int entries_found: The amount of actions found for the user. That disregards the filter and shows all actions found.
-   :resjson int entries_limit: The actions limit for the account tier of the user. If unlimited then -1 is returned.
+   :resjson bool result: Returns ``true`` if all identifiers were found and deleted, otherwise returns ``false``.
+   :resjson string message: Returns ``""`` if ``result`` is ``True`` else return the error message.
    :statuscode 200: Action was successfully removed.
    :statuscode 400: Provided JSON is in some way malformed
    :statuscode 409: No user is logged in.
@@ -4493,7 +4783,7 @@ Dealing with BaseHistoryEntry events
           "timestamp": 1569924574,
           "location": "blockchain",
           "event_type": "informational",
-          "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+          "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
           "balance": {"amount": "1.542", "usd_value": "1.675"},
           "location_label": "0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12",
           "notes": "Approve 1 SAI of 0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12 for spending by 0xdf869FAD6dB91f437B59F1EdEFab319493D4C4cE",
@@ -4552,7 +4842,7 @@ Dealing with BaseHistoryEntry events
           "timestamp": 1569924574,
           "location": "blockchain",
           "event_type": "informational",
-          "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+          "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
           "balance": {"amount": "1.542", "usd_value": "1.675"},
           "location_label": "0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12",
           "notes": "Approve 1 SAI of 0x2B888954421b424C5D3D9Ce9bB67c9bD47537d12 for spending by 0xdf869FAD6dB91f437B59F1EdEFab319493D4C4cE",
@@ -4615,7 +4905,7 @@ Dealing with BaseHistoryEntry events
 Querying messages to show to the user
 =====================================
 
-.. http:get:: /api/(version)/messages/
+.. http:get:: /api/(version)/messages
 
    Doing a GET on the messages endpoint will pop all errors and warnings from the message queue and return them. The message queue is a queue where all errors and warnings that are supposed to be see by the user are saved and are supposed to be popped and read regularly.
 
@@ -4624,7 +4914,7 @@ Querying messages to show to the user
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/messages/ HTTP/1.1
+      GET /api/1/messages HTTP/1.1
       Host: localhost:5042
 
    **Example Response**:
@@ -4651,7 +4941,7 @@ Querying messages to show to the user
 Querying complete action history
 ================================
 
-.. http:get:: /api/(version)/history/
+.. http:get:: /api/(version)/history
 
    .. note::
       This endpoint can also be queried asynchronously by using ``"async_query": true``
@@ -4666,7 +4956,7 @@ Querying complete action history
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/history/ HTTP/1.1
+      GET /api/1/history HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
@@ -4773,7 +5063,7 @@ Export PnL report debug data
                 "event_type": "spend",
                 "event_subtype": "fee",
                 "location_label": "0x19e4057A38a730be37c4DA690b103267AAE1d75d",
-                "notes": "Burned 0.001367993179812 ETH in gas from 0x19e4057A38a730be37c4DA690b103267AAE1d75d",
+                "notes": "Burned 0.001367993179812 ETH for gas",
                 "counterparty": "gas"
                 }
             ],
@@ -4947,6 +5237,23 @@ Export action history to CSV
    :statuscode 500: Internal rotki error.
 
 
+Download action history CSV
+================================
+
+.. http:get:: /api/(version)/history/download
+
+
+   Doing a GET on the history download endpoint will download the last previously queried history to CSV files and return it in a zip file. If history has not been queried before an error is returned.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      GET /api/1/history/download HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+
 Get missing acquisitions and prices
 ====================================
 
@@ -4979,25 +5286,25 @@ Get missing acquisitions and prices
             "report_id": 42,
             "missing_acquisitions": [
               {
-                "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359v",
+                "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359v",
                 "time": 1428994442,
                 "found_amount": "0",
                 "missing_amount": "0.1"
               },
               {
-                "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+                "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
                 "time": 1439048640,
                 "found_amount": "0",
                 "missing_amount": "14.36963"
               },
               {
-                "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+                "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
                 "time": 1439994442,
                 "found_amount": "0",
                 "missing_amount": "0.0035000000"
               },
               {
-                "asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+                "asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
                 "time": 1439994442,
                 "found_amount": "0",
                 "missing_amount": "1.7500"
@@ -5005,9 +5312,16 @@ Get missing acquisitions and prices
             ],
           "missing_prices": [
             {
-              "from_asset": "_ceth_0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+              "from_asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
               "to_asset": "AVAX",
               "time": 1439994442,
+              "rate_limited": false,
+            },
+            {
+              "from_asset": "eip155:1/erc20:0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359",
+              "to_asset": "USD",
+              "time": 1439995442,
+              "rate_limited": true,
             }
           ]
         },
@@ -5019,6 +5333,8 @@ Get missing acquisitions and prices
    :resjson list missing_prices: A list that contains entries of missing prices found during PnL reporting.
    :resjsonarr str from_asset: The asset whose price is missing.
    :resjsonarr str to_asset: The asset in which we want the price of from_asset.
+   :resjsonarr int time: The timestamp for which the price is missing.
+   :resjosnarr bool reate_limited: True if we couldn't get the price and any of the oracles got rate limited.
    :resjson list missing_acquisitions: A list that contains entries of missing acquisitions found during PnL reporting.
    :resjsonarr str asset: The asset that is involved in the event.
    :resjsonarr int time: The timestamp this event took place in.
@@ -5133,8 +5449,8 @@ Query saved PnL Reports
                   "calculate_past_cost_basis": true,
                   "include_gas_costs": true,
                   "account_for_assets_movements": true,
-                  "cost_basis_method": "fifo,
-		  "eth_staking_taxable_after_withdrawal_enabled": false
+                  "cost_basis_method": "fifo",
+                  "eth_staking_taxable_after_withdrawal_enabled": false
               },
               "overview": {
                   "trade": {"free": "0", "taxable": "60.1"},
@@ -5157,7 +5473,7 @@ Query saved PnL Reports
                   "include_gas_costs": true,
                   "account_for_assets_movements": true,
                   "cost_basis_method": "fifo",
-		  "eth_staking_taxable_after_withdrawal_enabled": false
+                  "eth_staking_taxable_after_withdrawal_enabled": false
               },
               "overview": {
                   "asset movement": {"free": "0", "taxable": "5"},
@@ -5331,7 +5647,7 @@ Purge PnL report and all its data
 Querying periodic data
 ======================
 
-.. http:get:: /api/(version)/periodic/
+.. http:get:: /api/(version)/periodic
 
 
    Doing a GET on the periodic data endpoint will return data that would be usually frequently queried by an application. Check the example response to see what these data would be.
@@ -5340,7 +5656,7 @@ Querying periodic data
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/periodic/ HTTP/1.1
+      GET /api/1/periodic HTTP/1.1
       Host: localhost:5042
 
    **Example Response**:
@@ -5353,7 +5669,7 @@ Querying periodic data
       {
           "result": {
               "last_balance_save": 1572345881,
-              "connected_eth_nodes": ['nodeX', 'nodeY'],
+              "connected_eth_nodes": ["nodeX", "nodeY"],
               "last_data_upload_ts": 0
           }
           "message": ""
@@ -5851,7 +6167,7 @@ Getting MakerDAO vaults basic data
               "identifier": 55,
               "collateral_type": "USDC-A",
               "owner": "0xB26a9561ffFD9fC603F7d6A30c37D79665207876",
-              "collateral_asset": "_ceth_0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "collateral_asset": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
               "collateral": {
                   "amount": "150",
                   "usd_value": "150"
@@ -5947,7 +6263,7 @@ Getting MakerDAO vault details
               }]
           }, {
               "identifier": 56,
-              "collateral_asset": "_ceth_0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              "collateral_asset": "eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
               "creation_ts": 1589067897,
               "total_interest_owed": "-751.32",
               "total_liquidated": {
@@ -6040,14 +6356,14 @@ Getting Aave balances
           "result": {
               "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
                   "lending": {
-                      "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {
+                      "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {
                           "balance": {
                               "amount": "350.0",
                               "usd_value": "351.21"
                           },
                           "apy": "3.51%"
                       },
-                      "_ceth_0xdd974D5C2e2928deA5F71b9825b8b646686BD200": {
+                      "eip155:1/erc20:0xdd974D5C2e2928deA5F71b9825b8b646686BD200": {
                           "balance": {
                               "amount": "220.21",
                               "usd_value": "363.3465"
@@ -6056,7 +6372,7 @@ Getting Aave balances
                       },
                   },
                   "borrowing": {
-                      "_ceth_0x80fB784B7eD66730e8b1DBd9820aFD29931aab03": {
+                      "eip155:1/erc20:0x80fB784B7eD66730e8b1DBd9820aFD29931aab03": {
                           "balance": {
                               "amount": "590.21",
                               "usd_value": "146.076975"
@@ -6069,7 +6385,7 @@ Getting Aave balances
               "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
                   "lending": {},
                   "borrowing": {
-                      "_ceth_0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
+                      "eip155:1/erc20:0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
                           "balance": {
                               "amount": "560",
                               "usd_value": "156.8"
@@ -6129,8 +6445,8 @@ Getting Aave historical data
               "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
                   "events": [{
                       "event_type": "deposit",
-                      "asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-                      "atoken": "_ceth_0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
+                      "asset": "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                      "atoken": "eip155:1/erc20:0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
                       "value": {
                           "amount": "350.0",
                           "usd_value": "351.21"
@@ -6141,7 +6457,7 @@ Getting Aave historical data
                       "log_index": 1
                   }, {
                       "event_type": "interest",
-                      "asset": "_ceth_0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
+                      "asset": "eip155:1/erc20:0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
                       "value": {
                           "amount": "0.5323",
                           "usd_value": "0.5482"
@@ -6152,8 +6468,8 @@ Getting Aave historical data
                       "log_index": 1
                   }, {
                       "event_type": "withdrawal",
-                      "asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-                      "atoken": "_ceth_0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
+                      "asset": "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                      "atoken": "eip155:1/erc20:0xfC1E690f61EFd961294b3e1Ce3313fBD8aa4f85d",
                       "value": {
                           "amount": "150",
                           "usd_value": "150.87"
@@ -6164,8 +6480,8 @@ Getting Aave historical data
                       "log_index": 1
                   }, {
                       "event_type": "deposit",
-                      "asset": "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498",
-                      "atoken": "_ceth_0x6Fb0855c404E09c47C3fBCA25f08d4E41f9F062f",
+                      "asset": "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+                      "atoken": "eip155:1/erc20:0x6Fb0855c404E09c47C3fBCA25f08d4E41f9F062f",
                       "value": {
                           "amount": "150",
                           "usd_value": "60.995"
@@ -6176,17 +6492,17 @@ Getting Aave historical data
                       "log_index": 1
                   }],
                   "total_earned": {
-                      "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {
+                      "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {
                           "amount": "0.9482",
                           "usd_value": "1.001"
                       },
-                      "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498": {
+                      "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498": {
                           "amount": "0.523",
                           "usd_value": "0.0253"
                       }
                   },
                   "total_lost": {
-                      "_ceth_0xFC4B8ED459e00e5400be803A9BB3954234FD50e3": {
+                      "eip155:1/erc20:0xFC4B8ED459e00e5400be803A9BB3954234FD50e3": {
                           "amount": "0.3212",
                           "usd_value": "3560.32"
                       }
@@ -6195,7 +6511,7 @@ Getting Aave historical data
               "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
                   "events": [{
                       "event_type": "deposit",
-                      "asset": "_ceth_0x0D8775F648430679A709E98d2b0Cb6250d2887EF",
+                      "asset": "eip155:1/erc20:0x0D8775F648430679A709E98d2b0Cb6250d2887EF",
                       "value": {
                           "amount": "500",
                           "usd_value": "124.1"
@@ -6206,7 +6522,7 @@ Getting Aave historical data
                       "log_index": 1
                   }],
                   "total_earned_interest": {
-                      "_ceth_0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
+                      "eip155:1/erc20:0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
                           "amount": "0.9482",
                           "usd_value": "0.2312"
                       }
@@ -6358,7 +6674,7 @@ Getting AdEx historical data
                             "amount": "50",
                             "usd_value": "45.23"
                         },
-                        "token": "_ceth_0xADE00C28244d5CE17D72E40330B1c318cD12B7c3",
+                        "token": "eip155:1/erc20:0xADE00C28244d5CE17D72E40330B1c318cD12B7c3",
                     },
                     {
                         "bond_id": "0x540cab9883923c01e657d5da4ca5674b6e4626b4a148224635495502d674c7c5",
@@ -6397,7 +6713,7 @@ Getting AdEx historical data
                             "amount": "43",
                             "usd_value": "39.233"
                         },
-                        "token": "_ceth_0xADE00C28244d5CE17D72E40330B1c318cD12B7c3",
+                        "token": "eip155:1/erc20:0xADE00C28244d5CE17D72E40330B1c318cD12B7c3",
                     },
                     {
                         "bond_id": "0x16bb43690fe3764b15a2eb8d5e94e1ac13d6ef38e6c6f9d9f9c745eaff92d427",
@@ -6527,7 +6843,7 @@ Getting Balancer balances
               "address": "0x1efF8aF5D577060BA4ac8A29A13525bb0Ee2A3D5",
               "tokens": [
                 {
-                  "token": "_ceth_0xFC4B8ED459e00e5400be803A9BB3954234FD50e3",
+                  "token": "eip155:1/erc20:0xFC4B8ED459e00e5400be803A9BB3954234FD50e3",
                   "total_amount": "2326.81686488",
                   "user_balance": {
                     "amount": "331.3943886097855861540937492",
@@ -6537,7 +6853,7 @@ Getting Balancer balances
                   "weight": "50"
                 },
                 {
-                  "token": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                  "token": "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
                   "total_amount": "74878.381384930530866965",
                   "user_balance": {
                     "amount": "10664.47290875603144268225218",
@@ -6557,7 +6873,7 @@ Getting Balancer balances
               "address": "0x280267901C175565C64ACBD9A3c8F60705A72639",
               "tokens": [
                 {
-                  "token": "_ceth_0x2ba592F78dB6436527729929AAf6c908497cB200",
+                  "token": "eip155:1/erc20:0x2ba592F78dB6436527729929AAf6c908497cB200",
                   "total_amount": "3728.283461100135483274",
                   "user_balance": {
                     "amount": "3115.861971106915456546519315",
@@ -6567,7 +6883,7 @@ Getting Balancer balances
                   "weight": "75.0"
                 },
                 {
-                  "token": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                  "token": "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
                   "total_amount": "98.530639172406329742",
                   "user_balance": {
                     "amount": "82.34563567641578625390887189",
@@ -6642,8 +6958,8 @@ Getting Balancer events
                   {
                     "pool_address": "0x59A19D8c652FA0284f44113D0ff9aBa70bd46fB4",
                     "pool_tokens": [
-                      { "token": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "weight": "20" },
-                      { "token": "_ceth_0xba100000625a3754423978a60c9317c58a424e3D", "weight": "80" }
+                      { "token": "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", "weight": "20" },
+                      { "token": "eip155:1/erc20:0xba100000625a3754423978a60c9317c58a424e3D", "weight": "80" }
                     ],
                     "events": [
                       {
@@ -6656,8 +6972,8 @@ Getting Balancer events
                           "usd_value": "19.779488662371895"
                         },
                         "amounts": {
-                          "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0.05",
-                          "_ceth_0xba100000625a3754423978a60c9317c58a424e3D": "0"
+                          "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0.05",
+                          "eip155:1/erc20:0xba100000625a3754423978a60c9317c58a424e3D": "0"
                         }
                       },
                       {
@@ -6670,14 +6986,14 @@ Getting Balancer events
                           "usd_value": "19.01364749076136579119809947"
                         },
                         "amounts": {
-                          "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0.010687148200906598",
-                          "_ceth_0xba100000625a3754423978a60c9317c58a424e3D": "0.744372160905819159"
+                          "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "0.010687148200906598",
+                          "eip155:1/erc20:0xba100000625a3754423978a60c9317c58a424e3D": "0.744372160905819159"
                         }
                       }
                     ],
                     "profit_loss_amounts": {
-                      "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "-0.039312851799093402",
-                      "_ceth_0xba100000625a3754423978a60c9317c58a424e3D": "0.744372160905819159"
+                      "eip155:1/erc20:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "-0.039312851799093402",
+                      "eip155:1/erc20:0xba100000625a3754423978a60c9317c58a424e3D": "0.744372160905819159"
                     },
                     "usd_profit_loss": "-0.76584117161052920880190053"
                   }
@@ -6710,131 +7026,6 @@ Getting Balancer events
    :statuscode 500: Internal rotki error.
    :statuscode 502: An external service used in the query such as the graph node could not be reached or returned unexpected response.
 
-Getting Balancer trades
-=========================
-
-.. http:get:: /api/(version)/blockchains/ETH/modules/balancer/history/trades
-
-   Doing a GET on the Balancer trades history resource will return the history of all Balancer trades.
-
-   .. note::
-      This endpoint is only available for premium users
-
-   .. note::
-      This endpoint can also be queried asynchronously by using ``"async_query": true``
-
-   **Example Request**:
-
-   .. http:example:: curl wget httpie python-requests
-
-      GET /api/1/blockchains/ETH/modules/balancer/history/trades HTTP/1.1
-      Host: localhost:5042
-
-   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
-
-   **Example Response**:
-
-   .. sourcecode:: http
-
-      HTTP/1.1 200 OK
-      Content-Type: application/json
-
-      {
-        "result": {
-            "0x029f388aC4D5C8BfF490550ce0853221030E822b": [
-                {
-                    "address": "0x029f388aC4D5C8BfF490550ce0853221030E822b",
-                    "amount": "0.075627332013165531",
-                    "base_asset": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                    "fee": "0",
-                    "fee_currency": "_ceth_0x4a220E6096B25EADb88358cb44068A3248254675",
-                    "location": "balancer",
-                    "quote_asset": "_ceth_0x4a220E6096B25EADb88358cb44068A3248254675",
-                    "rate": "0.02194014031410883771422129499",
-                    "swaps": [
-                        {
-                            "amount0_in": "3.446984883890308608",
-                            "amount0_out": "0",
-                            "amount1_in": "0",
-                            "amount1_out": "0.075627332013165531",
-                            "from_address": "0x0000000000007F150Bd6f54c40A34d7C3d5e9f56",
-                            "log_index": 37,
-                            "to_address": "0x6545773483142Fd781023EC74ee008d93aD5466B",
-                            "token0": "_ceth_0x4a220E6096B25EADb88358cb44068A3248254675",
-                            "token1": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                            "tx_hash": "0x9a5c2c73762ef2e8af326e7b286488a4b238b9855d3fd749370bb3074aabf6e5"
-                        }
-                    ],
-                    "timestamp": 1606924530,
-                    "trade_id": "0x9a5c2c73762ef2e8af326e7b286488a4b238b9855d3fd749370bb3074aabf6e5-0",
-                    "trade_type": "buy",
-                    "tx_hash": "0x9a5c2c73762ef2e8af326e7b286488a4b238b9855d3fd749370bb3074aabf6e5"
-                },
-                {
-                    "address": "0x029f388aC4D5C8BfF490550ce0853221030E822b",
-                    "amount": "3.214606868598057153",
-                    "base_asset": "_ceth_0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
-                    "fee": "0",
-                    "fee_currency": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                    "location": "balancer",
-                    "quote_asset": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                    "rate": "1.068431955314709719236410104",
-                    "swaps": [
-                        {
-                            "amount0_in": "3.008714642619599872",
-                            "amount0_out": "0",
-                            "amount1_in": "0",
-                            "amount1_out": "3.214606868598057153",
-                            "from_address": "0x0000000000007F150Bd6f54c40A34d7C3d5e9f56",
-                            "log_index": 334,
-                            "to_address": "0x987D7Cc04652710b74Fff380403f5c02f82e290a",
-                            "token0": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                            "token1": "_ceth_0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",
-                            "tx_hash": "0xe8f02a2c1105a0dd093d6bff6983bbc6ac662424e116fe4d53ea4f2fd4d36497"
-                        }
-                    ],
-                    "timestamp": 1606921757,
-                    "trade_id": "0xe8f02a2c1105a0dd093d6bff6983bbc6ac662424e116fe4d53ea4f2fd4d36497-0",
-                    "trade_type": "buy",
-                    "tx_hash": "0xe8f02a2c1105a0dd093d6bff6983bbc6ac662424e116fe4d53ea4f2fd4d36497"
-                }
-            ]
-        },
-        "message": "",
-      }
-
-   :resjson object result: A mapping between accounts and their Balancer trades history
-   :resjson string address: The address of the user who initiated the trade
-   :resjson object base_asset: Either an identifier if it's a known token or the address/symbol/name object for the base asset of the trade. That which is bought.
-   :resjson object quote_asset: Either an identifier if it's a known token or the address/symbol/name object for the quote asset of the trade. That which is sold to buy the base asset.
-   :resjson string amount: In case of a trade_type buy (and for Balancer all are buys) this is the amount of ``"base_asset"`` that is bought.
-   :resjson string rate: How much of each quote asset was given for the base asset amount. Essentially ``"amount"`` / ``"rate"`` will give you what you paid in ``"quote_asset"``.
-   :resjson string location: Always balancer.
-   :resjson string fee: Always 0 for now.
-   :resjson string fee_currency: Always quote_asset.
-   :resjson int timestamp: The timestamp of the trade
-   :resjson string trade_id: A combination of transaction hash plus a unique id (for custom trades that are virtually made by us)
-   :resjson string trade_type: Always buy
-   :resjson string tx_hash: The transaction hash
-   :resjson list[object] swaps: A list of all the swaps that the trade is made of. Each swap is an object with the following attributes:
-
-       - token0: Either an identifier if it's a known token or the address/symbol/name object for token0 of the swap.
-       - token1: Either an identifier if it's a known token or the address/symbol/name object for token1 of the swap.
-       - amount0_in: The amount (can be zero) of token0 that the user is putting in the swap.
-       - amount1_in: The amount (can be zero) of token1 that the user is putting in the swap.
-       - amount0_out: The amount (can be zero) of token0 that the user is getting out of the swap.
-       - amount1_out: The amount (can be zero) of token1 that the user is getting out of the swap.
-       - from_address: The address that is putting tokens in the swap. Can be many different parties in a multi swap.
-       - to_address: The address that is getting tokens out of the swap. Can be many different parties in a multi swap.
-       - address: Always the same address of the user, associated with the trade the swaps belong to.
-       - location: Always balancer.
-       - tx_hash: The transaction hash of the swap (always the same for swaps of the same transaction/trade).
-       - log_index: The index of the swap in the transaction/trade.
-
-   :statuscode 200: Balancer trades successfully queried.
-   :statuscode 409: User is not logged in. Or Balancer module is not activated.
-   :statuscode 500: Internal rotki error.
-   :statuscode 502: An external service used in the query such as the graph node could not be reached or returned unexpected response.
 
 Getting Compound balances
 ==============================
@@ -6869,7 +7060,7 @@ Getting Compound balances
           "result": {
               "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
                   "rewards": {
-                      "_ceth_0xc00e94Cb662C3520282E6f5717214004A7f26888": {
+                      "eip155:1/erc20:0xc00e94Cb662C3520282E6f5717214004A7f26888": {
                           "balance" :{
                               "amount": "3.5",
                               "usd_value": "892.5",
@@ -6877,14 +7068,14 @@ Getting Compound balances
                       }
                   },
                   "lending": {
-                      "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {
+                      "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {
                           "balance": {
                               "amount": "350.0",
                               "usd_value": "351.21"
                           },
                           "apy": "3.51%"
                       },
-                      "_ceth_0xFC4B8ED459e00e5400be803A9BB3954234FD50e3": {
+                      "eip155:1/erc20:0xFC4B8ED459e00e5400be803A9BB3954234FD50e3": {
                           "balance": {
                               "amount": "1",
                               "usd_value": "9500"
@@ -6905,7 +7096,7 @@ Getting Compound balances
               "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
                   "lending": {},
                   "borrowing": {
-                      "_ceth_0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
+                      "eip155:1/erc20:0x0D8775F648430679A709E98d2b0Cb6250d2887EF": {
                           "balance": {
                               "amount": "560",
                               "usd_value": "156.8"
@@ -6968,12 +7159,12 @@ Getting compound historical data
                   "address": "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056",
                   "block_number": 1,
                   "timestamp": 2,
-                  "asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                  "asset": "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F",
                   "value": {
                       "amount": "10.5",
                       "usd_value": "10.86"
                   },
-                  "to_asset": "_ceth_0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
+                  "to_asset": "eip155:1/erc20:0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
                   "to_value": {
                       "amount": "165.21",
                       "usd_value": "10.86"
@@ -6985,12 +7176,12 @@ Getting compound historical data
                   "address": "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056",
                   "block_number": 1,
                   "timestamp": 2,
-                  "asset": "_ceth_0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
+                  "asset": "eip155:1/erc20:0x5d3a536E4D6DbD6114cc1Ead35777bAB948E3643",
                   "value": {
                       "amount": "165.21",
                       "usd_value": "12.25"
                   },
-                  "to_asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
+                  "to_asset": "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F",
                   "to_value": {
                       "amount": "12.01",
                       "usd_value": "12.25"
@@ -7006,7 +7197,7 @@ Getting compound historical data
                   "address": "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237",
                   "block_number": 1,
                   "timestamp": 2,
-                  "asset": "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+                  "asset": "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498",
                   "value": {
                       "amount": "10",
                       "usd_value": "4.5"
@@ -7018,7 +7209,7 @@ Getting compound historical data
                   "address": "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237",
                   "block_number": 1,
                   "timestamp": 2,
-                  "asset": "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+                  "asset": "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498",
                   "value": {
                       "amount": "10.5",
                       "usd_value": "4.8"
@@ -7039,7 +7230,7 @@ Getting compound historical data
                       "amount": "0.00005",
                       "usd_value": "0.09"
                   },
-                  "to_asset": "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498",
+                  "to_asset": "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498",
                   "to_value": {
                       "amount": "10",
                       "usd_value": "4.5"
@@ -7052,7 +7243,7 @@ Getting compound historical data
                   "address": "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237",
                   "block_number": 1,
                   "timestamp": 2,
-                  "asset": "_ceth_0xc00e94Cb662C3520282E6f5717214004A7f26888",
+                  "asset": "eip155:1/erc20:0xc00e94Cb662C3520282E6f5717214004A7f26888",
                   "value": {
                       "amount": "1.01",
                       "usd_value": "195"
@@ -7066,17 +7257,17 @@ Getting compound historical data
               }],
               "interest_profit": {
                   "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
-                      "_ceth_0xc00e94Cb662C3520282E6f5717214004A7f26888": {
+                      "eip155:1/erc20:0xc00e94Cb662C3520282E6f5717214004A7f26888": {
                               "amount": "3.5",
                               "usd_value": "892.5",
                           },
-                       "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F": {
+                       "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {
                               "amount": "250",
                               "usd_value": "261.1",
                       }
                   },
                   "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
-                      "_ceth_0xE41d2489571d322189246DaFA5ebDe1F4699F498": {
+                      "eip155:1/erc20:0xE41d2489571d322189246DaFA5ebDe1F4699F498": {
                           "amount": "0.55",
                           "usd_value": "86.1"
                       }
@@ -7100,7 +7291,7 @@ Getting compound historical data
                },
                "rewards": {
                   "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
-                      "_ceth_0xc00e94Cb662C3520282E6f5717214004A7f26888": {
+                      "eip155:1/erc20:0xc00e94Cb662C3520282E6f5717214004A7f26888": {
                               "amount": "3.5",
                               "usd_value": "892.5",
                           },
@@ -7192,7 +7383,7 @@ Getting Liquity balances
                     "usd_value": "16161.675300000001521815"
                 },
                 "debt": {
-                    "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                    "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                     "amount": "6029.001719188487",
                     "usd_value": "6089.29173638037187"
                 },
@@ -7248,7 +7439,7 @@ Getting Liquity staked amount
       {
           "result": {
             "0x063c26fF1592688B73d8e2A18BA4C23654e2792E": {
-                "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                 "amount": "177.02",
                 "usd_value": "265.530"
             }
@@ -7263,6 +7454,60 @@ Getting Liquity staked amount
    :statuscode 500: Internal rotki error.
    :statuscode 502: An external service used in the query such as etherscan could not be reached or returned unexpected response.
 
+
+Getting Liquity stability pool infomration
+==========================================
+
+.. http:get:: /api/(version)/blockchains/ETH/modules/liquity/pool
+
+   Doing a GET on the liquity stability pool resource will return the balances deposited in it and the rewards accrued.
+
+   .. note::
+      This endpoint can also be queried asynchronously by using ``"async_query": true``
+
+   .. note::
+      This endpoint requires a premium account.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      GET /api/1/blockchains/ETH/modules/liquity/pool HTTP/1.1
+      Host: localhost:5042
+
+   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+        "result":{
+            "0x3DdfA8eC3052539b6C9549F12cEA2C295cfF5296":{
+              "eth_gain":"43.180853032438783295",
+              "lqty_gain":"94477.70111867384658505",
+              "deposited":"10211401.723115634393264567"
+            },
+            "0xFBcAFB005695afa660836BaC42567cf6917911ac":{
+              "eth_gain":"0.012830143966323228",
+              "lqty_gain":"1430.186501693619414912",
+              "deposited":"546555.36725208608367891"
+            }
+        },
+        "message":""
+      }
+
+   :resjson object result: A mapping of the addresses having the liquity module enabled and their positions.
+   :resjson string deposited: The amount of LUSD owned by the address deposited in the pool.
+   :resjson string eth_gain: The amount of ETH gained in the pool.
+   :resjson string lqty_gain: The amount of LQTY gained in the pool.
+
+   :statuscode 200: Liquity information successfully queried.
+   :statuscode 409: User is not logged in or Liquity module is not activated.
+   :statuscode 500: Internal rotki error.
 
 
 Getting Liquity historical trove data
@@ -7309,12 +7554,12 @@ Getting Liquity historical trove data
                             "debt_after": {
                                 "amount": "6029.001719188487125",
                                 "usd_value": "6149.58175357225686750",
-                                "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                                "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                             },
                             "debt_delta": {
                                 "amount": "6029.001719188487125",
                                 "usd_value": "6149.58175357225686750",
-                                "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                                "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                             },
                             "collateral_after": {
                                 "amount": "3.5",
@@ -7337,12 +7582,12 @@ Getting Liquity historical trove data
                             "debt_after": {
                                 "amount": "6029.001719188487125",
                                 "usd_value": "6143.552751853068380375",
-                                "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                                "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                             },
                             "debt_delta": {
                                 "amount": "0",
                                 "usd_value": "0.000",
-                                "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                                "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                             },
                             "collateral_after": {
                                 "amount": "5.31",
@@ -7367,22 +7612,22 @@ Getting Liquity historical trove data
                             "stake_after": {
                                 "amount": "177.02",
                                 "usd_value": "654.974",
-                                "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                                "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                             },
                             "stake_change": {
                                 "amount": "177.02",
                                 "usd_value": "654.974",
-                                "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                                "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                             },
                             "issuance_gain": {
                                 "amount": "0",
                                 "usd_value": "0.00",
-                                "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                                "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                             },
                             "redemption_gain": {
                                 "amount": "0",
                                 "usd_value": "0.00",
-                                "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                                "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                             },
                             "stake_operation": "Stake Created",
                             "sequence_number": "51676"
@@ -7454,22 +7699,22 @@ Getting Liquity historical staking data
                         "stake_after": {
                             "amount": "177.02",
                             "usd_value": "654.974",
-                            "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                            "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                         },
                         "stake_change": {
                             "amount": "177.02",
                             "usd_value": "654.974",
-                            "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                            "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                         },
                         "issuance_gain": {
                             "amount": "0",
                             "usd_value": "0.00",
-                            "asset": "_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
+                            "asset": "eip155:1/erc20:0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D"
                         },
                         "redemption_gain": {
                             "amount": "0",
                             "usd_value": "0.00",
-                            "asset": "_ceth_0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
+                            "asset": "eip155:1/erc20:0x5f98805A4E8be255a32880FDeC7F6728C6568bA0"
                         },
                         "stake_operation": "Stake Created",
                         "sequence_number": "51676"
@@ -7538,7 +7783,7 @@ Getting Uniswap balances
                   }
                 },
                 {
-                  "asset": "_ceth_0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                  "asset": "eip155:1/erc20:0xdAC17F958D2ee523a2206206994597C13D831ec7",
                   "total_amount": "2897321.681999",
                   "usd_price": "1.001",
                   "user_balance": {
@@ -7617,7 +7862,7 @@ Getting Uniswap V3 balances
                   }
                 },
                 {
-                  "asset": "_ceth_0xdAC17F958D2ee523a2206206994597C13D831ec7",
+                  "asset": "eip155:1/erc20:0xdAC17F958D2ee523a2206206994597C13D831ec7",
                   "total_amount": "1251.608339987909",
                   "usd_price": "1.001",
                   "user_balance": {
@@ -7710,8 +7955,8 @@ Getting Uniswap events
                       "pool_address": "0x2C7a51A357d5739C5C74Bf3C96816849d2c9F726",
                       "profit_loss0": "264.089867496935331902",
                       "profit_loss1": "88.677078283001177264",
-                      "token0": "_ceth_0x0e2298E3B3390e3b945a5456fBf59eCc3f55DA16",
-                      "token1": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                      "token0": "eip155:1/erc20:0x0e2298E3B3390e3b945a5456fBf59eCc3f55DA16",
+                      "token1": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
                       "usd_profit_loss": "162.1876736563418464415499063"
                   }
               ]
@@ -7745,131 +7990,6 @@ Getting Uniswap events
    :statuscode 500: Internal rotki error.
    :statuscode 502: An external service used in the query such as etherscan or the graph node could not be reached or returned unexpected response.
 
-Getting Uniswap trades
-=========================
-
-.. http:get:: /api/(version)/blockchains/ETH/modules/uniswap/history/trades
-
-   Doing a GET on the uniswap trades history resource will return the history of all uniswap trades.
-
-   .. note::
-      This endpoint is only available for premium users
-
-   .. note::
-      This endpoint can also be queried asynchronously by using ``"async_query": true``
-
-   **Example Request**:
-
-   .. http:example:: curl wget httpie python-requests
-
-      GET /api/1/blockchains/ETH/modules/uniswap/history/trades HTTP/1.1
-      Host: localhost:5042
-
-   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
-
-   **Example Response**:
-
-   .. sourcecode:: http
-
-      HTTP/1.1 200 OK
-      Content-Type: application/json
-
-      {
-        "result": {
-          "0x21d05071cA08593e13cd3aFD0b4869537e015C92": [{
-              "address": "0x21d05071cA08593e13cd3aFD0b4869537e015C92",
-              "amount": "1411.453463704718081611",
-              "base_asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-              "fee": "0",
-              "fee_currency": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-              "location": "uniswap",
-              "quote_asset": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-              "rate": "371.4351220275573898976315789",
-              "swaps": [{
-                  "amount0_in": "0",
-                  "amount0_out": "1411.453463704718081611",
-                  "amount1_in": "3.8",
-                  "amount1_out": "0",
-                  "from_address": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-                  "log_index": 90,
-                  "to_address": "0x21d05071cA08593e13cd3aFD0b4869537e015C92",
-                  "token0": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-                  "token1": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                  "tx_hash": "0xf6272151d26f391886232263a384d1d9fb84c54e33119d014bc0b556dc27e900"}],
-              "timestamp": 1603056982,
-              "trade_id": "0xf6272151d26f391886232263a384d1d9fb84c54e33119d014bc0b556dc27e900-0",
-              "trade_type": "buy",
-              "tx_hash": "0xf6272151d26f391886232263a384d1d9fb84c54e33119d014bc0b556dc27e900"}, {
-              "address": "0x21d05071cA08593e13cd3aFD0b4869537e015C92",
-              "amount": "904.171423330858608178",
-              "base_asset": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-              "fee": "0",
-              "fee_currency": "ALEPH",
-              "location": "uniswap",
-              "quote_asset": "_ceth_0x27702a26126e0B3702af63Ee09aC4d1A084EF628",
-              "rate": "0.1604821621994156262081817395",
-              "swaps": [{
-                  "amount0_in": "5634.092979176915803392",
-                  "amount0_out": "0",
-                  "amount1_in": "0",
-                  "amount1_out": "2.411679959413889526",
-                  "from_address": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-                  "log_index": 98,
-                  "to_address": "0xA478c2975Ab1Ea89e8196811F51A7B7Ade33eB11",
-                  "token0": "_ceth_0x27702a26126e0B3702af63Ee09aC4d1A084EF628",
-                  "token1": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                  "tx_hash": "0x296c750be451687a6e95de55a85c1b86182e44138902599fb277990447d5ded6"}, {
-                  "amount0_in": "0",
-                  "amount0_out": "904.171423330858608178",
-                  "amount1_in": "2.411679959413889526",
-                  "amount1_out": "0",
-                  "from_address": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-                  "log_index": 101,
-                  "to_address": "0x21d05071cA08593e13cd3aFD0b4869537e015C92",
-                  "token0": "_ceth_0x6B175474E89094C44Da98b954EedeAC495271d0F",
-                  "token1": "_ceth_0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-                  "tx_hash": "0x296c750be451687a6e95de55a85c1b86182e44138902599fb277990447d5ded6"}],
-              "timestamp": 1602796833,
-              "trade_id": "0x296c750be451687a6e95de55a85c1b86182e44138902599fb277990447d5ded6-0",
-              "trade_type": "buy",
-              "tx_hash": "0x296c750be451687a6e95de55a85c1b86182e44138902599fb277990447d5ded6"}
-          ],
-        },
-        "message": "",
-      }
-
-   :resjson object result: A mapping between accounts and their Uniswap trades history
-   :resjson string address: The address of the user who initiated the trade
-   :resjson object base_asset: Either an identifier if it's a known token or the address/symbol/name object for the base asset of the trade. That which is bought.
-   :resjson object quote_asset: Either an identifier if it's a known token or the address/symbol/name object for the quote asset of the trade. That which is sold to buy the base asset.
-   :resjson string amount: In case of a trade_type buy (and for uniswap all are buys) this is the amount of ``"base_asset"`` that is bought.
-   :resjson string rate: How much of each quote asset was given for the base asset amount. Essentially ``"amount"`` / ``"rate"`` will give you what you paid in ``"quote_asset"``.
-   :resjson string location: Always uniswap.
-   :resjson string fee: Always 0 for now.
-   :resjson string fee_currency: Always quote_asset.
-   :resjson int timestamp: The timestamp of the trade
-   :resjson string trade_id: A combination of transaction hash plus a unique id (for custom trades that are virtually made by us)
-   :resjson string trade_type: Always buy
-   :resjson string tx_hash: The transaction hash
-   :resjson list[object] swaps: A list of all the swaps that the trade is made of. Each swap is an object with the following attributes:
-
-       - token0: The identifier of the token.
-       - token1: The identifier of the token.
-       - amount0_in: The amount (can be zero) of token0 that the user is putting in the swap.
-       - amount1_in: The amount (can be zero) of token1 that the user is putting in the swap.
-       - amount0_out: The amount (can be zero) of token0 that the user is getting out of the swap.
-       - amount1_out: The amount (can be zero) of token1 that the user is getting out of the swap.
-       - from_address: The address that is putting tokens in the swap. Can be many different parties in a multi swap.
-       - to_address: The address that is getting tokens out of the swap. Can be many different parties in a multi swap.
-       - address: Always the same address of the user, associated with the trade the swaps belong to.
-       - tx_hash: The transaction hash of the swap (always the same for swaps of the same transaction/trade).
-       - log_index: The index of the swap in the transaction/trade.
-
-
-   :statuscode 200: Uniswap trades successfully queried.
-   :statuscode 409: User is not logged in. Or Uniswap module is not activated.
-   :statuscode 500: Internal rotki error.
-   :statuscode 502: An external service used in the query such as etherscan or the graph node could not be reached or returned unexpected response.
 
 Getting yearn finance vaults balances
 ==========================================
@@ -7905,8 +8025,8 @@ Getting yearn finance vaults balances
           "result": {
               "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
                   "YCRV Vault": {
-                      "underlying_token": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
-                      "vault_token": "_ceth_0x5dbcF33D8c2E976c6b560249878e6F1491Bca25c",
+                      "underlying_token": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                      "vault_token": "eip155:1/erc20:0x5dbcF33D8c2E976c6b560249878e6F1491Bca25c",
                       "underlying_value": {
                           "amount": "25", "usd_value": "150"
                       },
@@ -7916,8 +8036,8 @@ Getting yearn finance vaults balances
                       "roi": "25.55%",
                   },
                   "YYFI Vault": {
-                      "underlying_token": "_ceth_0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
-                      "vault_token": "_ceth_0xBA2E7Fed597fd0E3e70f5130BcDbbFE06bB94fe1",
+                      "underlying_token": "eip155:1/erc20:0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
+                      "vault_token": "eip155:1/erc20:0xBA2E7Fed597fd0E3e70f5130BcDbbFE06bB94fe1",
                       "underlying_value": {
                           "amount": "25", "usd_value": "150"
                       },
@@ -7929,8 +8049,8 @@ Getting yearn finance vaults balances
               },
           "0xA0B6B7fEa3a3ce3b9e6512c0c5A157a385e81056": {
               "YALINK Vault": {
-                      "underlying_token": "_ceth_0xA64BD6C70Cb9051F6A9ba1F163Fdc07E0DfB5F84",
-                      "vault_token": "_ceth_0x29E240CFD7946BA20895a7a02eDb25C210f9f324",
+                      "underlying_token": "eip155:1/erc20:0xA64BD6C70Cb9051F6A9ba1F163Fdc07E0DfB5F84",
+                      "vault_token": "eip155:1/erc20:0x29E240CFD7946BA20895a7a02eDb25C210f9f324",
                       "underlying_value": {
                           "amount": "25", "usd_value": "150"
                       },
@@ -8002,11 +8122,11 @@ Getting yearn finance vaults historical data
                           "event_type": "deposit",
                           "block_number": 1,
                           "timestamp": 1,
-                          "from_asset": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                          "from_asset": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
                           "from_value": {
                               "amount": "115000", "usd_value": "119523.23"
                           },
-                          "to_asset": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                          "to_asset": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
                           "to_value": {
                               "amount": "108230.234", "usd_value": "119523.23"
                           },
@@ -8017,11 +8137,11 @@ Getting yearn finance vaults historical data
                           "event_type": "withdraw",
                           "block_number": 1,
                           "timestamp": 1,
-                          "from_asset": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                          "from_asset": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
                           "from_value": {
                               "amount": "108230.234", "usd_value": "125321.24"
                           },
-                          "to_asset": "_ceth_0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
+                          "to_asset": "eip155:1/erc20:0xdF5e0e81Dff6FAF3A7e52BA697820c5e32D806A8",
                           "to_value": {
                               "amount": "117500.23", "usd_value": "123500.32"
                           },
@@ -8040,7 +8160,7 @@ Getting yearn finance vaults historical data
                           "event_type": "deposit",
                           "block_number": 1,
                           "timestamp": 1,
-                          "from_asset": "_ceth_0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
+                          "from_asset": "eip155:1/erc20:0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e",
                           "from_value": {
                               "amount": "5", "usd_value": "155300.23"
                           },
@@ -8063,11 +8183,11 @@ Getting yearn finance vaults historical data
                           "event_type": "deposit",
                           "block_number": 1,
                           "timestamp": 1,
-                          "from_asset": "_ceth_0x075b1bb99792c9E1041bA13afEf80C91a1e70fB3",
+                          "from_asset": "eip155:1/erc20:0x075b1bb99792c9E1041bA13afEf80C91a1e70fB3",
                           "from_value": {
                               "amount": "20", "usd_value": "205213.12"
                           },
-                          "to_asset": "_ceth_0x7Ff566E1d69DEfF32a7b244aE7276b9f90e9D0f6",
+                          "to_asset": "eip155:1/erc20:0x7Ff566E1d69DEfF32a7b244aE7276b9f90e9D0f6",
                           "to_value": {
                               "amount": "19.8523", "usd_value": "2049874.23"
                           },
@@ -8141,8 +8261,8 @@ Getting yearn finance V2 vaults balances
         "result":{
             "0x915C4580dFFD112db25a6cf06c76cDd9009637b7":{
               "0x5f18C75AbDAe578b483E5F43f12a39cF75b973a9":{
-                  "underlying_token":"_ceth_0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-                  "vault_token":"_ceth_0x5f18C75AbDAe578b483E5F43f12a39cF75b973a9",
+                  "underlying_token":"eip155:1/erc20:0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                  "vault_token":"eip155:1/erc20:0x5f18C75AbDAe578b483E5F43f12a39cF75b973a9",
                   "underlying_value":{
                     "amount":"74.292820",
                     "usd_value":"105.0"
@@ -8154,8 +8274,8 @@ Getting yearn finance V2 vaults balances
                   "roi":"-238.20%"
               },
               "0xB8C3B7A2A618C552C23B1E4701109a9E756Bab67":{
-                  "underlying_token":"_ceth_0x111111111117dC0aa78b770fA6A738034120C302",
-                  "vault_token":"_ceth_0xB8C3B7A2A618C552C23B1E4701109a9E756Bab67",
+                  "underlying_token":"eip155:1/erc20:0x111111111117dC0aa78b770fA6A738034120C302",
+                  "vault_token":"eip155:1/erc20:0xB8C3B7A2A618C552C23B1E4701109a9E756Bab67",
                   "underlying_value":{
                     "amount":"2627.246068139435250",
                     "usd_value":"3825.0"
@@ -8224,18 +8344,18 @@ Getting yearn finance V2 vaults historical data
       {
         "result":{
             "0x915C4580dFFD112db25a6cf06c76cDd9009637b7":{
-              "_ceth_0xF29AE508698bDeF169B89834F76704C3B205aedf":{
+              "eip155:1/erc20:0xF29AE508698bDeF169B89834F76704C3B205aedf":{
                   "events":[
                     {
                         "event_type":"deposit",
                         "block_number":12588754,
                         "timestamp":1623087604,
-                        "from_asset":"_ceth_0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F",
+                        "from_asset":"eip155:1/erc20:0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F",
                         "from_value":{
                           "amount":"273.682277822922514201",
                           "usd_value":"273.682277822922514201"
                         },
-                        "to_asset":"_ceth_0xF29AE508698bDeF169B89834F76704C3B205aedf",
+                        "to_asset":"eip155:1/erc20:0xF29AE508698bDeF169B89834F76704C3B205aedf",
                         "to_value":{
                           "amount":"269.581682615706959373",
                           "usd_value":"269.581682615706959373"
@@ -8250,18 +8370,18 @@ Getting yearn finance V2 vaults historical data
                     "usd_value":"-273.682277822922514201"
                   }
               },
-              "_ceth_0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44":{
+              "eip155:1/erc20:0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44":{
                   "events":[
                     {
                         "event_type":"deposit",
                         "block_number":12462638,
                         "timestamp":1621397797,
-                        "from_asset":"_ceth_0x94e131324b6054c0D789b190b2dAC504e4361b53",
+                        "from_asset":"eip155:1/erc20:0x94e131324b6054c0D789b190b2dAC504e4361b53",
                         "from_value":{
                           "amount":"32064.715735449204040742",
                           "usd_value":"32064.715735449204040742"
                         },
-                        "to_asset":"_ceth_0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44",
+                        "to_asset":"eip155:1/erc20:0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44",
                         "to_value":{
                           "amount":"32064.715735449204040742",
                           "usd_value":"32064.715735449204040742"
@@ -8274,12 +8394,12 @@ Getting yearn finance V2 vaults historical data
                         "event_type":"withdraw",
                         "block_number":12494161,
                         "timestamp":1621820621,
-                        "from_asset":"_ceth_0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44",
+                        "from_asset":"eip155:1/erc20:0x1C6a9783F812b3Af3aBbf7de64c3cD7CC7D1af44",
                         "from_value":{
                           "amount":"32064.715735449204040742",
                           "usd_value":"32064.715735449204040742"
                         },
-                        "to_asset":"_ceth_0x94e131324b6054c0D789b190b2dAC504e4361b53",
+                        "to_asset":"eip155:1/erc20:0x94e131324b6054c0D789b190b2dAC504e4361b53",
                         "to_value":{
                           "amount":"32092.30659836985292638",
                           "usd_value":"32092.30659836985292638"
@@ -8361,7 +8481,7 @@ Getting Loopring balances
                         "amount": "1050",
                         "usd_value": "950"
                     },
-                    "_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96": {
+                    "eip155:1/erc20:0x6810e776880C02933D47DB1b9fc05908e5386b96": {
                         "amount": "1",
                         "usd_value": "5"
                     }
@@ -8845,12 +8965,12 @@ Getting Pickle's DILL balances
                     "locked_amount": {
                         "amount": "4431.204412216798860222",
                         "usd_value": "43735.98754857980475039114",
-                        "asset": "_ceth_0x429881672B9AE42b8EbA0E26cD9C73711b891Ca5"
+                        "asset": "eip155:1/erc20:0x429881672B9AE42b8EbA0E26cD9C73711b891Ca5"
                     },
                     "pending_rewards": {
                         "amount": "82.217560698031032969",
                         "usd_value": "811.48732408956629540403",
-                        "asset": "_ceth_0x429881672B9AE42b8EbA0E26cD9C73711b891Ca5"
+                        "asset": "eip155:1/erc20:0x429881672B9AE42b8EbA0E26cD9C73711b891Ca5"
                     },
                     "locked_until": 1755129600
                 }
@@ -8894,19 +9014,19 @@ Querying ethereum airdrops
               "0xe5B3330A43CeC5A01A80E75ebaB2d3bc17e70819": {
                   "1inch": {
                       "amount": "675.55",
-                      "asset": "_ceth_0x111111111117dC0aa78b770fA6A738034120C302",
+                      "asset": "eip155:1/erc20:0x111111111117dC0aa78b770fA6A738034120C302",
                       "link": "https://app.uniswap.org/"
                   }
               },
               "0x0B89f648eEcCc574a9B7449B5242103789CCD9D7": {
                   "1inch": {
                       "amount": "1823.23",
-                      "asset": "_ceth_0x111111111117dC0aa78b770fA6A738034120C302",
+                      "asset": "eip155:1/erc20:0x111111111117dC0aa78b770fA6A738034120C302",
                       "link": "https://1inch.exchange/"
                   },
                   "uniswap": {
                       "amount": "400",
-                      "asset": "_ceth_0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+                      "asset": "eip155:1/erc20:0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
                       "link": "https://app.uniswap.org/"
                   }
               },
@@ -9053,7 +9173,7 @@ Adding blockchain accounts
 
       This endpoint can also be queried asynchronously by using ``"async_query": true``
 
-   Doing a PUT on the the blockchains endpoint with a specific blockchain URL and a list of account data in the json data will add these accounts to the tracked accounts for the given blockchain and the current user. The updated balances after the account additions are returned.
+   Doing a PUT on the blockchains endpoint with a specific blockchain URL and a list of account data in the json data will add these accounts to the tracked accounts for the given blockchain and the current user. A list of accounts' addresses that were added during a request is returned. This data is returned so that if you add an ens name, you get its name's resolved address for the further usage.
    If one of the given accounts to add is invalid the entire request will fail.
 
 
@@ -9089,77 +9209,24 @@ Adding blockchain accounts
       Content-Type: application/json
 
       {
-          "result": {
-              "per_account": {
-                  "BTC": {
-                      "standalone": {
-                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
-                              "amount": "0.5", "usd_value": "3770.075"
-                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
-                              "amount": "0.5", "usd_value": "3770.075"
-                      }},
-                      "xpubs": [{
-                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
-                              "derivation_path": "m/0/0",
-                              "addresses": {
-                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  },
-                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  }
-                          }}, {
-                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
-                              "derivation_path": "m",
-                              "addresses": {
-                                  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  },
-                                  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  }
-                          }}]
-                   },
-                   "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
-                       "assets": {
-                           "ETH": {"amount": "10", "usd_value": "1755.53"},
-                           "_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96": {"amount": "1", "usd_value": "50"},
-                           "_ceth_0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6": {"amount": "1", "usd_value": "1.5"}
-                       },
-                       "liabilities": {}
-                   },
-                   "KSM": { "G7UkJAutjbQyZGRiP8z5bBSBPBJ66JbTKAkFDq3cANwENyX": {
-                       "assets": {
-                           "KSM": {"amount": "12", "usd_value": "894.84"}
-                        },
-                       "liabilities": {}
-                    }
-              },
-              "totals": {
-                  "assets": {
-                      "BTC": {"amount": "1", "usd_value": "7540.15"},
-                      "ETH": {"amount": "10", "usd_value": "1650.53"},
-                      "KSM": {"amount": "12", "usd_value": "894.84"},
-                      "_ceth_0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6": {"amount": "1", "usd_value": "1.5"},
-                      "_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96": {"amount": "1", "usd_value": "50"}
-                  },
-                  "liabilities": {}
-          },
-          "message": ""
+        "result": [
+            "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B",
+            "0x19b0AD50E768D2376C6BA7de32F426ecE4e03e0b"
+        ],
+        "message": ""
       }
 
-   :resjson object result: An object containing the ``"per_account"`` and ``"totals"`` keys as also defined `here <blockchain_balances_result_>`_.
+   :resjson list result: A list containing accounts' addresses that were added during a request.
    :statuscode 200: Accounts successfully added
    :statuscode 400: Provided JSON or data is in some way malformed. The accounts to add contained invalid addresses or were an empty list.
-   :statuscode 409: User is not logged in. Some error occurred when re-querying the balances after addition. Provided tags do not exist. Check message for details.
+   :statuscode 409: User is not logged in. Provided tags do not exist. Check message for details.
    :statuscode 500: Internal rotki error
-   :statuscode 502: Error occurred with some external service query such as Etherscan. Check message for details.
-
+   :statuscode 502: Remote error occured when attempted to connect to an Avalanche or Polkadot node and only if it's the first account added. Check message for details.
 
 Adding BTC/BCH xpubs
 ========================
 
-.. http:put:: /api/(version)/blockchains/(blockhain)/xpub
+.. http:put:: /api/(version)/blockchains/(blockchain)/xpub
 
    .. note::
       This endpoint can also be queried asynchronously by using ``"async_query": true``
@@ -9189,7 +9256,7 @@ Adding BTC/BCH xpubs
 
    :reqjson string xpub: The extended public key to add
    :reqjsonarr string derivation_path: The derivation path from which to start deriving addresses relative to the xpub.
-   :reqjsonarr string[optional] xpub_type: An optional type to denote the type of the given xpub. If omitted the prefix xpub/ypub/zpub is used to determine the type. The valid xpub types are: ``"p2pkh"``, ``"p2sh_p2wpkh"`` and ``"wpkh"``.
+   :reqjsonarr string[optional] xpub_type: An optional type to denote the type of the given xpub. If omitted the prefix xpub/ypub/zpub is used to determine the type. The valid xpub types are: ``"p2pkh"``, ``"p2sh_p2wpkh"``, ``"wpkh"`` and ``"p2tr"``.
    :reqjsonarr string[optional] label: An optional label to describe the new extended public key
    :reqjsonarr list[optional] tags: An optional list of tags to attach to the xpub
    :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
@@ -10121,7 +10188,7 @@ Dealing with ignored assets
       Content-Type: application/json
 
       {
-          "result": ["_ceth_0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7", "_ceth_0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413"]
+          "result": ["eip155:1/erc20:0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7", "eip155:1/erc20:0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413"]
           "message": ""
       }
 
@@ -10144,7 +10211,7 @@ Dealing with ignored assets
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"assets": ["_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96"]}
+      {"assets": ["eip155:1/erc20:0x6810e776880C02933D47DB1b9fc05908e5386b96"]}
 
    :reqjson list assets: A list of asset symbols to add to the ignored assets.
 
@@ -10156,7 +10223,7 @@ Dealing with ignored assets
       Content-Type: application/json
 
       {
-          "result": ["_ceth_0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7", "_ceth_0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413", "_ceth_0x6810e776880C02933D47DB1b9fc05908e5386b96"]
+          "result": ["eip155:1/erc20:0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7", "eip155:1/erc20:0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413", "eip155:1/erc20:0x6810e776880C02933D47DB1b9fc05908e5386b96"]
           "message": ""
       }
 
@@ -10179,7 +10246,7 @@ Dealing with ignored assets
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"assets": ["_ceth_0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413"]}
+      {"assets": ["eip155:1/erc20:0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413"]}
 
    :reqjson list assets: A list of asset symbols to remove from the ignored assets.
 
@@ -10191,7 +10258,7 @@ Dealing with ignored assets
       Content-Type: application/json
 
       {
-          "result": ["_ceth_0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7"]
+          "result": ["eip155:1/erc20:0xAf30D2a7E90d7DC361c8C4585e9BB7D2F6f15bc7"]
           "message": ""
       }
 
@@ -10430,9 +10497,9 @@ Data imports
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
-      {"source": "cointracking.info", "filepath": "/path/to/data/file", "timestamp_format": "%d/%m/%Y %H:%M:%S"}
+      {"source": "cointracking", "filepath": "/path/to/data/file", "timestamp_format": "%d/%m/%Y %H:%M:%S"}
 
-   :reqjson str source: The source of the data to import. Valid values are ``"cointracking"``, ``"cryptocom"``, ``"blockfi_transactions"``, ``"blockfi_trades"``, ``"nexo"``,  ``"shapeshift_trades"``, ``"uphold_transactions"``, ``"bisq_trades"``, ``"binance"``.
+   :reqjson str source: The source of the data to import. Valid values are ``"cointracking"``, ``"cryptocom"``, ``"blockfi_transactions"``, ``"blockfi_trades"``, ``"nexo"``,  ``"shapeshift_trades"``, ``"uphold_transactions"``, ``"bisq_trades"``, ``"binance"``, ``"rotki_events"``, ``"rotki_trades"``.
    :reqjson str filepath: The filepath to the data for importing
    :reqjson str timestamp_format: Optional. Custom format to use for dates in the CSV file. Should follow rules at `Datetime docs <https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes>`__.
 
@@ -10457,7 +10524,7 @@ Data imports
 ERC20 token info
 ====================
 
-.. http:get:: /api/(version)/blockchains/ETH/erc20details/
+.. http:get:: /api/(version)/blockchains/ETH/erc20details
 
    Doing a GET to this endpoint will return basic information about a token by calling the ``decimals/name/symbol`` methods.
 
@@ -10469,7 +10536,7 @@ ERC20 token info
 
    .. http:example:: curl wget httpie python-requests
 
-      GET /api/1/blockchains/ETH/erc20details/ HTTP/1.1
+      GET /api/1/blockchains/ETH/erc20details HTTP/1.1
       Host: localhost:5042
       Content-Type: application/json;charset=UTF-8
 
@@ -10686,6 +10753,7 @@ Show NFT Balances
                     {
                         "id": "unique id",
                         "name": "a name",
+                        "collection_name": "A collection name",
                         "manually_input": true,
                         "price_asset": "ETH",
                         "price_in_asset": "1",
@@ -10695,6 +10763,7 @@ Show NFT Balances
                     }, {
                         "id": "unique id 2",
                         "name": null,
+                        "collection_name": "A collection name",
                         "manually_input": false,
                         "price_asset": "USD",
                         "price_in_asset": "150.55",
@@ -10707,7 +10776,7 @@ Show NFT Balances
         }
 
 
-   :resjson object addresses: A mapping of ethereum addresses to list assets and balances. Name can also be null.
+   :resjson object addresses: A mapping of ethereum addresses to list assets and balances. ``name`` can also be null. ``collection_name`` can be null if nft does not have a collection.
    :statuscode 200: NFT balances successfully queried
    :statuscode 400: Provided JSON is in some way malformed
    :statuscode 409: User is not logged in or nft module is not activated.
@@ -11374,7 +11443,7 @@ Get ENS names
    :resjson str message: Error message if any errors occurred.
    :statuscode 200: Names were returned successfully.
    :statuscode 400: Provided JSON is in some way malformed.
-   :statuscode 409: No user is currently logged in or addresses have incorrect format.
+   :statuscode 409: Failed to query names or no user is currently logged in or addresses have incorrect format.
    :statuscode 500: Internal rotki error.
 
 
@@ -11777,4 +11846,205 @@ Handling user notes
    :statuscode 200: User note was added successfully.
    :statuscode 400: Provided JSON is in some way malformed.
    :statuscode 409: No user is currently logged in. User note with the given title already exists. User has reached the limit of available notes. Check error message.
+   :statuscode 500: Internal rotki error.
+
+
+Custom Assets
+================
+
+.. http:post:: /api/(version)/assets/custom
+
+   Doing a POST on this endpoint will return all the custom assets present in the database using the filter parameters.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      POST /api/1/assets/custom HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {"name": "land", "custom_asset_type": "real estate"}
+
+   :reqjson int[optional] limit: This signifies the limit of records to return as per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson int[optional] offset: This signifies the offset from which to start the return of records per the `sql spec <https://www.sqlite.org/lang_select.html#limitoffset>`__.
+   :reqjson string[optional] name: The name of the custom asset to be used as a filter.
+   :reqjson string[optional] identifier: The identifier of the custom asset to be used as a filter.
+   :reqjson string[optional] custom_asset_type: The type of the custom asset to be used as a filter.
+   :reqjson list[string][optional] order_by_attributes: This is the list of attributes of the custom asset by which to order the results. By default we sort using ``name``.
+   :reqjson list[bool][optional] ascending: Should the order be ascending? This is the default. If set to false, it will be on descending order.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": {
+                "entries": [{
+                        "identifier": "00fe5f97-882b-42e5-b0e0-39ebd3a99156'",
+                        "name": "House",
+                        "notes": "Apartment purchase",
+                        "custom_asset_type": "real estate"
+                    },
+                    {
+                        "identifier": "333c248f-7c64-41f4-833b-2fad96c4ea6b",
+                        "name": "Ferrari",
+                        "notes": "Exotic car inheritance from lineage",
+                        "custom_asset_types": "vehicles"
+                }],
+                "entries_found": 2,
+                "entries_total": 2,
+            },
+          "message": ""
+      }
+
+   :resjson object result: An array of objects representing custom assets entries.
+   :resjson str identifier: The unique identifier of the custom asset.
+   :resjson str name: The name of the custom asset.
+   :resjson str notes: The notes used as a description of the custom asset. This field can be null.
+   :resjson str custom_asset_type: The type/category of the custom asset.
+   :resjson int entries_found: The number of entries found for the current filter. Ignores pagination.
+   :resjson int entries_total: The number of total entries ignoring all filters.
+
+   :statuscode 200: Custom assets were retrieved successfully.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 409: No user is currently logged in.
+   :statuscode 500: Internal rotki error.
+
+.. http:delete:: /api/(version)/assets/custom
+
+   Doing a DELETE on this endpoint will delete a custom asset for the specified identifier.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      DELETE /api/1/assets/custom HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {"identifier": "aca42c5d-36f1-4a8b-af28-5aeb322748b5"}
+
+   :reqjson str identifier: The identifier of the custom asset you're trying to delete.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/zip
+
+      {"result": true, "message": ""}
+
+   :statuscode 200: Custom asset was deleted successfully.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 409: No user is currently logged in. No custom asset found. Check error message.
+   :statuscode 500: Internal rotki error.
+
+
+.. http:patch:: /api/(version)/assets/custom
+
+   Doing a PATCH on this endpoint will update the content of an already existing custom asset.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      PATCH /api/1/assets/custom HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+        {
+            "identifier": "de0b49aa-65e1-4b4e-94b5-d1cd3e4baee1",
+            "name": "Hotel",
+            "notes": "Hotel from ma",
+            "custom_asset_type": "real estate"
+        }
+
+   :reqjson str identifier: The unique identifier of the custom asset to update.
+   :reqjson str name: The name of the custom asset.
+   :reqjson str custom_asset_type: The type/category of the custom asset.
+   :reqjson str[optional] notes: The notes that serve as a description of the custom asset. This is optional.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/zip
+
+      {"result": true, "message": ""}
+
+   :statuscode 200: Custom asset was updated successfully.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 409: No user is currently logged in. Custom asset name and type is already being used. Custom asset does not exist.  Check error message.
+   :statuscode 500: Internal rotki error.
+
+
+.. http:put:: /api/(version)/assets/custom
+
+   Doing a PUT on this endpoint will add a new custom asset to the DB.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      PUT /api/1/assets/custom HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+      {
+            "name": "Yacht",
+            "custom_asset_type": "flex"
+      }
+
+   :reqjson str name: The name of the custom asset to be created.
+   :reqjson str custom_asset_type: The type/category of the custom asset.
+   :reqjson str[optional] notes: The notes of the custom asset to be created. This is optional.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 201 OK
+      Content-Type: application/zip
+
+      {"result": "c0c991f0-6511-4b0d-83fc-40fde8495874", "message": ""}
+
+   :resjson str result: The unique identifier of the custom asset created.
+
+   :statuscode 200: Custom asset was created successfully.
+   :statuscode 400: Provided JSON is in some way malformed.
+   :statuscode 409: No user is currently logged in. Custom asset with the given name and type already exists. Check error message.
+   :statuscode 500: Internal rotki error.
+
+
+.. http:get:: /api/(version)/assets/custom/types
+
+   Doing a GET on this endpoint will return all the custom asset types in the DB sorted in ascending order.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      GET /api/1/assets/custom/types HTTP/1.1
+      Host: localhost:5042
+      Content-Type: application/json;charset=UTF-8
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 201 OK
+      Content-Type: application/zip
+
+      {"result": ["medals", "real estate", "stocks"], "message": ""}
+
+   :resjson list[str] result: The list of custom asset types in the DB.
+
+   :statuscode 200: Custom asset types retrieved successfully.
+   :statuscode 409: No user is currently logged in. Check error message.
    :statuscode 500: Internal rotki error.

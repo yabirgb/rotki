@@ -6,17 +6,18 @@ from gevent.lock import Semaphore
 
 from rotkehlchen.accounting.structures.balance import AssetBalance, Balance
 from rotkehlchen.accounting.structures.defi import DefiEvent, DefiEventType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
 from rotkehlchen.chain.ethereum.defi.structures import GIVEN_DEFI_BALANCES
 from rotkehlchen.chain.ethereum.modules.makerdao.constants import RAY
 from rotkehlchen.constants.ethereum import AAVE_V1_LENDING_POOL, AAVE_V2_LENDING_POOL
 from rotkehlchen.constants.misc import ZERO
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.constants.resolver import ethaddress_to_identifier
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import ModuleInitializationFailure, RemoteError
 from rotkehlchen.fval import FVal
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.types import ChecksumEthAddress, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 
@@ -93,14 +94,14 @@ class Aave(EthereumModule):
     def get_balances(
             self,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveBalances]:
+    ) -> Dict[ChecksumEvmAddress, AaveBalances]:
         with self.balances_lock:
             return self._get_balances(given_defi_balances)
 
     def _get_balances(
             self,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveBalances]:
+    ) -> Dict[ChecksumEvmAddress, AaveBalances]:
         """Retrieves the aave balances
 
         Receives the defi balances from zerion as an argument. They can either be directly given
@@ -133,9 +134,9 @@ class Aave(EthereumModule):
                     balance = balance_entry.base_balance.balance
 
                 try:
-                    token = EthereumToken(token_address)
-                except UnknownAsset:
-                    log.warning('Found aave DeFi balance for unknown token {token_address}. Skipping')  # noqa: E501
+                    token = EvmToken(ethaddress_to_identifier(token_address))
+                except (UnknownAsset, WrongAssetType):
+                    log.warning(f'Found aave DeFi balance for unknown token {token_address}. Skipping')  # noqa: E501
                     continue
                 reserve_address, _ = _get_reserve_address_decimals(token)
 
@@ -144,7 +145,7 @@ class Aave(EthereumModule):
 
                     if balance_entry.protocol.name == 'Aave':
                         reserve_result = AAVE_V1_LENDING_POOL.call(
-                            ethereum=self.ethereum,
+                            manager=self.ethereum,
                             method_name='getReserveData',
                             arguments=[reserve_address],
                         )
@@ -155,7 +156,7 @@ class Aave(EthereumModule):
                         )
                     else:  # Aave V2
                         reserve_result = AAVE_V2_LENDING_POOL.call(
-                            ethereum=self.ethereum,
+                            manager=self.ethereum,
                             method_name='getReserveData',
                             arguments=[reserve_address],
                         )
@@ -191,12 +192,12 @@ class Aave(EthereumModule):
 
     def get_history(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             reset_db_data: bool,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
             given_defi_balances: GIVEN_DEFI_BALANCES,
-    ) -> Dict[ChecksumEthAddress, AaveHistory]:
+    ) -> Dict[ChecksumEvmAddress, AaveHistory]:
         """Detects aave historical data for the given addresses"""
         latest_block = self.ethereum.get_latest_block_number()
         with self.history_lock:
@@ -217,7 +218,7 @@ class Aave(EthereumModule):
             self,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[DefiEvent]:
         if len(addresses) == 0:
             return []
@@ -231,12 +232,12 @@ class Aave(EthereumModule):
         )
         events = []
         for _, history in mapping.items():
-            total_borrow: Dict[Asset, Balance] = defaultdict(Balance)
-            realized_borrow_loss: Dict[Asset, Balance] = defaultdict(Balance)
+            total_borrow: Dict[CryptoAsset, Balance] = defaultdict(Balance)
+            realized_borrow_loss: Dict[CryptoAsset, Balance] = defaultdict(Balance)
             for event in history.events:
-                got_asset: Optional[Asset]
-                spent_asset: Optional[Asset]
-                pnl = got_asset = got_balance = spent_asset = spent_balance = None  # noqa: E501
+                got_asset: Optional[CryptoAsset]
+                spent_asset: Optional[CryptoAsset]
+                pnl = got_asset = got_balance = spent_asset = spent_balance = None
                 if event.event_type == 'deposit':
                     event = cast(AaveDepositWithdrawalEvent, event)
                     spent_asset = event.asset
@@ -301,10 +302,10 @@ class Aave(EthereumModule):
         return events
 
     # -- Methods following the EthereumModule interface -- #
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> None:
         pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

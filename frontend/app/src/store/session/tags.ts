@@ -1,11 +1,8 @@
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import logger from 'loglevel';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
-import { useMainStore } from '@/store/main';
-import store from '@/store/store';
+import { ComputedRef } from 'vue';
+import { useTagsApi } from '@/services/tags';
+import { useBlockchainAccountsStore } from '@/store/blockchain/accounts';
+import { useMessageStore } from '@/store/message';
 import { ActionStatus } from '@/store/types';
 import { READ_ONLY_TAGS, Tag, Tags } from '@/types/user';
 
@@ -16,19 +13,22 @@ export const useTagStore = defineStore('session/tags', () => {
     return Object.values(get(allTags));
   });
 
-  const availableTags = computed(() => {
+  const availableTags: ComputedRef<Record<string, Tag>> = computed(() => {
     return { ...get(allTags), ...READ_ONLY_TAGS };
   });
 
-  const { setMessage } = useMainStore();
+  const { removeTag } = useBlockchainAccountsStore();
+  const { setMessage } = useMessageStore();
+  const { tc } = useI18n();
+  const { queryAddTag, queryTags, queryEditTag, queryDeleteTag } = useTagsApi();
 
   const addTag = async (tag: Tag): Promise<ActionStatus> => {
     try {
-      set(allTags, await api.addTag(tag));
+      set(allTags, await queryAddTag(tag));
       return { success: true };
     } catch (e: any) {
       setMessage({
-        title: i18n.t('actions.session.tag_add.error.title').toString(),
+        title: tc('actions.session.tag_add.error.title'),
         description: e.message
       });
       return {
@@ -40,10 +40,10 @@ export const useTagStore = defineStore('session/tags', () => {
 
   const editTag = async (tag: Tag) => {
     try {
-      set(allTags, await api.editTag(tag));
+      set(allTags, await queryEditTag(tag));
     } catch (e: any) {
       setMessage({
-        title: i18n.t('actions.session.tag_edit.error.title').toString(),
+        title: tc('actions.session.tag_edit.error.title'),
         description: e.message
       });
     }
@@ -51,26 +51,22 @@ export const useTagStore = defineStore('session/tags', () => {
 
   const deleteTag = async (name: string) => {
     try {
-      set(allTags, await api.deleteTag(name));
+      set(allTags, await queryDeleteTag(name));
+      removeTag(name);
     } catch (e: any) {
       setMessage({
-        title: i18n.t('actions.session.tag_delete.error.title').toString(),
+        title: tc('actions.session.tag_delete.error.title'),
         description: e.message
       });
     }
-    await store.dispatch('balances/removeTag', name, { root: true });
   };
 
   const fetchTags = async () => {
     try {
-      set(allTags, await api.getTags());
+      set(allTags, await queryTags());
     } catch (e: any) {
       logger.error('Tags fetch failed', e);
     }
-  };
-
-  const reset = () => {
-    set(allTags, {});
   };
 
   return {
@@ -80,8 +76,7 @@ export const useTagStore = defineStore('session/tags', () => {
     fetchTags,
     addTag,
     editTag,
-    deleteTag,
-    reset
+    deleteTag
   };
 });
 

@@ -11,7 +11,7 @@ def test_unknown_asset_does_not_have_usd_price(mock_uniswap):
     not found via subgraph.
     """
     mock_uniswap.graph.query.return_value = {'tokenDayDatas': []}
-    unknown_assets = {A_CAR}
+    unknown_assets = {A_CAR.resolve_to_evm_token()}
 
     asset_price = mock_uniswap._get_unknown_asset_price_graph(unknown_assets=unknown_assets)
 
@@ -23,23 +23,22 @@ def test_unknown_asset_has_usd_price(mock_uniswap):
     its USD price when the price is found via subgraph.
     """
     mock_uniswap.graph.query.return_value = {'tokenDayDatas': [TOKEN_DAY_DATA_CAR]}
-    unknown_assets = {A_CAR}
+    unknown_assets = {A_CAR.resolve_to_evm_token()}
 
     asset_price = mock_uniswap._get_unknown_asset_price_graph(unknown_assets=unknown_assets)
 
     exp_asset_price = {
-        A_CAR.ethereum_address: Price(FVal(TOKEN_DAY_DATA_CAR['priceUSD'])),
+        A_CAR.resolve_to_evm_token().evm_address: Price(FVal(TOKEN_DAY_DATA_CAR['priceUSD'])),
     }
     assert asset_price == exp_asset_price
 
 
-@pytest.mark.parametrize("graph_query_limit, no_requests", [(2, 2), (3, 1)])
+@pytest.mark.parametrize('graph_query_limit, no_requests', [(2, 2), (3, 1)])
 def test_pagination(
         mock_uniswap,
         graph_query_limit,
         no_requests,
         mock_graph_query_limit,  # pylint: disable=unused-argument
-        mock_amm_graph_query_limit,  # pylint: disable=unused-argument
 ):
     """Test an extra graph request is done when the number of items in the
     response equals GRAPH_QUERY_LIMIT.
@@ -63,7 +62,7 @@ def test_pagination(
 
     get_response = get_graph_response()
     mock_uniswap.graph.query.side_effect = mock_response
-    unknown_assets = {A_CAR, A_SHL}
+    unknown_assets = {A_CAR.resolve_to_evm_token(), A_SHL.resolve_to_evm_token()}
 
     mock_uniswap._get_unknown_asset_price_graph(unknown_assets=unknown_assets)
 

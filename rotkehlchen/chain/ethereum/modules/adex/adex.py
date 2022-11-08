@@ -16,7 +16,6 @@ from rotkehlchen.chain.ethereum.graph import (
 )
 from rotkehlchen.chain.ethereum.utils import (
     generate_address_via_create2,
-    multicall_specific,
     token_normalized_value_decimals,
 )
 from rotkehlchen.constants import ZERO
@@ -29,11 +28,8 @@ from rotkehlchen.history.price import PriceHistorian
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.serialization.deserialize import (
-    deserialize_ethereum_address,
-    deserialize_timestamp,
-)
-from rotkehlchen.types import ChecksumEthAddress, Timestamp, deserialize_evm_tx_hash
+from rotkehlchen.serialization.deserialize import deserialize_evm_address, deserialize_timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp, deserialize_evm_tx_hash
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 from rotkehlchen.utils.misc import ts_now
@@ -91,6 +87,8 @@ class Adex(EthereumModule):
         self.session = requests.session()
         self.session.headers.update({'User-Agent': 'rotkehlchen'})
         self.staking_pool = EthereumConstants().contract('ADEX_STAKING_POOL')
+        self.adx = A_ADX.resolve_to_evm_token()
+        self.dai = A_DAI.resolve_to_evm_token()
 
         try:
             self.graph = Graph(
@@ -216,8 +214,8 @@ class Adex(EthereumModule):
             slashed_at=slashed_at,
         )
 
-    @staticmethod
     def _deserialize_channel_withdraw(
+            self,
             raw_event: Dict[str, Any],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
     ) -> ChannelWithdraw:
@@ -269,10 +267,10 @@ class Adex(EthereumModule):
             ) from e
 
         try:
-            address = deserialize_ethereum_address(user_address)
+            address = deserialize_evm_address(user_address)
             identity_address = inverse_identity_address_map[address]
-            tx_address = deserialize_ethereum_address(tx_address)
-            token_address = deserialize_ethereum_address(token_address)
+            tx_address = deserialize_evm_address(tx_address)
+            token_address = deserialize_evm_address(token_address)
         except (KeyError, DeserializationError) as e:
             if isinstance(e, KeyError):
                 msg = f'Missing key in event: {str(e)}.'
@@ -302,10 +300,10 @@ class Adex(EthereumModule):
                 'Failed to deserialize an AdEx channel withdraw event. Check logs for more details',  # noqa: E501
             )
 
-        if token_address == A_ADX.ethereum_address:
-            token = A_ADX
-        elif token_address == A_DAI.ethereum_address:
-            token = A_DAI
+        if token_address == self.adx.evm_address:
+            token = self.adx
+        elif token_address == self.dai.evm_address:
+            token = self.dai
         else:
             log.error(
                 'Failed to deserialize an AdEx channel withdraw event',
@@ -341,7 +339,7 @@ class Adex(EthereumModule):
         - KeyError
         - DeserializationError
         """
-        identity_address = deserialize_ethereum_address(raw_event['owner'])
+        identity_address = deserialize_evm_address(raw_event['owner'])
         address = identity_address_map[identity_address]
         event_id = raw_event['id']
         if not isinstance(event_id, str):
@@ -358,7 +356,7 @@ class Adex(EthereumModule):
             raise DeserializationError(f'Unexpected format in {case} event id: {event_id}') from e
 
         if case in ('unbond', 'unbond_request'):
-            tx_address = deserialize_ethereum_address(tx_address)
+            tx_address = deserialize_evm_address(tx_address)
 
             if address != tx_address:
                 raise DeserializationError(
@@ -459,7 +457,7 @@ class Adex(EthereumModule):
 
     def _get_staking_events(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
@@ -477,8 +475,8 @@ class Adex(EthereumModule):
         - RemoteError: when there is a problem either querying the subgraph or
         deserializing the events.
         """
-        new_addresses: List[ChecksumEthAddress] = []
-        existing_addresses: List[ChecksumEthAddress] = []
+        new_addresses: List[ChecksumEvmAddress] = []
+        existing_addresses: List[ChecksumEvmAddress] = []
         min_from_timestamp: Timestamp = to_timestamp
 
         # Get addresses' last used query range for AdEx events
@@ -538,7 +536,7 @@ class Adex(EthereumModule):
     @overload
     def _get_staking_events_graph(  # pylint: disable=no-self-use
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             event_type: Literal[AdexEventType.BOND],
             from_timestamp: Optional[Timestamp] = None,
@@ -549,7 +547,7 @@ class Adex(EthereumModule):
     @overload
     def _get_staking_events_graph(  # pylint: disable=no-self-use
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             event_type: Literal[AdexEventType.UNBOND],
             from_timestamp: Optional[Timestamp] = None,
@@ -560,7 +558,7 @@ class Adex(EthereumModule):
     @overload
     def _get_staking_events_graph(  # pylint: disable=no-self-use
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             event_type: Literal[AdexEventType.UNBOND_REQUEST],
             from_timestamp: Optional[Timestamp] = None,
@@ -571,7 +569,7 @@ class Adex(EthereumModule):
     @overload
     def _get_staking_events_graph(  # pylint: disable=no-self-use
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             event_type: Literal[AdexEventType.CHANNEL_WITHDRAW],
             from_timestamp: Optional[Timestamp] = None,
@@ -581,7 +579,7 @@ class Adex(EthereumModule):
 
     def _get_staking_events_graph(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             event_type: AdexEventType,
             from_timestamp: Optional[Timestamp] = None,
@@ -716,7 +714,7 @@ class Adex(EthereumModule):
 
     def _get_identity_address_map(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> Dict[ChecksumAddress, ChecksumAddress]:
         """Returns a map between the user identity address in the protocol and
         the EOA/contract address.
@@ -725,7 +723,7 @@ class Adex(EthereumModule):
 
     def _get_new_staking_events_graph(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             identity_address_map: Dict[ChecksumAddress, ChecksumAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
@@ -749,7 +747,7 @@ class Adex(EthereumModule):
                     to_timestamp=to_timestamp,
                 )
             except DeserializationError as e:
-                raise RemoteError(e) from e
+                raise RemoteError(str(e)) from e
 
             all_events.extend(events)
 
@@ -764,7 +762,7 @@ class Adex(EthereumModule):
         return all_events
 
     @staticmethod
-    def _get_user_identity(address: ChecksumAddress) -> ChecksumEthAddress:
+    def _get_user_identity(address: ChecksumAddress) -> ChecksumEvmAddress:
         """Given an address (signer) returns its protocol user identity"""
         return generate_address_via_create2(
             address=IDENTITY_FACTORY_ADDR,
@@ -783,7 +781,7 @@ class Adex(EthereumModule):
         }
         for event in (
             staking_events.unbonds +
-            staking_events.unbond_requests  # type: ignore # mypy bug concatenating lists
+            staking_events.unbond_requests
         ):
             has_bond = True
             bond = bond_id_bond_map.get(event.bond_id, None)
@@ -836,8 +834,7 @@ class Adex(EthereumModule):
         if len(addresses) == 0:
             return {}
 
-        result = multicall_specific(
-            ethereum=self.ethereum,
+        result = self.ethereum.multicall_specific(
             contract=self.staking_pool,
             method_name='balanceOf',
             arguments=[[x] for x in addresses],
@@ -881,7 +878,7 @@ class Adex(EthereumModule):
 
     def get_history(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             reset_db_data: bool,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
@@ -914,7 +911,7 @@ class Adex(EthereumModule):
             self,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[DefiEvent]:
         if len(addresses) == 0:
             return []
@@ -928,12 +925,12 @@ class Adex(EthereumModule):
         events = []
         for _, history in mapping.items():
             for event in history.events:
-                pnl = got_asset = got_balance = spent_asset = spent_balance = None  # noqa: E501
+                pnl = got_asset = got_balance = spent_asset = spent_balance = None
                 if isinstance(event, Bond):
-                    spent_asset = A_ADX
+                    spent_asset = self.adx
                     spent_balance = event.value
                 elif isinstance(event, Unbond):
-                    got_asset = A_ADX
+                    got_asset = self.adx
                     got_balance = event.value
                 elif isinstance(event, UnbondRequest):
                     continue  # just ignore those for accounting purposes
@@ -962,21 +959,10 @@ class Adex(EthereumModule):
         return events
 
     # -- Methods following the EthereumModule interface -- #
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List[AssetBalance]]:
-        """When an account is added for adex check its balances"""
-        balance = self.staking_pool.call(self.ethereum, 'balanceOf', arguments=[address])
-        if balance == 0:
-            return None
-        # else the address has staked adex
-        usd_price = Inquirer().find_usd_price(A_ADX)
-        share_price = self.staking_pool.call(self.ethereum, 'shareValue')
-        amount = token_normalized_value_decimals(
-            token_amount=balance * share_price / (FVal(10) ** 18),
-            token_decimals=18,
-        )
-        return [AssetBalance(asset=A_ADX, balance=Balance(amount=amount, usd_value=amount * usd_price))]  # noqa: E501
+    def on_account_addition(self, address: ChecksumEvmAddress) -> None:
+        pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

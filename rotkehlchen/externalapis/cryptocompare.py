@@ -3,12 +3,12 @@ import os
 from collections import deque
 from json.decoder import JSONDecodeError
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Deque, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Deque, Dict, List, Literal, Optional, Tuple
 
 import gevent
 import requests
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.constants import ZERO
 from rotkehlchen.constants.assets import (
     A_BAT,
@@ -39,7 +39,7 @@ from rotkehlchen.constants.assets import (
 )
 from rotkehlchen.constants.resolver import strethaddress_to_identifier
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
-from rotkehlchen.errors.asset import UnsupportedAsset
+from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset, WrongAssetType
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.errors.price import NoPriceForGivenTimestamp, PriceQueryUnsupportedAsset
 from rotkehlchen.errors.serialization import DeserializationError
@@ -167,8 +167,8 @@ def _multiply_str_nums(a: str, b: str) -> str:
 
 def _check_hourly_data_sanity(
         data: List[Dict[str, Any]],
-        from_asset: Asset,
-        to_asset: Asset,
+        from_asset: AssetWithOracles,
+        to_asset: AssetWithOracles,
 ) -> None:
     """Check that the hourly data is an array of objects having timestamps
     increasing by 1 hour.
@@ -333,8 +333,8 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
                 'query_current_price',
                 'query_endpoint_pricehistorical',
             ],
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             **kwargs: Any,
     ) -> Any:
         """Special case handling for queries that need combination of multiple asset queries
@@ -345,6 +345,11 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
         This function takes care of these special cases."""
         method = getattr(self, method_name)
         intermediate_asset = CRYPTOCOMPARE_SPECIAL_CASES_MAPPING[from_asset.identifier]
+        try:
+            intermediate_asset = intermediate_asset.resolve_to_asset_with_oracles()
+        except (UnknownAsset, WrongAssetType) as e:
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
+
         result1 = method(
             from_asset=from_asset,
             to_asset=intermediate_asset,
@@ -383,15 +388,17 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
             result['Data'] = data
             return result
 
-        if method_name in ('query_current_price', 'query_endpoint_pricehistorical'):
+        if method_name == 'query_current_price':
+            return result1[0] * result2[0]
+        if method_name == 'query_endpoint_pricehistorical':
             return result1 * result2
 
         raise RuntimeError(f'Illegal method_name: {method_name}. Should never happen')
 
     def query_endpoint_histohour(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             limit: int,
             to_timestamp: Timestamp,
             handling_special_case: bool = False,
@@ -419,7 +426,7 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
             cc_from_asset_symbol = from_asset.to_cryptocompare()
             cc_to_asset_symbol = to_asset.to_cryptocompare()
         except UnsupportedAsset as e:
-            raise PriceQueryUnsupportedAsset(e.asset_name) from e
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
 
         query_path = (
             f'v2/histohour?fsym={cc_from_asset_symbol}&tsym={cc_to_asset_symbol}'
@@ -430,11 +437,13 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
 
     def query_current_price(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
             handling_special_case: bool = False,
-    ) -> Price:
-        """Returns the current price of an asset compared to another asset
+    ) -> Tuple[Price, bool]:
+        """Returns the current price of an asset compared to another asset and `False` value
+        since it never tries to match main currency.
 
         - May raise RemoteError if there is a problem reaching the cryptocompare server
         or with reading the response returned by the server
@@ -445,30 +454,33 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
             to_asset.identifier in CRYPTOCOMPARE_SPECIAL_CASES
         )
         if special_asset and not handling_special_case:
-            return self._special_case_handling(
+            price = self._special_case_handling(
                 method_name='query_current_price',
                 from_asset=from_asset,
                 to_asset=to_asset,
+                match_main_currency=False,
             )
+            return price, False
+
         try:
             cc_from_asset_symbol = from_asset.to_cryptocompare()
             cc_to_asset_symbol = to_asset.to_cryptocompare()
         except UnsupportedAsset as e:
-            raise PriceQueryUnsupportedAsset(e.asset_name) from e
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
 
         query_path = f'price?fsym={cc_from_asset_symbol}&tsyms={cc_to_asset_symbol}'
         result = self._api_query(path=query_path)
         # Up until 23/09/2020 cryptocompare may return {} due to bug.
         # Handle that case by assuming 0 if that happens
         if cc_to_asset_symbol not in result:
-            return Price(ZERO)
+            return Price(ZERO), False
 
-        return Price(FVal(result[cc_to_asset_symbol]))
+        return Price(FVal(result[cc_to_asset_symbol])), False
 
     def query_endpoint_pricehistorical(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             timestamp: Timestamp,
             handling_special_case: bool = False,
     ) -> Price:
@@ -500,7 +512,7 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
             cc_from_asset_symbol = from_asset.to_cryptocompare()
             cc_to_asset_symbol = to_asset.to_cryptocompare()
         except UnsupportedAsset as e:
-            raise PriceQueryUnsupportedAsset(e.asset_name) from e
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
 
         query_path = (
             f'pricehistorical?fsym={cc_from_asset_symbol}&tsyms={cc_to_asset_symbol}'
@@ -521,8 +533,8 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
 
     def _get_histohour_data_for_range(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
     ) -> Deque[Dict[str, Any]]:
@@ -601,8 +613,8 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
 
     def create_cache(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             purge_old: bool,
     ) -> None:
         """Creates the cache of the given asset pair from the start of time
@@ -644,8 +656,8 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
 
     def query_and_store_historical_data(
             self,
-            from_asset: Asset,
-            to_asset: Asset,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
             timestamp: Timestamp,
     ) -> None:
         """
@@ -754,6 +766,11 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
         - RemoteError if there is a problem reaching the cryptocompare server
         or with reading the response returned by the server
         """
+        try:
+            from_asset = from_asset.resolve_to_asset_with_oracles()
+            to_asset = to_asset.resolve_to_asset_with_oracles()
+        except (UnknownAsset, WrongAssetType) as e:
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
         # check DB cache
         price_cache_entry = GlobalDBHandler().get_historical_price(
             from_asset=from_asset,
@@ -790,7 +807,7 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface):
         )])
         return price
 
-    def all_coins(self) -> Dict[str, Any]:
+    def all_coins(self) -> Dict[str, Dict[str, Any]]:
         """
         Gets the mapping of all the cryptocompare coins
 

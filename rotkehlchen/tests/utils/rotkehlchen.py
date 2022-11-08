@@ -1,16 +1,18 @@
 from contextlib import ExitStack
-from typing import Any, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 from unittest.mock import _patch, patch
 
 import requests
 
 from rotkehlchen.accounting.structures.balance import Balance, BalanceType
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, AssetWithOracles, EvmToken
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
+from rotkehlchen.chain.ethereum.defi.structures import DefiProtocolBalances
 from rotkehlchen.constants.assets import A_BTC, A_ETH, A_EUR
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.db.utils import DBAssetBalance, LocationData
 from rotkehlchen.fval import FVal
+from rotkehlchen.globaldb import GlobalDBHandler
 from rotkehlchen.tests.utils.blockchain import (
     mock_beaconchain,
     mock_bitcoin_balances_query,
@@ -22,23 +24,31 @@ from rotkehlchen.tests.utils.exchanges import (
     patch_poloniex_balances_query,
     try_get_first_exchange,
 )
-from rotkehlchen.types import BTCAddress, ChecksumEthAddress, Location, Timestamp
+from rotkehlchen.types import (
+    BTCAddress,
+    ChecksumEvmAddress,
+    Location,
+    Price,
+    SupportedBlockchain,
+    Timestamp,
+)
 
 
 class BalancesTestSetup(NamedTuple):
     eth_balances: List[str]
     btc_balances: List[str]
-    token_balances: Dict[EthereumToken, List[str]]
-    binance_balances: Dict[Asset, FVal]
-    poloniex_balances: Dict[Asset, FVal]
+    token_balances: Dict[EvmToken, List[str]]
+    binance_balances: Dict[AssetWithOracles, FVal]
+    poloniex_balances: Dict[AssetWithOracles, FVal]
     manually_tracked_balances: List[ManuallyTrackedBalance]
     poloniex_patch: _patch
     binance_patch: _patch
     etherscan_patch: _patch
     beaconchain_patch: _patch
-    ethtokens_max_chunks_patch: _patch
+    evmtokens_max_chunks_patch: _patch
     bitcoin_patch: _patch
-    defi_balances_patch: Optional[_patch]
+    defi_balances_addition_method_patch: Optional[_patch]
+    defichad_query_balances_patch: Optional[_patch]
 
     def enter_all_patches(self, stack: ExitStack):
         stack.enter_context(self.poloniex_patch)
@@ -53,25 +63,29 @@ class BalancesTestSetup(NamedTuple):
 
     def enter_ethereum_patches(self, stack: ExitStack):
         stack.enter_context(self.etherscan_patch)
-        stack.enter_context(self.ethtokens_max_chunks_patch)
+        stack.enter_context(self.evmtokens_max_chunks_patch)
         stack.enter_context(self.beaconchain_patch)
-        if self.defi_balances_patch is not None:
-            stack.enter_context(self.defi_balances_patch)
+        if self.defi_balances_addition_method_patch is not None:
+            stack.enter_context(self.defi_balances_addition_method_patch)
+        if self.defichad_query_balances_patch is not None:
+            stack.enter_context(self.defichad_query_balances_patch)
         return stack
 
 
 def setup_balances(
         rotki,
-        ethereum_accounts: Optional[List[ChecksumEthAddress]],
+        ethereum_accounts: Optional[List[ChecksumEvmAddress]],
         btc_accounts: Optional[List[BTCAddress]],
         eth_balances: Optional[List[str]] = None,
-        token_balances: Optional[Dict[EthereumToken, List[str]]] = None,
+        token_balances: Optional[Dict[EvmToken, List[str]]] = None,
         populate_detected_tokens: bool = True,
-        liabilities: Optional[Dict[EthereumToken, List[str]]] = None,
+        liabilities: Optional[Dict[EvmToken, List[str]]] = None,
         btc_balances: Optional[List[str]] = None,
         manually_tracked_balances: Optional[List[ManuallyTrackedBalance]] = None,
+        manual_current_prices: Optional[List[Tuple[Asset, Asset, Price]]] = None,
         original_queries: Optional[List[str]] = None,
         extra_flags: Optional[List[str]] = None,
+        defi_balances: Optional[Dict[ChecksumEvmAddress, List[DefiProtocolBalances]]] = None,
 ) -> BalancesTestSetup:
     """Setup the blockchain, exchange and fiat balances for some tests
 
@@ -107,7 +121,7 @@ def setup_balances(
     else:
         # Default test values
         if len(ethereum_accounts) != 0:
-            token_balances = {A_RDN: ['0', '4000000']}
+            token_balances = {A_RDN.resolve_to_evm_token(): ['0', '4000000']}
         else:
             token_balances = {}
     if btc_balances is not None:
@@ -123,7 +137,7 @@ def setup_balances(
         else:
             btc_balances = []
 
-    eth_map: Dict[ChecksumEthAddress, Dict[Union[str, EthereumToken], Any]] = {}
+    eth_map: Dict[ChecksumEvmAddress, Dict[Union[str, EvmToken], Any]] = {}
     with rotki.data.db.user_write() as write_cursor:
         for idx, acc in enumerate(ethereum_accounts):
             eth_map[acc] = {}
@@ -131,17 +145,17 @@ def setup_balances(
             for token in token_balances:
                 eth_map[acc][token] = token_balances[token][idx]
             if populate_detected_tokens is True:
-                rotki.data.db.save_tokens_for_address(write_cursor, acc, list(token_balances.keys()))  # noqa: E501
+                rotki.data.db.save_tokens_for_address(write_cursor, acc, SupportedBlockchain.ETHEREUM, list(token_balances.keys()))  # noqa: E501
 
-    defi_balances_patch = None
+    defi_balances_addition_method_patch = None
     if liabilities is not None:
-        def mock_add_defi_balances_to_token_and_totals():
+        def mock_add_defi_balances_to_account():
             # super hacky way of mocking this but well fuck it
-            if len(rotki.chain_manager.balances.eth) == 4:
+            if len(rotki.chains_aggregator.balances.eth) == 4:
                 d_liabilities = liabilities.copy()
             else:  # we know the only test this is used removes index 0 and 2
                 msg = 'Should be at removal of accounts and only have 2 left'
-                assert len(rotki.chain_manager.balances.eth) == 2, msg
+                assert len(rotki.chains_aggregator.balances.eth) == 2, msg
                 d_liabilities = {
                     k: [
                         x for idx, x in enumerate(v) if idx not in (0, 2)
@@ -155,14 +169,38 @@ def setup_balances(
                         continue
 
                     account = ethereum_accounts[idx]
-                    rotki.chain_manager.balances.eth[account].liabilities[token] = Balance(balance)
-                    rotki.chain_manager.totals.liabilities[token] += Balance(balance)
+                    rotki.chains_aggregator.balances.eth[account].liabilities[token] = Balance(balance)  # noqa: E501
 
-        defi_balances_patch = patch.object(
-            rotki.chain_manager,
-            'add_defi_balances_to_token_and_totals',
-            side_effect=mock_add_defi_balances_to_token_and_totals,
+            # need this to not get randomized behaviour when defi balances are added or not
+            # depending on whether liabilities are mocked
+            if rotki.chains_aggregator.defi_balances is not None:
+                for account, single_defi_balances in rotki.chains_aggregator.defi_balances.items():
+                    rotki.chains_aggregator._add_account_defi_balances_to_token(
+                        account=account,
+                        balances=single_defi_balances,
+                    )
+
+        defi_balances_addition_method_patch = patch.object(
+            rotki.chains_aggregator,
+            'add_defi_balances_to_account',
+            side_effect=mock_add_defi_balances_to_account,
         )
+
+    if defi_balances is not None:
+        def mock_defichad_query_balances(addresses: List[ChecksumEvmAddress]):
+            result: Dict[ChecksumEvmAddress, List[DefiProtocolBalances]] = {}
+            for addr in addresses:
+                if addr in defi_balances:  # type: ignore
+                    result[addr] = defi_balances[addr]  # type: ignore
+            return result
+
+        defichad_query_balances_patch = patch.object(
+            rotki.chains_aggregator.defichad,
+            'query_defi_balances',
+            side_effect=mock_defichad_query_balances,
+        )
+    else:
+        defichad_query_balances_patch = None
 
     btc_map: Dict[BTCAddress, str] = {}
     for idx, btc_acc in enumerate(btc_accounts):
@@ -180,13 +218,13 @@ def setup_balances(
         extra_flags=extra_flags,
     )
     beaconchain_patch = mock_beaconchain(
-        beaconchain=rotki.chain_manager.beaconchain,
+        beaconchain=rotki.chains_aggregator.beaconchain,
         original_queries=original_queries,
         original_requests_get=requests.get,
     )
-    # For ethtoken detection we can have bigger chunk length during tests since it's mocked anyway
-    ethtokens_max_chunks_patch = patch(
-        'rotkehlchen.chain.ethereum.tokens.ETHERSCAN_MAX_ARGUMENTS_TO_CONTRACT',
+    # For evmtoken detection we can have bigger chunk length during tests since it's mocked anyway
+    evmtokens_max_chunks_patch = patch(
+        'rotkehlchen.chain.evm.tokens.ETHERSCAN_MAX_ARGUMENTS_TO_CONTRACT',
         new=800,
     )
 
@@ -195,14 +233,28 @@ def setup_balances(
         original_requests_get=requests.get,
     )
     # Taken from BINANCE_BALANCES_RESPONSE from tests.utils.exchanges
-    binance_balances = {A_ETH: FVal('4763368.68006011'), A_BTC: FVal('4723846.89208129')}
+    binance_balances: Dict[AssetWithOracles, FVal] = {
+        A_ETH.resolve_to_asset_with_oracles(): FVal('4763368.68006011'),
+        A_BTC.resolve_to_asset_with_oracles(): FVal('4723846.89208129'),
+    }
     # Taken from POLONIEX_BALANCES_RESPONSE from tests.utils.exchanges
-    poloniex_balances = {A_ETH: FVal('11.0'), A_BTC: FVal('5.5')}
+    poloniex_balances: Dict[AssetWithOracles, FVal] = {
+        A_ETH.resolve_to_asset_with_oracles(): FVal('11.0'),
+        A_BTC.resolve_to_asset_with_oracles(): FVal('5.5'),
+    }
 
     if manually_tracked_balances is None:
         manually_tracked_balances = []
     with rotki.data.db.user_write() as cursor:
         rotki.data.db.add_manually_tracked_balances(cursor, manually_tracked_balances)
+
+    if manual_current_prices is not None:
+        for current_price in manual_current_prices:
+            GlobalDBHandler().add_manual_latest_price(
+                from_asset=current_price[0],
+                to_asset=current_price[1],
+                price=current_price[2],
+            )
 
     return BalancesTestSetup(
         eth_balances=eth_balances,
@@ -214,10 +266,11 @@ def setup_balances(
         poloniex_patch=poloniex_patch,
         binance_patch=binance_patch,
         etherscan_patch=etherscan_patch,
-        ethtokens_max_chunks_patch=ethtokens_max_chunks_patch,
+        evmtokens_max_chunks_patch=evmtokens_max_chunks_patch,
         bitcoin_patch=bitcoin_patch,
         beaconchain_patch=beaconchain_patch,
-        defi_balances_patch=defi_balances_patch,
+        defi_balances_addition_method_patch=defi_balances_addition_method_patch,
+        defichad_query_balances_patch=defichad_query_balances_patch,
     )
 
 

@@ -63,6 +63,15 @@ For an exhaustive guide read `this <http://chris.beams.io/posts/git-commit/>`_ g
 
 When pushing on a PR the tags ``[skip ci]`` or ``[ci skip]`` can be used a part of the commit message to skip the run of all the CI jobs (lint, test etc).
 
+Lastly, we encourage using signed commits:
+
+::
+
+    git config commit.gpgsign true
+    git config --global user.signingkey <KEYID>
+
+For more information about signing commits, check out `Verify commit signatures <https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification>`__.
+
 Linting / Formatting
 =======================
 
@@ -89,8 +98,12 @@ Adding new assets to rotki
 
 To add new assets for rotki you will have to edit `the SQL file <https://github.com/rotki/assets/tree/develop/updates>`__
 in the last update at the assets repository. SQL sentences for insertion differ depending on if we are adding an ethereum token
-or other types of assets. More information about each type of asset and columns is available at the 
-`readme file <https://github.com/rotki/assets#adding-ethereum-tokens>`__.
+or other types of assets. More information about each type of asset and columns is available at the
+`readme file <https://github.com/rotki/assets#adding-evm-tokens>`__.
+
+rotki uses `CAIP-19 <https://github.com/ChainAgnostic/CAIPs/blob/master/CAIPs/caip-19.md>`__ to uniquely identify assets.
+So for example, if we wanted to refer to the Uniswap (UNI) ERC-20 token on the Ethereum mainnet chain,
+the correct identifier would be ``eip155:1/erc20:0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984``.
 
 Once you have finished adding assets it would be necessary to update the file containing metadata about the update. To do so run the script:
 
@@ -156,6 +169,218 @@ Helpful commands
     >>> to_checksum_address("0x9c78ee466d6cb57a4d01fd887d2b5dfb2d46288f")
     '0x9C78EE466D6Cb57A4d01Fd887D2b5dFb2D46288f'
 
+Adding new Centralized Exchanges (CEXes)
+============================================
+
+All centralized exchanges modules live in a separate python file under `here <https://github.com/rotki/rotki/tree/develop/rotkehlchen/exchanges>`__.
+
+As an example of how to add a new CEX you can check the `Bitpanda PR <https://github.com/rotki/rotki/pull/3696/files>`__.
+
+
+
+Add Location
+-----------------
+
+You should add a new value to the `location Enum <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/types.py#L387>`__ and also make sure that the value is mirrored in the DB's schema as seen `here <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/db/schema.py#L93-L94>`__. Add it also in the ``SUPPORTED_EXCHANGES`` list `here <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/exchanges/manager.py#L31>`__. Finally don't forget to add it in the latest DB upgrade as seen in the Bitpanda PR linked in the start of this section.
+
+
+
+Create exchange module
+--------------------------
+
+To add a new CEX you should create a new file with the name of the exchange all lowercase in `here <https://github.com/rotki/rotki/tree/develop/rotkehlchen/exchanges>`__.
+
+It should have a class which should be the exact same name as the file but with the first letter capitalized. So if the module name is ``pinkunicorn.py`` the class name should be ``Pinkunicorn``.
+
+That class should inherit from the ``ExchangeInterface`` and implement all the required methods.
+
+It should have an ``edit_exchange_credentials()`` and ``validate_api_key()`` to be able to validate and accept new credentials.
+
+It should have a ``query_balances()`` to return the current balances of the user in the exchange.
+
+It should have a ``query_online_trade_history()`` to query the trade history endpoint of the exchange for a given time range and save them in the database.
+
+It should have a ``query_online_deposits_withdrawals()`` to query the deposit/withdrawals history endpoint of the exchange for a given time range and save them in the database.
+
+Optionally it can have a ``query_online_income_loss_expense`` to parse any special data from the exchange that can create income/loss items for the user such as staking events.
+
+Add Asset Mappings
+-------------------
+
+Exchanges have assets listed by symbols. This is unfortunately inaccurate and has conflicts since there is no central crypto registry and there is way too many crypto assets using the same symbol.
+
+We tackle this by having special mapping such as this one `here <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/assets/asset.py#L501>`__. So you would add the mapping ``WORLD_TO_MYNEWEXCHANGE``. Then you would create an ``asset_from_mynewexchange()`` function like `this one <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/assets/converters.py#L885-L898>`__ for bittrex.
+
+To find any assets listed in the exchange that are not mapped perfectly you would need to find and call the endpoint of the exchange that queries all assets. Then you need to write a test like `this <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/tests/exchanges/test_bittrex.py#L37-L51>`__ which queries all assets and tries to call the ``asset_from_bittrex()`` function. If any asset is not mapped properly a warning should be raised so we the developers figure out a new asset is added and we need to map it.
+
+Add tests for the exchange
+-----------------------------
+
+You should write tests for all the endpoints of the exchange you implemented. To see what tests and how to write them check the bitpanda PR linked in the start of this section.
+
+You will generally need to:
+
+- Touch ``rotkehlchen/tests/api/test_exchanges.py::pytest_setup_exchange()``
+- Add a new test module under ``rotkehlchen/tests/exchanges/``
+- Add a new fixture for the exchange at ``rotkehlchen/tests/fixtures/exchanges/mynewexchange.py`` and expose it in ``rotkehlchen/tests/fixtures/__init__.py``
+
+Adding new ethereum modules
+===================================
+
+This guide is to explain how to add a new ethereum module into rotki and its corresponding transaction decoder and accountant.
+
+Add new module directory
+--------------------------
+
+Each ethereum module lives in `this <https://github.com/rotki/rotki/tree/develop/rotkehlchen/chain/ethereum/modules>`__ directory. To add a new module you should make sure the name is unique and create a new directory underneath.
+
+The directory should contain the following structure::
+
+  |
+  |--- __init__.py
+  |--- decoder.py
+  |--- constants.py
+  |--- accountant.py
+
+
+Almost all of the above are optional.
+
+The decoder
+--------------
+
+As an example decoder we can look at `makerdao <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/chain/ethereum/modules/makerdao/decoder.py>`__.
+
+It needs to contain a class that inherits from the ``DecoderInterface`` and is named as ``ModulenameDecoder``.
+
+Counterparties
+^^^^^^^^^^^^^^^^
+
+It needs to implement a method called ``counterparties()`` which returns a list of counterparties that can be associated with the transactions of this modules. Most of the times these are protocol names. Like ``uniswap-v1``, ``makerdao_dsr`` etc.
+
+These are defined in the ``constants.py`` file.
+
+Mappings and rules
+^^^^^^^^^^^^^^^^^^^
+
+The ``addresses_to_decoders()`` method maps any contract addresses that are identified in the transaction with the specific decoding function that can decode it. This is optional.
+
+The ``decoding_rules()`` defines any functions that should simply be used for all decoding so long as this module is active. This is optional.
+
+The ``enricher_rules()`` defies any functions that would be used for as long as this module is active to analyze already existing decoded events and enrich them with extra information we can decode thanks to this module. This is optional.
+
+Decoding explained
+^^^^^^^^^^^^^^^^^^
+
+In very simple terms the way the decoding works is that we go through all the transactions of the user and we apply all decoders to each transaction event that touches a tracked address. First decoder that matches, creates a decoded event.
+
+The event creation consists of creating a ``HistoryBaseEntry``. These are the most basic form of events in rotki and are used everywhere. The fields as far as decoded transactions are concerned are explained below:
+
+- ``event_identifier`` is always the transaction hash. This identifies history events in the same transaction.
+- ``sequence_index`` is the order of the event in the transaction. Many times this is the log index, but decoders tend to play with this to make events appear in a specific way.
+- ``asset`` is the asset involved in the event.
+- ``balance`` is the balance of the involved asset.
+- ``timestamp`` is the unix timestamp **in milliseconds**.
+- ``location`` is the location. Almost always ``Location.BLOCKCHAIN`` unless we got a specific location for the protocol of the transaction.
+- ``location_label`` is the initiator of the transaction.
+- ``notes`` is the human readable description to be seen by the user for the transaction.
+- ``event_type`` is the main type of the event. (see next section)
+- ``event_subtype`` is the subtype of the event. (see next section)
+- ``counterparty`` is the counterparty/target of the transaction. For transactions that interact with protocols we tend to use the ``CPT_XXX`` constants here.
+
+
+Event type/subtype and counterparty
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Each combination of event type and subtype and counterparty creates a new unique event type. This is important as they are all treated differently in many parts of rotki, including the accounting. But most importantly this is what determines how they appear in the UI!
+
+The place where the UI mappings happen is `frontend/app/src/store/history/consts.ts <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/frontend/app/src/store/history/consts.ts>`__.
+
+The Accountant
+-----------------
+
+As an example accountant module we can look at `makerdao <https://github.com/rotki/rotki/blob/1039e04304cc034a57060757a1a8ae88b3c51806/rotkehlchen/chain/ethereum/modules/makerdao/accountant.py>`__.
+
+The ``accountant.py`` is optional but if existing should also be under the main directory. It should contain a class named ``ModuleNameAccountant`` and it should inherit the ``ModuleAccountantInterface``.
+
+What this class does is to map all the different decoded events to how they should be processed for accounting.
+
+These accountants are all loaded in during PnL reporting.
+
+Each accountant should implement the ``reset()`` method to reset its internal state between runs.
+
+
+Event Settings mapping
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Each accountant should implement the ``event_settings()`` method. That is a mapping between each unique decoded event type, identified by ``get_tx_event_type_identifier()`` and its ``TxEventSettings()``.
+
+So essentially determining whether:
+
+- ``taxable``: It's taxable
+- ``count_entire_amount_spend``: If it's a spending event if the entire amount should be counted as a spend which means an expense. Negative PnL.
+- ``count_cost_basis_pnl``: If true then we also count any profit/loss the asset may have had compared to when it was acquired.
+- ``take``: The number of events to take for processing together. This is useful for swaps, to identify we need to process multiple events together.
+- ``method``: Either an ``'acquisition'`` or a ``'spend'``.
+- ``multitake_treatment``: Optional. If ``take`` is not ``1``, then this defines how we treat it. It's always a swap for now, so ``TxMultitakeTreatment``.
+- ``accountant_cb``: Optional. A callback to a method of the specific module's accountant that will execute some extra module-specific pnl processing logic. The makerdao accountant linked above has some examples for this.
+
+Multiple submodules
+--------------------
+
+The modules system is hierachical and one module may contain multiple submodules. For example uniswap having both v1 and v3 each in their own subdirectories as seen `here <https://github.com/rotki/rotki/tree/develop/rotkehlchen/chain/ethereum/modules/uniswap>`__.
+
+Add a new language or translation
+===================================
+
+Add new language
+----------------
+The translation files are located `here <https://github.com/rotki/rotki/tree/develop/frontend/app/src/locales>`__.
+They are saved with format ``{language_code}.json``. You can see the list `here <https://www.w3schools.com/tags/ref_language_codes.asp>`__.
+If you want to add a new language, you need to create a new language file with that format, and then `fill it <#add-or-edit-translation>`__.
+
+You also need to update the frontend mapping that is defined at this `enum <https://github.com/rotki/rotki/blob/f57522baa737854e6affcbe57bada2b81c4dee83/frontend/app/src/types/frontend-settings.ts#L112>`__, and these `entries <https://github.com/rotki/rotki/blob/f57522baa737854e6affcbe57bada2b81c4dee83/frontend/app/src/data/supported-language.ts>`__.
+The ``countries`` field will be used to show the countries flag on the app. You can see the list `here <https://www.w3schools.com/tags/ref_country_codes.asp>`__.
+
+Add or edit a translation
+-------------------------
+Rotki does translation using `Vue i18n <https://kazupon.github.io/vue-i18n>`__.
+
+Rotki's main language is ``English``. The language file for it is `here <https://github.com/rotki/rotki/blob/develop/frontend/app/src/locales/en.json>`__.
+In order to fill in the translation for another language, you should pay attention to the following things:
+
+1. The ``JSON`` structure from the ``English`` language file is absolute, meaning you can't change the JSON structure (the keys), because this is how rotki reads which value to use. So for translations of other languages, please follow the same structure as the `English` language JSON file. For example:
+
+.. code-block::
+
+    // en.json
+    "exchange_balances": {
+      "add_exchange": "Add exchange",
+      "click_here": "Click here",
+    }
+
+    // es.json
+    "exchange_balances": {
+      "add_exchange": "Añadir intercambio",
+      "click_here": "Haga clic aquí",
+    }
+
+2. You may notice that there are some words that are wrapped inside curly brackets, for example the word ``length`` in the sentence ``Use total from {length} asset(s) value``.
+This is how rotki inserts a variable inside a sentence. You **must** keep this variable name, when translating to a different language. What you can do though is to reposition the variable inside the sentence. For example:
+
+.. code-block::
+
+    // en.json
+    "total": {
+      "use_calculated_asset": "Use total from {length} asset(s) value: ",
+    }
+
+    // es.json
+    "total": {
+      "use_calculated_asset": "Utilice el valor total de {length} activos: ",
+    }
+
+3. For missing keys from other language files, by default it will use the value of the master file which is ``English``.
+
 Code Testing
 **************
 
@@ -187,6 +412,52 @@ There is some alternative linting tools that we don't run in the CI since they h
 
  - **vulture**: Source and docs `here <https://github.com/jendrikseipp/vulture>`__. Just get via ``pip install vulture``. If you simply run it from the root directory you will get a list of possibly unused code that you can remove. You will have to go through a lot of false positives.
  - **bandit** Source and docs `here <https://github.com/PyCQA/bandit>`__. Just get via ``pip install bandit``. If you run it you will get a lot of potential issues in the code. You will have to go through a lot of false positives.
+
+Vue/Typescript
+===============
+
+The Vue/Typescript part of the application under the ``frontend`` directory has two types of tests.
+The unit tests that are testing functions and components are using ``vitest`` and ``vue-test-utils`` and you can run
+them by:
+
+::
+
+    npm run test:unit -w app
+
+These are supposed to be small tests ensuring that parts of the code work good in isolation.
+
+The second type of tests is an `e2e` test suite using ``cypress``. The e2e tests require the python virtual environment
+because they depend on the actual python backend. These tests ensure proper e2e functionality and application integration
+and try to replicate scenarios of real user interaction through the application.
+
+To run the e2e tests you need to run the following command inside the frontend directory:
+
+::
+
+    npm run test:integration-ci -w app
+
+The above command will run the e2e tests in headless mode. If you want to debug specific tests you can also run:
+
+::
+
+    npm run test:integration -w
+
+This command will open the Cypress Test Runner window where you can select specific suites to execute.
+
+Linting
+--------
+
+Before committing and pushing your commits ensure that you fix any lint issues. You can do this by running:
+
+::
+
+    npm run lint:fix
+
+.. note::
+
+    While lint warnings are not fatal and will not fail the CI pipeline it would be better if a PR
+    reduces the number of warnings and doesn't introduce new ones. Warnings are things that
+    need to be fixed and they will be converted to errors in the future.
 
 Manual Testing
 ***********************
@@ -307,9 +578,9 @@ Premium Analytics
 Updating the documentation
 ==========================
 
-rotki is continuously changing and sometimes documentation gets outdated. One way to contribute to rotki is by helping to keep the documentation up to date. To do so you have to edit the corresponding section in the .rst files inside the docs folder of the git repo. 
+rotki is continuously changing and sometimes documentation gets outdated. One way to contribute to rotki is by helping to keep the documentation up to date. To do so you have to edit the corresponding section in the .rst files inside the docs folder of the git repo.
 
-To review your changes you can compile the documentation using the command 
+To review your changes you can compile the documentation using the command
 
 ::
 
@@ -377,8 +648,67 @@ Finally open the svg with any compatible viewer and explore the flamegraph. It w
    :alt: A flamegraph profiling example
    :align: center
 
+
+rotki Database
+**************
+
+rotki uses two different sqlite databases, one with information about assets, price and other non-sensitive information (global.db) and one with user information (rotkehlchen.db).
+The latter is encrypted using an extension called `SQLCipher <https://github.com/sqlcipher/sqlcipher>`__
+that provides transparent 256-bit AES full database encryption.
+
+Database Location
+=================
+
+Databases are stored in directories under the `rotki data directory <https://rotki.readthedocs.io/en/latest/usage_guide.html#rotki-data-directory>`__.
+
+The global database is stored at ``global_data/global.db``.
+
+The accounts you create in rotki have their own database stored at ``<account_name>/rotkehlchen.db``.
+
+Exploring the database
+======================
+
+To open the user database you can use `sqlitebrowser <https://sqlitebrowser.org/>`__.
+It supports sqlcipher and will ask for the password used to decrypt the database.
+
+If you prefer the command line instead, you can use the ``sqlcipher`` cli tool. Note: using just ``sqlite3`` cli will not work since the database is encrypted.
+
+Note to Debian and Ubuntu users: we are using SQLCipher encryption v4, therefore a recent version of sqlcipher is required. Unfortunately
+the version available in the distribution repositories are too old and won't let you open the database using ``sqlitebrowser`` nor ``sqlcipher``.
+On top of that, the ``sqlitebrowser`` version provided is not compiled with sqlcipher support.
+As a workaround, you can find a `PPA <https://launchpad.net/ubuntu/+ppas>`__ **(use at your own risk)** to
+install more recent versions of both packages and you can also recompile sqlitebrowser with sqlcipher support following this
+`stackoverflow thread <https://stackoverflow.com/questions/48105035/sqlite-browser-without-sqlcipher-support-in-ubuntu>`__.
+
+When using sqlcipher, you need to specify the password to decrypt the database entering ``PRAGMA key='your-secret-key';`` right after opening the database.
+
+DB Upgrades
+=================
+
+Database upgrades are needed when changes in the schema happen. rotki checks a setting in the database with the version and just executes sequentially a check against the version to verify if the upgrade needs to happen or not.
+
+When the database schema is changed, it is important to note that **the operation is not reversible**. Therefore in order to open the upgraded database with an older
+version you would need to have a backup. For more information, check `upgrade_manager.py <https://github.com/rotki/rotki/blob/da7062220abddc7bde9b99fc3d297412bb6552b4/rotkehlchen/db/upgrade_manager.py>`__.
+
+When adding a new upgrade, remember to bump ``ROTKEHLCHEN_DB_VERSION`` in `settings.py <https://github.com/rotki/rotki/blob/da7062220abddc7bde9b99fc3d297412bb6552b4/rotkehlchen/db/settings.py>`__.
+Generally we only make one upgrade per release, so if you need to make changes to the schema, simply add them to the latest unreleased migration.
+
+rotki generates a backup before any schema upgrade. These backups are stored in the same directory as the database with name ``<timestamp>_rotkehlchen_db_v<version>.backup``
+or ``<timestamp>_global_db_v<version>.backup``.
+
+rotki uses the same mechanism of updating the schema for both the global and the user databases.
+
+DB Migrations
+=================
+
+When developers need to make changes in the data but the schema does not change, a data migration is made instead. This operation can be a simple task such as deleting old backups files,
+inserting some rows or running a background task to update some table. In this case, the database can be opened using the previous version of rotki. For more information, check
+`data_migrations <https://github.com/rotki/rotki/tree/develop/rotkehlchen/data_migrations>__`.
+
+
+
 Docker publishing (manual)
-*****************
+*****************************
 
 If a need exists to publish on hub.docker.com then the following steps need to be followed.
 
@@ -397,3 +727,11 @@ tag name.
     docker buildx create --name imgbldr --use
     docker buildx inspect --bootstrap --builder imgbldr
     docker buildx build --build-arg REVISION='git sha' --build-arg ROTKI_VERSION=vx.x.x --file ./Dockerfile --platform linux/amd64 --platform linux/arm64 --tag rotki/rotki:vx.x.x --tag rotki/rotki:latest --push .
+
+
+Working with the frontend
+*****************************
+
+While working with the frontend code and type errors in the code will be displayed inside the page.
+To make clicking the errors open in your editor or IDE you need to set the `LAUNCH_EDITOR <https://github.com/yyx990803/launch-editor#supported-editors>`_
+environment variable in your system.

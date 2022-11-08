@@ -1,17 +1,13 @@
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import isEqual from 'lodash/isEqual';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import i18n from '@/i18n';
 import { api } from '@/services/rotkehlchen-api';
+import { useNotifications } from '@/store/notifications';
+import { useFrontendSettingsStore } from '@/store/settings/frontend';
+import { useTasks } from '@/store/tasks';
 import {
   EthAddressBookLocation,
   EthNames,
   EthNamesEntries
-} from '@/store/balances/types';
-import { useNotifications } from '@/store/notifications';
-import { useFrontendSettingsStore } from '@/store/settings/frontend';
-import { useTasks } from '@/store/tasks';
+} from '@/types/eth-names';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { uniqueStrings } from '@/utils/data';
@@ -20,6 +16,7 @@ import { isValidEthAddress } from '@/utils/text';
 
 export const useEthNamesStore = defineStore('ethNames', () => {
   const { enableEthNames } = storeToRefs(useFrontendSettingsStore());
+
   const ensAddresses = ref<string[]>([]);
   const ethNames = ref<EthNames>({});
 
@@ -35,11 +32,12 @@ export const useEthNamesStore = defineStore('ethNames', () => {
 
   const { awaitTask } = useTasks();
   const { notify } = useNotifications();
+  const { t, tc } = useI18n();
 
   const updateEnsAddresses = (newAddresses: string[]): boolean => {
     const newEnsAddresses = [...get(ensAddresses), ...newAddresses]
       .filter(uniqueStrings)
-      .filter(address => isValidEthAddress(address));
+      .filter(isValidEthAddress);
 
     const currentEnsAddresses = [...get(ensAddresses)];
 
@@ -71,7 +69,7 @@ export const useEthNamesStore = defineStore('ethNames', () => {
           latestEnsAddresses
         );
         await awaitTask<EthNames, TaskMeta>(taskId, taskType, {
-          title: i18n.t('ens_names.task.title').toString(),
+          title: tc('ens_names.task.title'),
           numericKeys: []
         });
       } else {
@@ -88,32 +86,27 @@ export const useEthNamesStore = defineStore('ethNames', () => {
       ...get(ensAddresses)
     ].filter(uniqueStrings);
 
-    const notifyError = (error?: any) => {
-      logger.error(error);
-      const message = error?.message ?? error ?? '';
-      notify({
-        title: i18n.t('eth_names.error.title').toString(),
-        message: i18n.t('eth_names.error.message', { message }).toString(),
-        display: true
-      });
-    };
-
     try {
       const result = await api.balances.getEthNames(addresses);
       set(ethNames, result);
     } catch (e: any) {
-      notifyError(e);
+      logger.error(e);
+      const message = e?.message ?? e ?? '';
+      notify({
+        title: tc('eth_names.error.title'),
+        message: tc('eth_names.error.message', 0, { message }),
+        display: true
+      });
     }
   };
 
-  const ethNameSelector = (address: string) => {
-    return computed<string | null>(() => {
+  const ethNameSelector = (address: string) =>
+    computed<string | null>(() => {
       if (!get(enableEthNames)) return null;
       return get(ethNames)[address] ?? null;
     });
-  };
 
-  const updateEthAddressBookState = (
+  const updateEthAddressBookState = async (
     location: EthAddressBookLocation,
     result: EthNamesEntries
   ) => {
@@ -123,7 +116,7 @@ export const useEthNamesStore = defineStore('ethNames', () => {
       set(ethAddressBookPrivate, result);
     }
 
-    fetchEthNames();
+    await fetchEthNames();
   };
 
   const fetchEthAddressBook = async (
@@ -134,16 +127,16 @@ export const useEthNamesStore = defineStore('ethNames', () => {
       logger.error(error);
       const message = error?.message ?? error ?? '';
       notify({
-        title: i18n.t('eth_address_book.actions.fetch.error.title').toString(),
-        message: i18n
-          .t('eth_address_book.actions.fetch.error.message', { message })
-          .toString(),
+        title: t('eth_address_book.actions.fetch.error.title').toString(),
+        message: t('eth_address_book.actions.fetch.error.message', {
+          message
+        }).toString(),
         display: true
       });
     };
     try {
       const result = await api.balances.getEthAddressBook(location, addresses);
-      updateEthAddressBookState(location, result);
+      await updateEthAddressBookState(location, result);
     } catch (e: any) {
       notifyError(e);
     }

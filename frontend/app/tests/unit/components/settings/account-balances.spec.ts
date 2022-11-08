@@ -1,33 +1,24 @@
 import { mount, Wrapper } from '@vue/test-utils';
-import { createPinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
 import AccountBalances from '@/components/accounts/AccountBalances.vue';
-import { Section, Status } from '@/store/const';
-import { useMainStore } from '@/store/main';
 import { useSessionStore } from '@/store/session';
-import store from '@/store/store';
+import { useStatusStore } from '@/store/status';
 import { useTasks } from '@/store/tasks';
+import { Section, Status } from '@/types/status';
 import { TaskType } from '@/types/task-type';
-import '../../i18n';
-
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
+import createCustomPinia from '../../utils/create-pinia';
 
 describe('AccountBalances.vue', () => {
   let wrapper: Wrapper<any>;
 
   beforeEach(() => {
     const vuetify = new Vuetify();
-    const pinia = createPinia();
+    const pinia = createCustomPinia();
     setActivePinia(pinia);
     wrapper = mount(AccountBalances, {
-      store,
       vuetify,
       pinia,
-      provide: {
-        'vuex-store': store
-      },
       propsData: {
         blockchain: 'ETH',
         balances: [],
@@ -37,7 +28,7 @@ describe('AccountBalances.vue', () => {
   });
 
   afterEach(() => {
-    useSessionStore().reset();
+    useSessionStore().$reset();
   });
 
   test('table enters into loading state when balances load', async () => {
@@ -51,7 +42,7 @@ describe('AccountBalances.vue', () => {
       time: 0
     });
 
-    useMainStore().setStatus({
+    useStatusStore().setStatus({
       section: Section.BLOCKCHAIN_ETH,
       status: Status.LOADING
     });
@@ -71,7 +62,7 @@ describe('AccountBalances.vue', () => {
     );
 
     remove(1);
-    useMainStore().setStatus({
+    useStatusStore().setStatus({
       section: Section.BLOCKCHAIN_ETH,
       status: Status.LOADED
     });

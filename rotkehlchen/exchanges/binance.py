@@ -23,7 +23,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_binance
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
@@ -191,7 +191,7 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             database: 'DBHandler',
             msg_aggregator: MessagesAggregator,
             uri: str = BINANCE_BASE_URL,
-            binance_selected_trade_pairs: Optional[List[str]] = None,  # noqa: N803
+            binance_selected_trade_pairs: Optional[List[str]] = None,
     ):
         exchange_location = Location.BINANCE
         if uri == BINANCEUS_BASE_URL:
@@ -475,8 +475,8 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
     def _query_spot_balances(
             self,
-            balances: DefaultDict[Asset, Balance],
-    ) -> DefaultDict[Asset, Balance]:
+            balances: DefaultDict[AssetWithOracles, Balance],
+    ) -> DefaultDict[AssetWithOracles, Balance]:
         account_data = self.api_query_dict('api', 'account')
         binance_balances = account_data.get('balances', None)
         if not binance_balances:
@@ -504,15 +504,15 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             try:
                 asset = asset_from_binance(asset_symbol)
             except UnsupportedAsset as e:
-                if e.asset_name != 'ETF':
+                if e.identifier != 'ETF':
                     self.msg_aggregator.add_warning(
-                        f'Found unsupported {self.name} asset {e.asset_name}. '
+                        f'Found unsupported {self.name} asset {e.identifier}. '
                         f'Ignoring its balance query.',
                     )
                 continue
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unknown {self.name} asset {e.asset_name}. '
+                    f'Found unknown {self.name} asset {e.identifier}. '
                     f'Ignoring its balance query.',
                 )
                 continue
@@ -541,8 +541,8 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
     def _query_lending_balances(
             self,
-            balances: DefaultDict[Asset, Balance],
-    ) -> DefaultDict[Asset, Balance]:
+            balances: DefaultDict[AssetWithOracles, Balance],
+    ) -> DefaultDict[AssetWithOracles, Balance]:
         """Queries binance lending balances and if any found adds them to `balances`
 
         May raise:
@@ -565,13 +565,13 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                 asset = asset_from_binance(entry['asset'])
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unsupported {self.name} asset {e.asset_name}. '
+                    f'Found unsupported {self.name} asset {e.identifier}. '
                     f'Ignoring its lending balance query.',
                 )
                 continue
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unknown {self.name} asset {e.asset_name}. '
+                    f'Found unknown {self.name} asset {e.identifier}. '
                     f'Ignoring its lending balance query.',
                 )
                 continue
@@ -603,8 +603,8 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
     def _query_cross_collateral_futures_balances(
             self,
-            balances: DefaultDict[Asset, Balance],
-    ) -> DefaultDict[Asset, Balance]:
+            balances: DefaultDict[AssetWithOracles, Balance],
+    ) -> DefaultDict[AssetWithOracles, Balance]:
         """Queries binance collateral future balances and if any found adds them to `balances`
 
         May raise:
@@ -622,13 +622,13 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                     asset = asset_from_binance(entry['collateralCoin'])
                 except UnsupportedAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unsupported {self.name} asset {e.asset_name}. '
+                        f'Found unsupported {self.name} asset {e.identifier}. '
                         f'Ignoring its futures balance query.',
                     )
                     continue
                 except UnknownAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unknown {self.name} asset {e.asset_name}. '
+                        f'Found unknown {self.name} asset {e.identifier}. '
                         f'Ignoring its futures balance query.',
                     )
                     continue
@@ -661,11 +661,19 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
         return balances
 
+    def _query_margined_fapi(self, balances: DefaultDict[AssetWithOracles, Balance]) -> DefaultDict[AssetWithOracles, Balance]:  # noqa: E501
+        """Only a convenience function to give same interface as other query methods"""
+        return self._query_margined_futures_balances('fapi', balances)
+
+    def _query_margined_dapi(self, balances: DefaultDict[AssetWithOracles, Balance]) -> DefaultDict[AssetWithOracles, Balance]:  # noqa: E501
+        """Only a convenience function to give same interface as other query methods"""
+        return self._query_margined_futures_balances('dapi', balances)
+
     def _query_margined_futures_balances(
             self,
             api_type: Literal['fapi', 'dapi'],
-            balances: DefaultDict[Asset, Balance],
-    ) -> DefaultDict[Asset, Balance]:
+            balances: DefaultDict[AssetWithOracles, Balance],
+    ) -> DefaultDict[AssetWithOracles, Balance]:
         """Queries binance margined future balances and if any found adds them to `balances`
 
         May raise:
@@ -690,13 +698,13 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                     asset = asset_from_binance(entry['asset'])
                 except UnsupportedAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unsupported {self.name} asset {e.asset_name}. '
+                        f'Found unsupported {self.name} asset {e.identifier}. '
                         f'Ignoring its margined futures balance query.',
                     )
                     continue
                 except UnknownAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unknown {self.name} asset {e.asset_name}. '
+                        f'Found unknown {self.name} asset {e.identifier}. '
                         f'Ignoring its margined futures balance query.',
                     )
                     continue
@@ -731,8 +739,8 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
     def _query_pools_balances(
             self,
-            balances: DefaultDict[Asset, Balance],
-    ) -> DefaultDict[Asset, Balance]:
+            balances: DefaultDict[AssetWithOracles, Balance],
+    ) -> DefaultDict[AssetWithOracles, Balance]:
         """Queries binance pool balances and if any found adds them to `balances`
 
         May raise:
@@ -813,14 +821,20 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
     def query_balances(self) -> ExchangeQueryBalances:
         try:
             self.first_connection()
-            returned_balances: DefaultDict[Asset, Balance] = defaultdict(Balance)
+            returned_balances: DefaultDict[AssetWithOracles, Balance] = defaultdict(Balance)
             returned_balances = self._query_spot_balances(returned_balances)
             if self.location != Location.BINANCEUS:
-                returned_balances = self._query_lending_balances(returned_balances)
-                returned_balances = self._query_cross_collateral_futures_balances(returned_balances)  # noqa: E501
-                returned_balances = self._query_margined_futures_balances('fapi', returned_balances)  # noqa: E501
-                returned_balances = self._query_margined_futures_balances('dapi', returned_balances)  # noqa: E501
-                returned_balances = self._query_pools_balances(returned_balances)
+                for method in (
+                        self._query_lending_balances,
+                        self._query_cross_collateral_futures_balances,
+                        self._query_margined_fapi,
+                        self._query_margined_dapi,
+                        self._query_pools_balances,
+                ):
+                    try:
+                        returned_balances = method(returned_balances)
+                    except RemoteError as e:  # errors in any of these methods should not be fatal
+                        log.warning(f'Failed to query binance method {method.__name__} due to {str(e)}')  # noqa: E501
 
         except RemoteError as e:
             msg = (
@@ -900,13 +914,13 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found {self.name} trade with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found {self.name} trade with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -1016,12 +1030,12 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} fiat payment with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} fiat payment with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)
@@ -1077,12 +1091,12 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} fiat deposit/withdrawal with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} fiat deposit/withdrawal with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)
@@ -1140,12 +1154,12 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} deposit/withdrawal with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found {str(self.location)} deposit/withdrawal with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)
@@ -1255,7 +1269,7 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         if self.location != Location.BINANCEUS:
             # dont exist for Binance US: https://github.com/rotki/rotki/issues/3664
             fiat_deposits = self._api_query_list_within_time_delta(
-                start_ts=Timestamp(0),
+                start_ts=start_ts,
                 end_ts=end_ts,
                 time_delta=API_TIME_INTERVAL_CONSTRAINT_TS,
                 api_type='sapi',
@@ -1264,7 +1278,7 @@ class Binance(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             )
             log.debug(f'{self.name} fiat deposit history result', results_num=len(fiat_deposits))
             fiat_withdraws = self._api_query_list_within_time_delta(
-                start_ts=Timestamp(0),
+                start_ts=start_ts,
                 end_ts=end_ts,
                 time_delta=API_TIME_INTERVAL_CONSTRAINT_TS,
                 api_type='sapi',

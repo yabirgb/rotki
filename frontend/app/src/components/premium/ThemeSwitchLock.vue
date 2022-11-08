@@ -7,11 +7,9 @@
           icon
           target="_blank"
           class="secondary--text text--lighten-4"
-          :href="$interop.isPackaged ? undefined : $interop.premiumURL"
+          :href="href"
           v-on="on"
-          @click="
-            $interop.isPackaged ? $interop.navigateToPremium() : undefined
-          "
+          @click="onLinkClick"
         >
           <v-icon>mdi-white-balance-sunny</v-icon>
         </v-btn>
@@ -21,14 +19,13 @@
       </v-badge>
     </template>
     <span>
-      {{ $t('theme_switch_lock.tooltip') }}
+      {{ t('theme_switch_lock.tooltip') }}
     </span>
   </v-tooltip>
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
+import { useLinks } from '@/composables/links';
 
-export default defineComponent({
-  name: 'ThemeSwitchLock'
-});
+const { href, onLinkClick } = useLinks();
+const { t } = useI18n();
 </script>

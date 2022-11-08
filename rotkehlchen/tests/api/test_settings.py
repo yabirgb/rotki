@@ -17,7 +17,7 @@ from rotkehlchen.tests.utils.constants import A_JPY
 from rotkehlchen.tests.utils.factories import make_ethereum_address
 from rotkehlchen.tests.utils.mock import MockWeb3
 from rotkehlchen.types import (
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     CostBasisMethod,
     ExchangeLocationID,
     Location,
@@ -111,7 +111,7 @@ def test_set_settings(rotkehlchen_api_server):
 
     # modify the settings
     block_query = patch(
-        'rotkehlchen.chain.ethereum.manager.EthereumManager.query_eth_highest_block',
+        'rotkehlchen.chain.ethereum.manager.EthereumManager.query_highest_block',
         return_value=0,
     )
     mock_web3 = patch('rotkehlchen.chain.ethereum.manager.Web3', MockWeb3)
@@ -254,7 +254,7 @@ def test_set_settings_errors(rotkehlchen_api_server):
     """set settings errors and edge cases test"""
     rotki = rotkehlchen_api_server.rest_api.rotkehlchen
     # set timeout to 1 second to timeout faster
-    rotki.chain_manager.ethereum.eth_rpc_timeout = 1
+    rotki.chains_aggregator.ethereum.rpc_timeout = 1
 
     # Invalid type for premium_should_sync
     data = {
@@ -421,8 +421,8 @@ def test_set_settings_errors(rotkehlchen_api_server):
 
 
 def assert_queried_addresses_match(
-        result: Dict[ModuleName, List[ChecksumEthAddress]],
-        expected: Dict[ModuleName, List[ChecksumEthAddress]],
+        result: Dict[ModuleName, List[ChecksumEvmAddress]],
+        expected: Dict[ModuleName, List[ChecksumEvmAddress]],
 ) -> None:
     assert len(result) == len(expected)
     for key, value in expected.items():

@@ -6,16 +6,14 @@
       </v-col>
       <v-col>
         <div :class="$style.title" class="text--primary">
-          {{ $t('no_task_running.description') }}
+          {{ t('no_task_running.description') }}
         </div>
       </v-col>
     </v-row>
   </card>
 </template>
-<script lang="ts">
-export default {
-  name: 'NoTasksRunning'
-};
+<script setup lang="ts">
+const { t } = useI18n();
 </script>
 <style module lang="scss">
 .card {

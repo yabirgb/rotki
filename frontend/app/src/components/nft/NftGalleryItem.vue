@@ -2,10 +2,9 @@
   <v-card class="mx-auto overflow-hidden">
     <base-external-link :href="item.externalLink">
       <video
-        v-if="isVideo"
+        v-if="isMediaVideo"
         controls
         width="auto"
-        aspect-ratio="1"
         :src="imageUrl"
         :style="{
           'background-color': `#${item.backgroundColor}`
@@ -68,6 +67,8 @@
           <v-col cols="auto" class="text-subtitle-2">
             <amount-display
               class="text--secondary"
+              :price-asset="item.priceAsset"
+              :amount="item.priceInAsset"
               :value="item.priceUsd"
               show-currency="ticker"
               fiat-currency="USD"
@@ -78,49 +79,36 @@
     </v-card-subtitle>
     <v-card-actions>
       <v-spacer />
-      <icon-link :url="item.permalink" text="OpenSea" />
+      <icon-link v-if="item.permalink" :url="item.permalink" text="OpenSea" />
     </v-card-actions>
   </v-card>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import BaseExternalLink from '@/components/base/BaseExternalLink.vue';
 import IconLink from '@/components/base/IconLink.vue';
 import { GalleryNft } from '@/store/session/types';
 import { isVideo } from '@/utils/nft';
 
-export default defineComponent({
-  name: 'NftGalleryItem',
-  components: { BaseExternalLink, IconLink },
-  props: {
-    item: {
-      required: true,
-      type: Object as PropType<GalleryNft>
-    }
-  },
-  setup(props) {
-    const { item } = toRefs(props);
-    const name = computed(() =>
-      get(item).name ? get(item).name : get(item).collection.name
-    );
-
-    const imageUrl = computed(() => {
-      return get(item).imageUrl ?? '/assets/images/placeholder.svg';
-    });
-
-    const isMediaVideo = computed(() => {
-      return isVideo(get(item).imageUrl);
-    });
-
-    return { name, imageUrl, isVideo: isMediaVideo };
+const props = defineProps({
+  item: {
+    required: true,
+    type: Object as PropType<GalleryNft>
   }
+});
+
+const { item } = toRefs(props);
+const name = computed(() =>
+  get(item).name ? get(item).name : get(item).collection.name
+);
+
+const imageUrl = computed(() => {
+  return get(item).imageUrl ?? '/assets/images/placeholder.svg';
+});
+
+const isMediaVideo = computed(() => {
+  return isVideo(get(item).imageUrl);
 });
 </script>
 

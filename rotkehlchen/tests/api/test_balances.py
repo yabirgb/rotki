@@ -44,7 +44,7 @@ from rotkehlchen.tests.utils.substrate import (
     SUBSTRATE_ACC1_KSM_ADDR,
     SUBSTRATE_ACC2_KSM_ADDR,
 )
-from rotkehlchen.types import Location, SupportedBlockchain, Timestamp
+from rotkehlchen.types import Location, Price, SupportedBlockchain, Timestamp
 from rotkehlchen.utils.misc import ts_now
 
 
@@ -159,7 +159,7 @@ def test_query_all_balances(
     async_query = random.choice([False, True])
     # Disable caching of query results
     rotki = rotkehlchen_api_server_with_exchanges.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     setup = setup_balances(
         rotki=rotki,
         ethereum_accounts=ethereum_accounts,
@@ -249,37 +249,44 @@ def test_query_all_balances_ignore_cache(
     binance = try_get_first_exchange(rotki.exchange_manager, Location.BINANCE)
     poloniex = try_get_first_exchange(rotki.exchange_manager, Location.POLONIEX)
     eth_query_patch = patch.object(
-        rotki.chain_manager,
+        rotki.chains_aggregator,
         'query_ethereum_balances',
-        wraps=rotki.chain_manager.query_ethereum_balances,
+        wraps=rotki.chains_aggregator.query_ethereum_balances,
     )
     btc_query_patch = patch.object(
-        rotki.chain_manager,
+        rotki.chains_aggregator,
         'query_btc_balances',
-        wraps=rotki.chain_manager.query_btc_balances,
+        wraps=rotki.chains_aggregator.query_btc_balances,
     )
     tokens_query_patch = patch.object(
-        rotki.chain_manager,
-        'query_ethereum_tokens',
-        wraps=rotki.chain_manager.query_ethereum_tokens,
+        rotki.chains_aggregator,
+        'query_evm_tokens',
+        wraps=rotki.chains_aggregator.query_evm_tokens,
     )
     original_binance_query_dict = binance.api_query_dict
     binance_query_patch = patch.object(binance, 'api_query_dict', wraps=binance.api_query_dict)
     poloniex_query_patch = patch.object(poloniex, 'api_query_list', wraps=poloniex.api_query_list)
+    derive_new_addresses_from_xpubs_patch = patch.object(
+        rotki.chains_aggregator,
+        'derive_new_addresses_from_xpubs',
+        wraps=rotki.chains_aggregator.derive_new_addresses_from_xpubs,
+    )
 
     with ExitStack() as stack:
         stack.enter_context(setup.poloniex_patch)
         stack.enter_context(setup.binance_patch)
         etherscan_mock = stack.enter_context(setup.etherscan_patch)
         stack.enter_context(setup.bitcoin_patch)
-        stack.enter_context(setup.ethtokens_max_chunks_patch)
+        stack.enter_context(setup.evmtokens_max_chunks_patch)
         stack.enter_context(setup.beaconchain_patch)
-        function_call_counters = []
-        function_call_counters.append(stack.enter_context(eth_query_patch))
-        function_call_counters.append(stack.enter_context(btc_query_patch))
-        function_call_counters.append(stack.enter_context(tokens_query_patch))
-        function_call_counters.append(stack.enter_context(binance_query_patch))
-        function_call_counters.append(stack.enter_context(poloniex_query_patch))
+        function_call_counters = [
+            stack.enter_context(eth_query_patch),
+            stack.enter_context(btc_query_patch),
+            stack.enter_context(tokens_query_patch),
+            stack.enter_context(binance_query_patch),
+            stack.enter_context(poloniex_query_patch),
+            stack.enter_context(derive_new_addresses_from_xpubs_patch),
+        ]
 
         # Query all balances for the first time and test it works
         response = requests.get(
@@ -298,6 +305,9 @@ def test_query_all_balances_ignore_cache(
         for fn in function_call_counters:
             if fn._mock_wraps == original_binance_query_dict:
                 assert fn.call_count == 3
+            # addresses are not derived from xpubs when `ignore_cache` is False
+            elif fn == rotki.chains_aggregator.derive_new_addresses_from_xpubs:
+                assert fn.call_count == 0
             else:
                 assert fn.call_count == 1
         full_query_etherscan_count = etherscan_mock.call_count
@@ -320,6 +330,9 @@ def test_query_all_balances_ignore_cache(
         for fn in function_call_counters:
             if fn._mock_wraps == original_binance_query_dict:
                 assert fn.call_count == 3, msg
+            # addresses are not derived from xpubs when `ignore_cache` is False
+            elif fn == rotki.chains_aggregator.derive_new_addresses_from_xpubs:
+                assert fn.call_count == 0, msg
             else:
                 assert fn.call_count == 1, msg
         msg = 'etherscan call_count should have remained the same due to no token detection '
@@ -343,6 +356,9 @@ def test_query_all_balances_ignore_cache(
         for fn in function_call_counters:
             if fn._mock_wraps == original_binance_query_dict:
                 assert fn.call_count == 6, msg
+            # addresses are derived from xpubs when `ignore_cache` is True
+            elif fn == rotki.chains_aggregator.derive_new_addresses_from_xpubs:
+                assert fn.call_count == 1, msg
             else:
                 assert fn.call_count == 2, msg
         msg = 'etherscan call count should have doubled after forced token detection'
@@ -369,7 +385,7 @@ def test_query_all_balances_with_manually_tracked_balances(
     """Test that using the query all balances endpoint also includes manually tracked balances"""
     # Disable caching of query results
     rotki = rotkehlchen_api_server_with_exchanges.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     manually_tracked_balances = [ManuallyTrackedBalance(
         id=-1,
         asset=A_BTC,
@@ -534,12 +550,12 @@ def test_multiple_balance_queries_not_concurrent(
     setup = setup_balances(rotki, ethereum_accounts, btc_accounts)
 
     multieth_balance_patch = patch.object(
-        rotki.chain_manager.ethereum,
-        'get_multieth_balance',
-        wraps=rotki.chain_manager.ethereum.get_multieth_balance,
+        rotki.chains_aggregator.ethereum,
+        'get_multi_balance',
+        wraps=rotki.chains_aggregator.ethereum.get_multi_balance,
     )
     btc_balances_patch = patch(
-        'rotkehlchen.chain.manager.get_bitcoin_addresses_balances',
+        'rotkehlchen.chain.aggregator.get_bitcoin_addresses_balances',
         wraps=get_bitcoin_addresses_balances,
     )
     binance = try_get_first_exchange(rotki.exchange_manager, Location.BINANCE)
@@ -805,11 +821,12 @@ def test_ethereum_tokens_detection(
 ):
     account = ethereum_accounts[0]
 
-    def query_detect_tokens() -> Dict[str, Any]:
+    def query_detect_eth_tokens() -> Dict[str, Any]:
         response = requests.post(
             api_url_for(
                 rotkehlchen_api_server,
                 'detecttokensresource',
+                blockchain='ETH',
             ), json={
                 'async_query': False,
                 'only_cache': True,
@@ -824,16 +841,48 @@ def test_ethereum_tokens_detection(
             'last_update_timestamp': None,
         },
     }
-    assert query_detect_tokens() == empty_tokens_result
+    assert query_detect_eth_tokens() == empty_tokens_result
 
     db = rotkehlchen_api_server.rest_api.rotkehlchen.data.db
     with db.user_write() as write_cursor:
         db.save_tokens_for_address(
             write_cursor=write_cursor,
             address=account,
+            blockchain=SupportedBlockchain.ETHEREUM,
             tokens=[A_RDN, A_DAI],
         )
     cur_time = ts_now()
-    result = query_detect_tokens()
-    assert result[account]['tokens'] == [A_RDN.identifier, A_DAI.identifier]
+    result = query_detect_eth_tokens()
+    assert set(result[account]['tokens']) == {A_DAI.identifier, A_RDN.identifier}
     assert result[account]['last_update_timestamp'] >= cur_time
+
+
+@pytest.mark.parametrize('number_of_eth_accounts', [2])
+@pytest.mark.parametrize('ignore_mocked_prices_for', ['ETH'])
+def test_balances_behaviour_with_manual_current_prices(rotkehlchen_api_server, ethereum_accounts):
+    """Checks that manual current price is used in balances querying endpoints"""
+    setup = setup_balances(
+        rotki=rotkehlchen_api_server.rest_api.rotkehlchen,
+        ethereum_accounts=ethereum_accounts,
+        btc_accounts=None,
+        eth_balances=[str(int(1e18)), str(2 * int(1e18))],
+        token_balances={A_RDN: [str(int(1e18)), str(int(4e18))]},
+        manual_current_prices=[(A_ETH, A_BTC, Price(FVal(10))), (A_RDN, A_ETH, Price(FVal(2)))],
+    )
+    with ExitStack() as stack:
+        setup.enter_ethereum_patches(stack)
+        response = requests.get(
+            api_url_for(
+                rotkehlchen_api_server,
+                'allbalancesresource',
+            ),
+        )
+        result = assert_proper_response_with_result(response)
+        # (3 ETH) * (10 BTC per ETH) * (1,5 USD per BTC) = 45 USD of ETH
+        eth_result = result['assets']['ETH']
+        assert eth_result['amount'] == '3'
+        assert eth_result['usd_value'] == '45.0'
+        # (5 RDN) * (2 ETH per RDN) * (10 BTC per RDN) * (1,5 USD per BTC) = 150 USD of RDN
+        rdn_result = result['assets']['eip155:1/erc20:0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6']
+        assert rdn_result['amount'] == '5'
+        assert rdn_result['usd_value'] == '150.0'

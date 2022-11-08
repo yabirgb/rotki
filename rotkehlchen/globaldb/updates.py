@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import requests
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.types import AssetData, AssetType
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
@@ -18,8 +18,8 @@ from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
-from rotkehlchen.types import ChecksumEthAddress, Timestamp
+from rotkehlchen.serialization.deserialize import deserialize_evm_address
+from rotkehlchen.types import ChainID, ChecksumEvmAddress, EvmTokenKind, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 
 from .handler import GlobalDBHandler, initialize_globaldb
@@ -51,11 +51,11 @@ def _replace_assets_from_db(
     ATTACH DATABASE "{sourcedb_path}" AS other_db;
     PRAGMA foreign_keys = OFF;
     DELETE FROM assets;
-    DELETE FROM ethereum_tokens;
+    DELETE FROM evm_tokens;
     DELETE FROM underlying_tokens_list;
     DELETE FROM common_asset_details;
     INSERT INTO assets SELECT * FROM other_db.assets;
-    INSERT INTO ethereum_tokens SELECT * FROM other_db.ethereum_tokens;
+    INSERT INTO evm_tokens SELECT * FROM other_db.evm_tokens;
     INSERT INTO underlying_tokens_list SELECT * FROM other_db.underlying_tokens_list;
     INSERT INTO common_asset_details SELECT * FROM other_db.common_asset_details;
     INSERT OR REPLACE INTO settings(name, value) VALUES("{ASSETS_VERSION_KEY}",
@@ -71,23 +71,10 @@ def _force_remote(cursor: DBCursor, local_asset: Asset, full_insert: str) -> Non
 
     May raise an sqlite3 error if something fails.
     """
-    cursor.executescript('PRAGMA foreign_keys = OFF;')
-    if local_asset.asset_type == AssetType.ETHEREUM_TOKEN:
-        token = EthereumToken.from_asset(local_asset)
-        cursor.execute(
-            'DELETE FROM ethereum_tokens WHERE address=?;',
-            (token.ethereum_address,),  # type: ignore  # token != None
-        )
-    else:
-        cursor.execute(
-            'DELETE FROM common_asset_details WHERE asset_id=?;',
-            (local_asset.identifier,),
-        )
     cursor.execute(
         'DELETE FROM assets WHERE identifier=?;',
         (local_asset.identifier,),
     )
-    cursor.executescript('PRAGMA foreign_keys = ON;')
     # Insert new entry. Since identifiers are the same, no foreign key constrains should break
     executeall(cursor, full_insert)
     AssetResolver().clean_memory_cache(local_asset.identifier.lower())
@@ -102,6 +89,7 @@ class ParsedAssetData(NamedTuple):
     swapped_for: Optional[str]
     coingecko: Optional[str]
     cryptocompare: Optional[str]
+    forked: Optional[str]
 
 
 class AssetsUpdater():
@@ -111,9 +99,9 @@ class AssetsUpdater():
         self.local_assets_version = GlobalDBHandler().get_setting_value(ASSETS_VERSION_KEY, 0)
         self.last_remote_checked_version = None
         self.conflicts: List[Tuple[AssetData, AssetData]] = []
-        self.assets_re = re.compile(r'.*INSERT +INTO +assets\( *identifier *, *type *, *name *, *symbol *, *started *, *swapped_for *, *coingecko *, *cryptocompare *, *details_reference *\) +VALUES\((.*?),(.*?),(.*?),(.*?),(.*?),(.*?),(.*?),(.*?),(.*?)\).*?')  # noqa: E501
-        self.ethereum_tokens_re = re.compile(r'.*INSERT +INTO +ethereum_tokens\( *address *, *decimals *, *protocol *\) +VALUES\((.*?),(.*?),(.*?)\).*')  # noqa: E501
-        self.common_asset_details_re = re.compile(r'.*INSERT +INTO +common_asset_details\( *asset_id *, *forked *\) +VALUES\((.*?),(.*?)\).*')  # noqa: E501
+        self.assets_re = re.compile(r'.*INSERT +INTO +assets\( *identifier *, *name *, *type *\) +VALUES\(([^\)]*?),([^\)]*?),([^\)]*?)\).*?')  # noqa: E501
+        self.ethereum_tokens_re = re.compile(r'.*INSERT +INTO +evm_tokens\( *identifier *, *token_kind *, *chain *, *address *, *decimals *, *protocol *\) +VALUES\(([^\)]*?),([^\)]*?),([^\)]*?),([^\)]*?),([^\)]*?),([^\)]*?)\).*')  # noqa: E501
+        self.common_asset_details_re = re.compile(r'.*INSERT +INTO +common_asset_details\( *identifier *, *symbol *, *coingecko *, *cryptocompare *, *forked *, *started *, *swapped_for *\) +VALUES\((.*?),(.*?),(.*?),(.*?),(.*?),([^\)]*?),([^\)]*?)\).*')  # noqa: E501
         self.string_re = re.compile(r'.*"(.*?)".*')
         self.branch = 'master'
         if not getattr(sys, 'frozen', False):
@@ -202,48 +190,82 @@ class AssetsUpdater():
         return result
 
     def _parse_asset_data(self, insert_text: str) -> ParsedAssetData:
-        match = self.assets_re.match(insert_text)
-        if match is None:
+        assets_match = self.assets_re.match(insert_text)
+        if assets_match is None:
             raise DeserializationError(
                 f'At asset DB update could not parse asset data out of {insert_text}',
             )
-        if len(match.groups()) != 9:
+        if len(assets_match.groups()) != 3:
             raise DeserializationError(
                 f'At asset DB update could not parse asset data out of {insert_text}',
             )
 
-        raw_type = self._parse_str(match.group(2), 'asset type', insert_text)
+        raw_type = self._parse_str(assets_match.group(3), 'asset type', insert_text)
         asset_type = AssetType.deserialize_from_db(raw_type)
-        raw_started = self._parse_optional_int(match.group(5), 'started', insert_text)
+
+        common_details_match = self.common_asset_details_re.match(insert_text)
+        if common_details_match is None:
+            raise DeserializationError(
+                f'At asset DB update could not parse common asset '
+                f'details data out of {insert_text}',
+            )
+        raw_started = self._parse_optional_int(common_details_match.group(6), 'started', insert_text)  # noqa: E501
         started = Timestamp(raw_started) if raw_started else None
+
         return ParsedAssetData(
-            identifier=self._parse_str(match.group(1), 'identifier', insert_text),
+            identifier=self._parse_str(common_details_match.group(1), 'identifier', insert_text),
             asset_type=asset_type,
-            name=self._parse_str(match.group(3), 'name', insert_text),
-            symbol=self._parse_str(match.group(4), 'symbol', insert_text),
+            name=self._parse_str(assets_match.group(2), 'name', insert_text),
+            symbol=self._parse_str(common_details_match.group(2), 'symbol', insert_text),
             started=started,
-            swapped_for=self._parse_optional_str(match.group(6), 'swapped_for', insert_text),
-            coingecko=self._parse_optional_str(match.group(7), 'coingecko', insert_text),
-            cryptocompare=self._parse_optional_str(match.group(8), 'cryptocompare', insert_text),
+            swapped_for=self._parse_optional_str(common_details_match.group(7), 'swapped_for', insert_text),  # noqa: E501
+            coingecko=self._parse_optional_str(common_details_match.group(3), 'coingecko', insert_text),  # noqa: E501
+            cryptocompare=self._parse_optional_str(common_details_match.group(4), 'cryptocompare', insert_text),  # noqa: E501
+            forked=self._parse_optional_str(common_details_match.group(5), 'forked', insert_text),
         )
 
-    def _parse_ethereum_token_data(self, insert_text: str) -> Tuple[ChecksumEthAddress, Optional[int], Optional[str]]:  # noqa: E501
+    def _parse_ethereum_token_data(
+            self,
+            insert_text: str,
+    ) -> Tuple[ChecksumEvmAddress, Optional[int], Optional[str], Optional[ChainID], Optional[EvmTokenKind]]:  # noqa: E501
         match = self.ethereum_tokens_re.match(insert_text)
         if match is None:
             raise DeserializationError(
-                f'At asset DB update could not parse ethereum token data out '
+                f'At asset DB update could not parse evm token data out '
                 f'of {insert_text}',
             )
 
-        if len(match.groups()) != 3:
+        if len(match.groups()) != 6:
             raise DeserializationError(
-                f'At asset DB update could not parse ethereum token data out of {insert_text}',
+                f'At asset DB update could not parse evm token data out of {insert_text}',
             )
 
+        chain_value = self._parse_optional_int(
+            value=match.group(3),
+            name='chain',
+            insert_text=insert_text,
+        )
+        if chain_value is not None:
+            chain = ChainID(chain_value)
+        else:
+            chain = None
+
+        token_kind_value = self._parse_optional_str(
+            value=match.group(2),
+            name='token_kind',
+            insert_text=insert_text,
+        )
+        if token_kind_value is not None:
+            token_kind = EvmTokenKind.deserialize_from_db(token_kind_value)
+        else:
+            token_kind = None
+
         return (
-            deserialize_ethereum_address(self._parse_str(match.group(1), 'address', insert_text)),
-            self._parse_optional_int(match.group(2), 'decimals', insert_text),
-            self._parse_optional_str(match.group(3), 'protocol', insert_text),
+            deserialize_evm_address(self._parse_str(match.group(4), 'address', insert_text)),
+            self._parse_optional_int(match.group(5), 'decimals', insert_text),
+            self._parse_optional_str(match.group(6), 'protocol', insert_text),
+            chain,
+            token_kind,
         )
 
     def _parse_full_insert(self, insert_text: str) -> AssetData:
@@ -255,27 +277,22 @@ class AssetsUpdater():
         be properly parsed.
         """
         asset_data = self._parse_asset_data(insert_text)
-        forked = address = decimals = protocol = None
-        if asset_data.asset_type == AssetType.ETHEREUM_TOKEN:
-            address, decimals, protocol = self._parse_ethereum_token_data(insert_text)
-        else:
-            match = self.common_asset_details_re.match(insert_text)
-            if match is None:
-                raise DeserializationError(
-                    f'At asset DB update could not parse common asset '
-                    f'details data out of {insert_text}',
-                )
-            forked = self._parse_optional_str(match.group(2), 'forked', insert_text)
+        address = decimals = protocol = chain = token_kind = None
+        if asset_data.asset_type == AssetType.EVM_TOKEN:
+            address, decimals, protocol, chain, token_kind = self._parse_ethereum_token_data(insert_text)  # noqa: E501
 
-        return AssetData(  # types are not really proper here (except for asset_type)
+        # types are not really proper here (except for asset_type, chain and token_kind)
+        return AssetData(
             identifier=asset_data.identifier,
             name=asset_data.name,
             symbol=asset_data.symbol,
             asset_type=asset_data.asset_type,
             started=asset_data.started,
-            forked=forked,
+            forked=asset_data.forked,
             swapped_for=asset_data.swapped_for,
-            ethereum_address=address,
+            address=address,
+            chain=chain,
+            token_kind=token_kind,
             decimals=decimals,
             cryptocompare=asset_data.cryptocompare,
             coingecko=asset_data.coingecko,
@@ -284,7 +301,7 @@ class AssetsUpdater():
 
     def _apply_single_version_update(
             self,
-            cursor: DBCursor,
+            connection: DBConnection,
             version: int,
             text: str,
             conflicts: Optional[Dict[Asset, Literal['remote', 'local']]],
@@ -305,18 +322,20 @@ class AssetsUpdater():
 
             local_asset: Optional[Asset] = None
             try:
-                local_asset = Asset(remote_asset_data.identifier)
+                local_asset = Asset(remote_asset_data.identifier).check_existence()
             except UnknownAsset:
                 pass
 
             try:
-                executeall(cursor, action)
+                with connection.savepoint_ctx() as cursor:
+                    executeall(cursor, action)
                 if local_asset is not None:
                     AssetResolver().clean_memory_cache(local_asset.identifier.lower())
             except sqlite3.Error:  # https://docs.python.org/3/library/sqlite3.html#exceptions
                 if local_asset is None:
                     try:  # if asset is not known then simply do an insertion
-                        executeall(cursor, full_insert)
+                        with connection.savepoint_ctx() as cursor:
+                            executeall(cursor, full_insert)
                     except sqlite3.Error as e:
                         self.msg_aggregator.add_warning(
                             f'Failed to add asset {remote_asset_data.identifier} in the '
@@ -332,7 +351,8 @@ class AssetsUpdater():
                     continue
                 if resolution == 'remote':
                     try:
-                        _force_remote(cursor, local_asset, full_insert)
+                        with connection.savepoint_ctx() as cursor:
+                            _force_remote(cursor, local_asset, full_insert)
                     except sqlite3.Error as e:
                         self.msg_aggregator.add_warning(
                             f'Failed to resolve conflict for {remote_asset_data.identifier} in '
@@ -342,19 +362,16 @@ class AssetsUpdater():
                     continue  # fail or succeed continue to next entry
 
                 # else can't resolve. Mark it for the user to resolve.
-                local_data = AssetResolver().get_asset_data(local_asset.identifier, False)
+                # TODO: When assets refactor is finished, remove the usage of AssetData here
+                local_data = GlobalDBHandler().get_all_asset_data(  # type: ignore  # pylint: disable=unsubscriptable-object  # noqa: E501
+                    mapping=False,
+                    serialized=False,
+                    specific_ids=[local_asset.identifier],
+                )[0]
                 self.conflicts.append((local_data, remote_asset_data))
 
-        # special case upgrade that should be temporary, until we make non-asset specific
-        # update lines possible in our update mechanism:
-        # https://github.com/rotki/assets/pull/49
-        if version == 7:
-            cursor.execute(
-                'UPDATE ethereum_tokens SET decimals=18 WHERE protocol=="balancer";',
-            )
-
         # at the very end update the current version in the DB
-        cursor.execute(
+        connection.execute(
             'INSERT OR REPLACE INTO settings(name, value) VALUES(?, ?)',
             (ASSETS_VERSION_KEY, str(version)),
         )
@@ -387,7 +404,9 @@ class AssetsUpdater():
         with TemporaryDirectory() as tmpdirname:
             tempdbpath = Path(tmpdirname) / 'temp.db'
             connection = initialize_globaldb(tempdbpath, GlobalDBHandler().conn.sql_vm_instructions_cb)  # noqa: E501
-            _replace_assets_from_db(connection, global_db_path)
+            with GlobalDBHandler().conn.critical_section():
+                # make sure global DB is not accessed anywhere else
+                _replace_assets_from_db(connection, global_db_path)
             self._perform_update(
                 connection=connection,
                 conflicts=conflicts,
@@ -407,7 +426,8 @@ class AssetsUpdater():
             # now move the data to the actual global DB
             connection.close()
             connection = GlobalDBHandler().conn
-            _replace_assets_from_db(connection, tempdbpath)
+            with connection.critical_section():  # assure global DB is not accessed anywhere else
+                _replace_assets_from_db(connection, tempdbpath)
             return None
 
     def _perform_update(
@@ -421,7 +441,6 @@ class AssetsUpdater():
         version = self.local_assets_version + 1
         target_version = min(up_to_version, self.last_remote_checked_version) if up_to_version else self.last_remote_checked_version   # type: ignore # noqa: E501
         # type ignore since due to check_for_updates we know last_remote_checked_version exists
-        cursor = connection.cursor()
         while version <= target_version:
             try:
                 min_schema_version = infojson['updates'][str(version)]['min_schema_version']
@@ -441,7 +460,7 @@ class AssetsUpdater():
                         f'You will have to follow an alternative method to '
                         f'obtain the assets of this update. Easiest would be to reset global DB.',
                     )
-                    cursor.execute(
+                    connection.execute(
                         'INSERT OR REPLACE INTO settings(name, value) VALUES(?, ?)',
                         (ASSETS_VERSION_KEY, str(version)),
                     )
@@ -470,7 +489,7 @@ class AssetsUpdater():
                 )
 
             self._apply_single_version_update(
-                cursor=cursor,
+                connection=connection,
                 version=version,
                 text=response.text,
                 conflicts=conflicts,

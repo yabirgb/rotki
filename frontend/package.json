@@ -17,6 +17,7 @@
   "scripts": {
     "preinstall": "node check-versions.js",
     "electron:build": "npm run build -w common && npm run electron:build -w app",
+    "electron:package": "npm run electron:package -w app",
     "build": "npm run build -w common && npm run build -w app",
     "docker:build": "npm run build -w common && npm run build -w app -- --mode docker",
     "lint": "npm run lint -w common && npm run lint:check -w app && npm run lint:style -w app",
@@ -28,8 +29,8 @@
     "dev:web": "node start-dev.js --web"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "5.18.0",
-    "@typescript-eslint/parser": "5.18.0",
+    "@typescript-eslint/eslint-plugin": "5.33.1",
+    "@typescript-eslint/parser": "5.33.1",
     "argparse": "2.0.1",
     "dotenv": "14.3.0",
     "eslint-config-prettier": "8.3.0",

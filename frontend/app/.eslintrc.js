@@ -12,12 +12,14 @@ module.exports = {
     'plugin:vue/essential',
     '@vue/typescript',
     'plugin:@intlify/vue-i18n/recommended',
-    '@vue/prettier'
+    '@vue/prettier',
+    './.eslintrc-auto-import.json'
   ],
 
   parser: 'vue-eslint-parser',
 
   rules: {
+    'prettier/prettier': 'error',
     'vuetify/no-deprecated-classes': 'error',
     'vuetify/grid-unknown-attributes': 'error',
     'vuetify/no-legacy-grid': 'error',
@@ -75,7 +77,7 @@ module.exports = {
       process.env.NODE_ENV === 'development' ? 'warn' : 'error',
       {
         ignoreNodes: ['md-icon', 'v-icon'],
-        ignorePattern: '^[-#:()&]+$',
+        ignorePattern: '^[-#:()&/+]+$',
         ignoreText: ['EUR', 'HKD', 'USD']
       }
     ],
@@ -96,7 +98,16 @@ module.exports = {
       {
         allowModifiers: true
       }
-    ]
+    ],
+    // vue 3 migration rules
+    'vue/component-api-style': ['error', ['script-setup']],
+    'vue/no-deprecated-dollar-listeners-api': 'error',
+    'vue/no-deprecated-events-api': 'error',
+    'vue/no-deprecated-filter': 'error',
+    'vue/prefer-import-from-vue': 'error',
+    'vue/require-explicit-emits': 'error',
+    // cyclic imports
+    'import/no-cycle': 'error'
   },
 
   parserOptions: {
@@ -109,7 +120,8 @@ module.exports = {
     {
       files: ['*.json'],
       rules: {
-        '@typescript-eslint/naming-convention': 'off'
+        '@typescript-eslint/naming-convention': 'off',
+        '@typescript-eslint/no-floating-promises': 'off'
       }
     },
     {

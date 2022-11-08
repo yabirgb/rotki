@@ -1,8 +1,8 @@
 <template>
   <setting-category>
-    <template #title>{{ $t('ledger_action_settings.title') }}</template>
+    <template #title>{{ t('ledger_action_settings.title') }}</template>
     <template #subtitle>
-      {{ $t('ledger_action_settings.subtitle') }}
+      {{ t('ledger_action_settings.subtitle') }}
     </template>
     <settings-option
       #default="{ error, success, update }"
@@ -12,8 +12,8 @@
         <v-simple-table dense>
           <thead>
             <tr>
-              <th>{{ $t('ledger_action_settings.header.ledger_action') }}</th>
-              <th>{{ $t('ledger_action_settings.header.taxable') }}</th>
+              <th>{{ t('ledger_action_settings.header.ledger_action') }}</th>
+              <th>{{ t('ledger_action_settings.header.taxable') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -37,13 +37,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import ActionStatusIndicator from '@/components/error/ActionStatusIndicator.vue';
 import SettingsOption from '@/components/settings/controls/SettingsOption.vue';
 import SettingCategory from '@/components/settings/SettingCategory.vue';
-import { ledgerActionsData } from '@/store/history/consts';
+import { useLedgerActionData } from '@/store/history/consts';
 import { useAccountingSettingsStore } from '@/store/settings/accounting';
 import { LedgerActionType } from '@/types/ledger-actions';
 
@@ -59,6 +56,8 @@ const defaultTaxable: () => TaxableState = () => {
 type TaxableState = { [key in LedgerActionType]: boolean };
 
 const taxable = ref<TaxableState>(defaultTaxable());
+
+const { ledgerActionsData } = useLedgerActionData();
 
 const changed = async (update: (value: any) => void) => {
   const taxableActions: LedgerActionType[] = [];
@@ -78,4 +77,6 @@ onMounted(() => {
     taxable.value[taxableAction] = true;
   }
 });
+
+const { t } = useI18n();
 </script>

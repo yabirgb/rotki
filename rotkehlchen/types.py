@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, auto
 from typing import (
     Any,
     Callable,
@@ -21,6 +21,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.utils.hexbytes import HexBytes
 from rotkehlchen.utils.mixins.dbenum import DBEnumMixIn  # lgtm[py/unsafe-cyclic-import]
 from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
+from rotkehlchen.utils.mixins.serializableenumvalue import SerializableEnumValueMixin
 
 from rotkehlchen.chain.substrate.types import KusamaAddress, PolkadotAddress  # isort:skip # lgtm [py/unsafe-cyclic-import]  # noqa: E501
 
@@ -125,10 +126,10 @@ class ExternalServiceApiCredentials(NamedTuple):
 T_TradePair = str
 TradePair = NewType('TradePair', T_TradePair)
 
-T_EthAddres = str
-EthAddress = NewType('EthAddress', T_EthAddres)
+T_EvmAddres = str
+EvmAddress = NewType('EvmAddress', T_EvmAddres)
 
-ChecksumEthAddress = ChecksumAddress
+ChecksumEvmAddress = ChecksumAddress
 
 T_EVMTxHash = HexBytes
 EVMTxHash = NewType('EVMTxHash', T_EVMTxHash)
@@ -165,16 +166,16 @@ T_Eth2PubKey = str
 Eth2PubKey = NewType('Eth2PubKey', T_Eth2PubKey)
 
 BlockchainAddress = Union[
-    EthAddress,
+    EvmAddress,
     BTCAddress,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     KusamaAddress,
     PolkadotAddress,
     str,
 ]
 ListOfBlockchainAddresses = Union[
     List[BTCAddress],
-    List[ChecksumEthAddress],
+    List[ChecksumEvmAddress],
     List[KusamaAddress],
     List[PolkadotAddress],
 ]
@@ -193,13 +194,13 @@ T_TradeID = str
 TradeID = NewType('TradeID', T_TradeID)
 
 
-class EthereumTransaction(NamedTuple):
-    """Represent an Ethereum transaction"""
+class EvmTransaction(NamedTuple):
+    """Represent an EVM transaction"""
     tx_hash: EVMTxHash
     timestamp: Timestamp
     block_number: int
-    from_address: ChecksumEthAddress
-    to_address: Optional[ChecksumEthAddress]
+    from_address: ChecksumEvmAddress
+    to_address: Optional[ChecksumEvmAddress]
     value: int
     gas: int
     gas_price: int
@@ -223,7 +224,7 @@ class EthereumTransaction(NamedTuple):
         return hash(self.identifier)
 
     def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, EthereumTransaction):
+        if not isinstance(other, EvmTransaction):
             return False
 
         return hash(self) == hash(other)
@@ -233,14 +234,14 @@ class EthereumTransaction(NamedTuple):
         return self.tx_hash.hex()
 
 
-class EthereumInternalTransaction(NamedTuple):
-    """Represent an internal Ethereum transaction"""
+class EvmInternalTransaction(NamedTuple):
+    """Represent an internal EVM transaction"""
     parent_tx_hash: EVMTxHash
     trace_id: int
     timestamp: Timestamp
     block_number: int
-    from_address: ChecksumEthAddress
-    to_address: Optional[ChecksumEthAddress]
+    from_address: ChecksumEvmAddress
+    to_address: Optional[ChecksumEvmAddress]
     value: int
 
     def serialize(self) -> Dict[str, Any]:
@@ -253,7 +254,7 @@ class EthereumInternalTransaction(NamedTuple):
         return hash(self.identifier)
 
     def __eq__(self, other: Any) -> bool:
-        if not isinstance(other, EthereumInternalTransaction):
+        if not isinstance(other, EvmInternalTransaction):
             return False
 
         return hash(self) == hash(other)
@@ -268,8 +269,8 @@ class CovalentTransaction(NamedTuple):
     tx_hash: str
     timestamp: Timestamp
     block_number: int
-    from_address: ChecksumEthAddress
-    to_address: Optional[ChecksumEthAddress]
+    from_address: ChecksumEvmAddress
+    to_address: Optional[ChecksumEvmAddress]
     value: int
     gas: int
     gas_price: int
@@ -309,7 +310,32 @@ class CovalentTransaction(NamedTuple):
         return self.tx_hash + self.from_address.replace('0x', '') + str(self.nonce)
 
 
-class SupportedBlockchain(Enum):
+class ChainID(SerializableEnumMixin):
+    """This class maps each EVM chain to their chain id. This is used to correctly idenity EVM
+    assets and use it where these ids are needed.
+
+    This enum implements custom serialize_for_db and deserialize_from_db to make it easier future
+    changes if they are needed.
+    """
+    ETHEREUM = 1
+    OPTIMISM = 10
+    BINANCE = 56
+    GNOSIS = 100
+    MATIC = 137
+    FANTOM = 250
+    ARBITRUM = 42161
+    AVALANCHE = 43114
+    CELO = 42220
+
+    @classmethod
+    def deserialize_from_db(cls, value: int) -> 'ChainID':
+        return cls(value)
+
+    def serialize_for_db(self) -> int:
+        return self.value
+
+
+class SupportedBlockchain(SerializableEnumValueMixin):
     """These are the blockchains for which account tracking is supported """
     ETHEREUM = 'ETH'
     ETHEREUM_BEACONCHAIN = 'ETH2'
@@ -318,10 +344,16 @@ class SupportedBlockchain(Enum):
     KUSAMA = 'KSM'
     AVALANCHE = 'AVAX'
     POLKADOT = 'DOT'
+    OPTIMISM = 'OPTIMISM'
+    BINANCE = 'BINANCE'
+    GNOSIS = 'GNOSIS'
+    MATIC = 'MATIC'
+    FANTOM = 'FANTOM'
+    ARBITRUM = 'ARBITRUM'
 
     def get_address_type(self) -> Callable:
         if self in (SupportedBlockchain.ETHEREUM, SupportedBlockchain.AVALANCHE):
-            return ChecksumEthAddress
+            return ChecksumEvmAddress
         if self == SupportedBlockchain.ETHEREUM_BEACONCHAIN:
             return Eth2PubKey
         if self in (SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH):
@@ -351,6 +383,40 @@ class SupportedBlockchain(Enum):
         if self == SupportedBlockchain.AVALANCHE:
             return 9000
         raise AssertionError(f'Invalid SupportedBlockchain value: {self}')
+
+    def to_chain_id(self) -> ChainID:
+        return SUPPORTED_BLOCKCHAIN_TO_CHAINID[self]
+
+    @classmethod
+    def from_chain_id(cls, chain: ChainID) -> 'SupportedBlockchain':
+        return CHAINID_TO_SUPPORTED_BLOCKCHAIN[chain]
+
+
+SUPPORTED_BLOCKCHAIN_TO_CHAINID = {
+    SupportedBlockchain.ETHEREUM: ChainID.ETHEREUM,
+    SupportedBlockchain.OPTIMISM: ChainID.OPTIMISM,
+    SupportedBlockchain.BINANCE: ChainID.BINANCE,
+    SupportedBlockchain.GNOSIS: ChainID.GNOSIS,
+    SupportedBlockchain.MATIC: ChainID.MATIC,
+    SupportedBlockchain.FANTOM: ChainID.FANTOM,
+    SupportedBlockchain.ARBITRUM: ChainID.ARBITRUM,
+    SupportedBlockchain.AVALANCHE: ChainID.AVALANCHE,
+}
+CHAINID_TO_SUPPORTED_BLOCKCHAIN = {
+    value: key
+    for key, value in SUPPORTED_BLOCKCHAIN_TO_CHAINID.items()
+}
+EVMChain = Literal[  # keep in sync with SUPPORTED_BLOCKCHAIN_TO_CHAINID
+    SupportedBlockchain.ETHEREUM,
+    SupportedBlockchain.OPTIMISM,
+    SupportedBlockchain.BINANCE,
+    SupportedBlockchain.GNOSIS,
+    SupportedBlockchain.MATIC,
+    SupportedBlockchain.FANTOM,
+    SupportedBlockchain.ARBITRUM,
+    SupportedBlockchain.AVALANCHE,
+]
+NON_EVM_CHAINS = set(SupportedBlockchain) - set(SUPPORTED_BLOCKCHAIN_TO_CHAINID.keys())
 
 
 class TradeType(DBEnumMixIn):
@@ -482,7 +548,7 @@ class ExchangeLocationID(NamedTuple):
 
 
 class EnsMapping(NamedTuple):
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     name: str
     last_update: Timestamp = Timestamp(0)
 
@@ -493,7 +559,7 @@ class CostBasisMethod(SerializableEnumMixin):
 
 
 class AddressbookEntry(NamedTuple):
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     name: str
 
     def serialize(self) -> Dict[str, Any]:
@@ -560,3 +626,28 @@ class UserNote(NamedTuple):
             last_update_timestamp=Timestamp(entry[4]),
             is_pinned=bool(entry[5]),
         )
+
+
+class EvmTokenKind(DBEnumMixIn):
+    ERC20 = auto()
+    ERC721 = auto()
+    UNKNOWN = auto()
+
+
+class GeneralCacheType(Enum):
+    CURVE_LP_TOKENS = auto()
+    CURVE_POOL_ADDRESS = auto()  # get pool addr by lp token
+    CURVE_POOL_TOKENS = auto()  # get pool tokens by pool addr
+
+    def serialize(self) -> str:
+        # Using custom serialize method instead of SerializableEnumMixin since mixin replaces
+        # `_` with ` ` and we don't need spaces here
+        return self.name
+
+
+class OracleSource(SerializableEnumMixin):
+    """
+    Abstraction to represent a variable that could be either HistoricalPriceOracle
+    or CurrentPriceOracle. Can't have any member since you can't override them later
+    """
+    ...

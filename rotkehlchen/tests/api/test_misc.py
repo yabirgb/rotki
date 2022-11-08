@@ -14,6 +14,7 @@ from rotkehlchen.tests.utils.api import (
     assert_proper_response,
     assert_proper_response_with_result,
 )
+from rotkehlchen.types import SupportedBlockchain
 from rotkehlchen.utils.misc import get_system_spec
 
 
@@ -133,8 +134,11 @@ def test_query_version_when_update_required(rotkehlchen_api_server):
 def test_manage_ethereum_nodes(rotkehlchen_api_server):
     """Test that list of nodes can be correctly updated and queried"""
     database = rotkehlchen_api_server.rest_api.rotkehlchen.data.db
-    nodes_at_start = len(database.get_web3_nodes(only_active=True))
-    response = requests.get(api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'))
+    blockchain = SupportedBlockchain.ETHEREUM
+    nodes_at_start = len(database.get_web3_nodes(blockchain=blockchain, only_active=True))
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
     result = assert_proper_response_with_result(response)
     assert len(result) == 7
     for node in result:
@@ -147,18 +151,20 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
 
     # try to delete a node
     response = requests.delete(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={'identifier': 5},
     )
     assert_proper_response(response)
     # check that is not anymore in the returned list
-    response = requests.get(api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'))
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
     result = assert_proper_response_with_result(response)
     assert not any([node['name'] == '1inch' for node in result])
 
     # now try to add it again
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'name': '1inch',
             'endpoint': 'https://web3.1inch.exchange',
@@ -168,7 +174,9 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
         },
     )
     assert_proper_response(response)
-    response = requests.get(api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'))
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
     result = assert_proper_response_with_result(response)
     for node in result:
         if node['name'] == '1inch':
@@ -176,11 +184,12 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'https://web3.1inch.exchange'
             assert node['owned'] is False
+            assert node['blockchain'] == 'ETH'
             break
 
     # Try to add etherscan as node
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'name': 'etherscan',
             'endpoint': 'ewarwae',
@@ -195,9 +204,27 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
         status_code=HTTPStatus.BAD_REQUEST,
     )
 
-    # try to edit a node
-    response = requests.post(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+    # try to edit an unknown node
+    response = requests.patch(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+        json={
+            'identifier': 666,
+            'name': '1inch',
+            'endpoint': 'ewarwae',
+            'owned': True,
+            'weight': '40',
+            'active': True,
+        },
+    )
+    assert_error_response(
+        response=response,
+        contained_in_msg="Node with identifier 666 doesn't exist",
+        status_code=HTTPStatus.CONFLICT,
+    )
+
+    # try to edit a node's endpoint
+    response = requests.patch(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'identifier': 8,
             'name': '1inch',
@@ -208,18 +235,50 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
         },
     )
     assert_proper_response(response)
-    response = requests.get(api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'))
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
     result = assert_proper_response_with_result(response)
     for node in result:
-        if node['name'] == '1inch':
+        if node['identifier'] == 8:
             assert FVal(node['weight']) == 40
+            assert node['name'] == '1inch'
             assert node['active'] is True
             assert node['endpoint'] == 'ewarwae'
             assert node['owned'] is True
+            assert node['blockchain'] == 'ETH'
             break
+
+    # try to edit a node's name
+    response = requests.patch(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+        json={
+            'identifier': 8,
+            'name': 'oneinch',
+            'endpoint': 'ewarwae',
+            'owned': True,
+            'weight': '40',
+            'active': True,
+        },
+    )
+    assert_proper_response(response)
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
+    result = assert_proper_response_with_result(response)
+    for node in result:
+        if node['identifier'] == 8:
+            assert FVal(node['weight']) == 40
+            assert node['name'] == 'oneinch'
+            assert node['active'] is True
+            assert node['endpoint'] == 'ewarwae'
+            assert node['owned'] is True
+            assert node['blockchain'] == 'ETH'
+            break
+
     result = assert_proper_response_with_result(response)
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'name': 'my_super_node',
             'endpoint': 'ewarwae',
@@ -229,8 +288,8 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
         },
     )
     # set owned to false and see that we have the expected amount of nodes
-    response = requests.post(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+    response = requests.patch(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'identifier': 4,
             'name': 'avado pool',
@@ -240,8 +299,10 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
             'active': False,
         },
     )
-    assert nodes_at_start - len(database.get_web3_nodes(only_active=True)) == 0
-    response = requests.get(api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'))
+    assert nodes_at_start - len(database.get_web3_nodes(blockchain=blockchain, only_active=True)) == 0  # noqa: E501
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
     result = assert_proper_response_with_result(response)
     # Check that the rebalancing didn't get affected by the owned node
     for node in result:
@@ -250,8 +311,8 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
             break
 
     # Try to edit etherscan weight
-    response = requests.post(
-        api_url_for(rotkehlchen_api_server, 'ethereumnodesresource'),
+    response = requests.patch(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
         json={
             'identifier': 1,
             'name': 'etherscan',
@@ -262,6 +323,26 @@ def test_manage_ethereum_nodes(rotkehlchen_api_server):
         },
     )
     assert_proper_response_with_result(response)
+
+    # and now let's replicate https://github.com/rotki/rotki/issues/4769 by
+    # editing all nodes to have 0% weight.
+    response = requests.get(
+        api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain='ETH'),
+    )
+    result = assert_proper_response_with_result(response)
+    for node in result:
+        response = requests.patch(
+            api_url_for(rotkehlchen_api_server, 'web3nodesresource', blockchain=node['blockchain']),  # noqa: E501
+            json={
+                'identifier': node['identifier'],
+                'name': node['name'],
+                'endpoint': node['endpoint'],
+                'owned': node['owned'],
+                'weight': '0',
+                'active': node['active'],
+            },
+        )
+        assert_proper_response(response)
 
 
 @pytest.mark.parametrize('max_size_in_mb_all_logs', [659])

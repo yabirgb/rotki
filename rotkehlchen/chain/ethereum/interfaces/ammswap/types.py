@@ -4,9 +4,8 @@ from enum import Enum
 from typing import Any, DefaultDict, Dict, List, NamedTuple, Optional, Set, Tuple
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import EthereumToken
-from rotkehlchen.chain.ethereum.trades import AMMTrade
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.constants import ZERO
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
@@ -19,7 +18,7 @@ from rotkehlchen.serialization.deserialize import (
 )
 from rotkehlchen.types import (
     AssetAmount,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     EVMTxHash,
     Price,
     Timestamp,
@@ -33,14 +32,14 @@ log = RotkehlchenLogsAdapter(logger)
 # Get balances
 @dataclass(init=True, repr=True)
 class LiquidityPoolAsset:
-    asset: EthereumToken
+    token: EvmToken
     total_amount: Optional[FVal]
     user_balance: Balance
     usd_price: Price = Price(ZERO)
 
     def serialize(self) -> Dict[str, Any]:
         return {
-            'asset': self.asset.serialize(),
+            'asset': self.token.serialize(),
             'total_amount': self.total_amount,
             'user_balance': self.user_balance.serialize(),
             'usd_price': self.usd_price,
@@ -49,7 +48,7 @@ class LiquidityPoolAsset:
 
 @dataclass(init=True, repr=True)
 class LiquidityPool:
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     assets: List[LiquidityPoolAsset]
     total_supply: Optional[FVal]
     user_balance: Balance
@@ -63,9 +62,9 @@ class LiquidityPool:
         }
 
 
-AddressToLPBalances = Dict[ChecksumEthAddress, List[LiquidityPool]]
-DDAddressToLPBalances = DefaultDict[ChecksumEthAddress, List[LiquidityPool]]
-AssetToPrice = Dict[ChecksumEthAddress, Price]
+AddressToLPBalances = Dict[ChecksumEvmAddress, List[LiquidityPool]]
+DDAddressToLPBalances = DefaultDict[ChecksumEvmAddress, List[LiquidityPool]]
+AssetToPrice = Dict[ChecksumEvmAddress, Price]
 
 
 class ProtocolBalance(NamedTuple):
@@ -75,11 +74,8 @@ class ProtocolBalance(NamedTuple):
     Unknown assets are those we would have to try to query through uniswap directly
     """
     address_balances: AddressToLPBalances
-    known_assets: Set[EthereumToken]
-    unknown_assets: Set[EthereumToken]
-
-
-AddressTrades = Dict[ChecksumEthAddress, List[AMMTrade]]
+    known_tokens: Set[EvmToken]
+    unknown_tokens: Set[EvmToken]
 
 
 class EventType(Enum):
@@ -149,12 +145,12 @@ LiquidityPoolEventDBTuple = (
 class LiquidityPoolEvent(NamedTuple):
     tx_hash: EVMTxHash
     log_index: int
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     timestamp: Timestamp
     event_type: EventType
-    pool_address: ChecksumEthAddress
-    token0: EthereumToken
-    token1: EthereumToken
+    pool_address: ChecksumEvmAddress
+    token0: EvmToken
+    token1: EvmToken
     amount0: AssetAmount
     amount1: AssetAmount
     usd_price: Price
@@ -190,10 +186,10 @@ class LiquidityPoolEvent(NamedTuple):
         return cls(
             tx_hash=tx_hash,
             log_index=event_tuple[1],
-            address=string_to_ethereum_address(event_tuple[2]),
+            address=string_to_evm_address(event_tuple[2]),
             timestamp=deserialize_timestamp(event_tuple[3]),
             event_type=event_type,
-            pool_address=string_to_ethereum_address(event_tuple[5]),
+            pool_address=string_to_evm_address(event_tuple[5]),
             token0=token0,
             token1=token1,
             amount0=deserialize_asset_amount(event_tuple[8]),
@@ -233,10 +229,10 @@ class LiquidityPoolEvent(NamedTuple):
 
 
 class LiquidityPoolEventsBalance(NamedTuple):
-    address: ChecksumEthAddress
-    pool_address: ChecksumEthAddress
-    token0: EthereumToken
-    token1: EthereumToken
+    address: ChecksumEvmAddress
+    pool_address: ChecksumEvmAddress
+    token0: EvmToken
+    token1: EvmToken
     events: List[LiquidityPoolEvent]
     profit_loss0: FVal
     profit_loss1: FVal
@@ -263,6 +259,6 @@ class AggregatedAmount:
     usd_profit_loss: FVal = ZERO
 
 
-AddressEvents = Dict[ChecksumEthAddress, List[LiquidityPoolEvent]]
-DDAddressEvents = DefaultDict[ChecksumEthAddress, List[LiquidityPoolEvent]]
-AddressEventsBalances = Dict[ChecksumEthAddress, List[LiquidityPoolEventsBalance]]
+AddressEvents = Dict[ChecksumEvmAddress, List[LiquidityPoolEvent]]
+DDAddressEvents = DefaultDict[ChecksumEvmAddress, List[LiquidityPoolEvent]]
+AddressEventsBalances = Dict[ChecksumEvmAddress, List[LiquidityPoolEventsBalance]]

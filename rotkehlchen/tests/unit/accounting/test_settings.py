@@ -55,7 +55,7 @@ def test_nocrypto2crypto(accountant, google_service):
     no_message_errors(accountant.msg_aggregator)
     expected_pnls = PnlTotals({
         AccountingEventType.TRADE: PNL(taxable=ZERO, free=FVal('264693.433642820')),
-        AccountingEventType.FEE: PNL(taxable=FVal('-1.1708853227087498964'), free=ZERO),
+        AccountingEventType.FEE: PNL(taxable=FVal('-1.172677782721563021308995038'), free=ZERO),
     })
     check_pnls_and_csv(accountant, expected_pnls, google_service)
 
@@ -84,8 +84,8 @@ def test_big_taxfree_period(accountant, google_service):
     expected_pnls = PnlTotals({
         AccountingEventType.TRADE: PNL(taxable=ZERO, free=FVal('265253.1283582327833875')),
         AccountingEventType.FEE: PNL(
-            taxable=FVal('-1.170885322708749896'),
-            free=FVal('0.932017192728761755465893'),
+            taxable=FVal('-1.172677782721563021308995038'),
+            free=FVal('0.9338096527415748803748880375'),
         ),
     })
     check_pnls_and_csv(accountant, expected_pnls, google_service)
@@ -117,7 +117,7 @@ def test_include_gas_costs(accountant, google_service):
             location_label=addr1,
             asset=A_ETH,
             balance=Balance(amount=FVal('0.000030921')),
-            notes=f'Burned 0.000030921 ETH in gas from {addr1}',
+            notes='Burned 0.000030921 ETH for gas',
             event_type=HistoryEventType.SPEND,
             event_subtype=HistoryEventSubType.FEE,
             counterparty=CPT_GAS,
@@ -165,7 +165,7 @@ def test_ignored_transactions(accountant, google_service):
             location_label=addr1,
             asset=A_ETH,
             balance=Balance(amount=FVal('0.000030921')),
-            notes=f'Burned 0.000030921 ETH in gas from {addr1}',
+            notes='Burned 0.000030921 ETH for gas',
             event_type=HistoryEventType.SPEND,
             event_subtype=HistoryEventSubType.FEE,
             counterparty=CPT_GAS,
@@ -178,7 +178,7 @@ def test_ignored_transactions(accountant, google_service):
             location_label=addr1,
             asset=A_ETH,
             balance=Balance(amount=FVal('0.000040921')),
-            notes=f'Burned 0.000040921 ETH in gas from {addr1}',
+            notes='Burned 0.000040921 ETH for gas',
             event_type=HistoryEventType.SPEND,
             event_subtype=HistoryEventSubType.FEE,
             counterparty=CPT_GAS,

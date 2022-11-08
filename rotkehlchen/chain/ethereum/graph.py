@@ -11,7 +11,7 @@ from gql.transport.requests import RequestsHTTPTransport
 from rotkehlchen.constants.timing import QUERY_RETRY_TIMES
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -24,7 +24,7 @@ RETRY_BACKOFF_FACTOR = 0.2
 SUBGRAPH_REMOTE_ERROR_MSG = (
     "Failed to request the {protocol} subgraph due to {error_msg}. "
     "All the deposits and withdrawals history queries are not functioning until this is fixed. "  # noqa: E501
-    "Probably will get fixed with time. If not report it to rotki's support channel"  # noqa: E501
+    "Probably will get fixed with time. If not report it to rotki's support channel"
 )
 
 
@@ -40,7 +40,7 @@ def format_query_indentation(querystr: str) -> str:
 def get_common_params(
         from_ts: Timestamp,
         to_ts: Timestamp,
-        address: ChecksumEthAddress,
+        address: ChecksumEvmAddress,
         address_type: Literal['Bytes!', 'String!'] = 'Bytes!',
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     param_types = {

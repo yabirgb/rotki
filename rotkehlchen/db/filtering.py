@@ -1,17 +1,19 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, List, Literal, NamedTuple, Optional, Tuple, Union, cast
+from typing import Any, Generic, List, Literal, NamedTuple, Optional, Tuple, TypeVar, Union, cast
 
 from rotkehlchen.accounting.ledger_actions import LedgerActionType
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.accounting.types import SchemaEventType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, EvmToken
+from rotkehlchen.assets.types import AssetType
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
     AssetMovementCategory,
-    ChecksumEthAddress,
+    ChainID,
+    ChecksumEvmAddress,
     EVMTxHash,
     Location,
     Timestamp,
@@ -22,9 +24,12 @@ from rotkehlchen.utils.misc import ts_now
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
 
+T = TypeVar('T')
+
 
 class DBFilterOrder(NamedTuple):
     rules: List[Tuple[str, bool]]
+    case_sensitive: bool
 
     def prepare(self) -> str:
         querystr = 'ORDER BY '
@@ -36,7 +41,10 @@ class DBFilterOrder(NamedTuple):
             else:
                 order_by = attribute
 
-            querystr += f'{order_by} {"ASC" if ascending else "DESC"}'
+            if self.case_sensitive is False:
+                querystr += f'{order_by} COLLATE NOCASE {"ASC" if ascending else "DESC"}'
+            else:
+                querystr += f'{order_by} {"ASC" if ascending else "DESC"}'
 
         return querystr
 
@@ -97,7 +105,7 @@ class DBETHTransactionJoinsFilter(DBFilter):
     2. If join_events is True, join history_events which makes it possible to apply
     filters by history_events' properties
     """
-    addresses: Optional[List[ChecksumEthAddress]]
+    addresses: Optional[List[ChecksumEvmAddress]]
     should_join_events: bool = False
 
     def prepare(self) -> Tuple[List[str], List[Any]]:
@@ -243,6 +251,7 @@ class DBFilterQuery():
             and_op: bool,
             limit: Optional[int],
             offset: Optional[int],
+            order_by_case_sensitive: bool = True,
             order_by_rules: Optional[List[Tuple[str, bool]]] = None,
     ) -> 'DBFilterQuery':
         if limit is None or offset is None:
@@ -253,7 +262,7 @@ class DBFilterQuery():
         if order_by_rules is None:
             order_by = None
         else:
-            order_by = DBFilterOrder(order_by_rules)
+            order_by = DBFilterOrder(rules=order_by_rules, case_sensitive=order_by_case_sensitive)
 
         return cls(
             and_op=and_op,
@@ -306,7 +315,7 @@ class FilterWithLocation():
 class ETHTransactionsFilterQuery(DBFilterQuery, FilterWithTimestamp):
 
     @property
-    def addresses(self) -> Optional[List[ChecksumEthAddress]]:
+    def addresses(self) -> Optional[List[ChecksumEvmAddress]]:
         if self.join_clause is None:
             return None
 
@@ -320,12 +329,12 @@ class ETHTransactionsFilterQuery(DBFilterQuery, FilterWithTimestamp):
             order_by_rules: Optional[List[Tuple[str, bool]]] = None,
             limit: Optional[int] = None,
             offset: Optional[int] = None,
-            addresses: Optional[List[ChecksumEthAddress]] = None,  # noqa: E501
+            addresses: Optional[List[ChecksumEvmAddress]] = None,
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
             tx_hash: Optional[EVMTxHash] = None,
             protocols: Optional[List[str]] = None,
-            asset: Optional[Asset] = None,
+            asset: Optional[EvmToken] = None,
             exclude_ignored_assets: bool = False,
     ) -> 'ETHTransactionsFilterQuery':
         if order_by_rules is None:
@@ -423,24 +432,38 @@ class DBTypeFilter(DBFilter):
 class DBEqualsFilter(DBFilter):
     """Filter a column by comparing its column to its value for equality."""
     column: str
-    value: Union[str, bytes]
+    value: Union[str, bytes, int]
+    alias: Optional[str] = None
 
     def prepare(self) -> Tuple[List[str], List[Any]]:
-        return [f'{self.column}=?'], [self.value]
+        key_name = self.column
+        if self.alias is not None:
+            key_name = f'{self.alias}.{key_name}'
+        return [f'{key_name}=?'], [self.value]
 
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
-class DBMultiStringFilter(DBFilter):
+class DBMultiValueFilter(Generic[T], DBFilter):
     """Filter a column having a string value out of a selection of values"""
     column: str
-    values: List[str]
-    operator: str = 'IN'
+    values: List[T]
+    operator: Literal['IN', 'NOT IN'] = 'IN'
 
-    def prepare(self) -> Tuple[List[str], List[Any]]:
+    def prepare(self) -> Tuple[List[str], List[T]]:
         return (
             [f'{self.column} {self.operator} ({", ".join(["?"] * len(self.values))}) OR {self.column} IS NULL'],  # noqa: E501
             self.values,
         )
+
+
+class DBMultiStringFilter(DBMultiValueFilter[str]):
+    """Filter a column having a string value out of a selection of values"""
+    ...
+
+
+class DBMultiBytesFilter(DBMultiValueFilter[bytes]):
+    """Filter a column having a bytes value out of a selection of values"""
+    ...
 
 
 class TradesFilterQuery(DBFilterQuery, FilterWithTimestamp, FilterWithLocation):
@@ -750,7 +773,7 @@ class HistoryEventFilterQuery(DBFilterQuery, FilterWithTimestamp, FilterWithLoca
             location_label: Optional[str] = None,
             ignored_ids: Optional[List[str]] = None,
             null_columns: Optional[List[str]] = None,
-            event_identifier: Optional[bytes] = None,
+            event_identifiers: Optional[List[bytes]] = None,
             protocols: Optional[List[str]] = None,
             exclude_ignored_assets: bool = False,
     ) -> 'HistoryEventFilterQuery':
@@ -818,9 +841,13 @@ class HistoryEventFilterQuery(DBFilterQuery, FilterWithTimestamp, FilterWithLoca
                     columns=null_columns,
                 ),
             )
-        if event_identifier is not None:
+        if event_identifiers is not None:
             filters.append(
-                DBEqualsFilter(and_op=True, column='event_identifier', value=event_identifier),
+                DBMultiBytesFilter(
+                    and_op=True,
+                    column='event_identifier',
+                    values=event_identifiers,
+                ),
             )
         if protocols is not None:
             filters.append(
@@ -901,5 +928,137 @@ class UserNotesFilterQuery(DBFilterQuery, FilterWithTimestamp):
         if location is not None:
             filters.append(DBEqualsFilter(and_op=True, column='location', value=location))
         filters.append(filter_query.timestamp_filter)
+        filter_query.filters = filters
+        return filter_query
+
+
+class AssetsFilterQuery(DBFilterQuery):
+    @classmethod
+    def make(
+            cls,
+            and_op: bool = True,
+            order_by_rules: Optional[List[Tuple[str, bool]]] = None,
+            limit: Optional[int] = None,
+            offset: Optional[int] = None,
+            name: Optional[str] = None,
+            symbol: Optional[str] = None,
+            substring_search: Optional[str] = None,
+            search_column: Optional[str] = None,
+            asset_type: Optional[AssetType] = None,
+            identifiers: Optional[List[str]] = None,
+            return_exact_matches: bool = False,
+            evm_chain: Optional[ChainID] = None,
+            ignored_assets_filter_params: Optional[Tuple[Literal['IN', 'NOT IN'], List[str]]] = None,  # noqa: E501
+    ) -> 'AssetsFilterQuery':
+        if order_by_rules is None:
+            order_by_rules = [('name', True)]
+
+        filter_query = cls.create(
+            and_op=and_op,
+            limit=limit,
+            offset=offset,
+            order_by_rules=order_by_rules,
+            order_by_case_sensitive=False,
+        )
+        filter_query = cast('AssetsFilterQuery', filter_query)
+
+        filters: List[DBFilter] = []
+        if name is not None:
+            filters.append(DBSubStringFilter(
+                and_op=True,
+                field='name',
+                search_string=name,
+            ))
+        if symbol is not None:
+            filters.append(DBSubStringFilter(
+                and_op=True,
+                field='symbol',
+                search_string=symbol,
+            ))
+        if asset_type is not None:
+            filters.append(DBEqualsFilter(
+                and_op=True,
+                column='type',
+                value=asset_type.serialize_for_db(),
+            ))
+        if substring_search is not None and search_column is not None:
+            if return_exact_matches is True:
+                filters.append(DBEqualsFilter(
+                    and_op=True,
+                    column=search_column,
+                    value=substring_search,
+                ))
+            else:
+                filters.append(DBSubStringFilter(
+                    and_op=True,
+                    field=search_column,
+                    search_string=substring_search,
+                ))
+        if identifiers is not None:
+            filters.append(DBMultiStringFilter(
+                and_op=True,
+                column='identifier',
+                values=identifiers,
+            ))
+        if ignored_assets_filter_params is not None:
+            filters.append(DBMultiStringFilter(
+                and_op=True,
+                column='identifier',
+                operator=ignored_assets_filter_params[0],
+                values=ignored_assets_filter_params[1],
+            ))
+        if evm_chain is not None:
+            filters.append(DBEqualsFilter(
+                and_op=True,
+                column='chain',
+                value=evm_chain.serialize_for_db(),
+            ))
+        filter_query.filters = filters
+        return filter_query
+
+
+class CustomAssetsFilterQuery(DBFilterQuery):
+    @classmethod
+    def make(
+            cls,
+            order_by_rules: Optional[List[Tuple[str, bool]]] = None,
+            limit: Optional[int] = None,
+            offset: Optional[int] = None,
+            identifier: Optional[str] = None,
+            name: Optional[str] = None,
+            custom_asset_type: Optional[str] = None,
+    ) -> 'CustomAssetsFilterQuery':
+        if order_by_rules is None:
+            order_by_rules = [('name', True)]
+
+        filter_query = cls.create(
+            and_op=True,
+            limit=limit,
+            offset=offset,
+            order_by_rules=order_by_rules,
+        )
+        filter_query = cast('CustomAssetsFilterQuery', filter_query)
+
+        filters: List[DBFilter] = []
+        if identifier is not None:
+            filters.append(DBEqualsFilter(
+                and_op=True,
+                column='identifier',
+                alias='B',  # assets table.
+                value=identifier,
+            ))
+        if name is not None:
+            filters.append(DBSubStringFilter(
+                and_op=True,
+                field='name',
+                search_string=name,
+            ))
+        if custom_asset_type is not None:
+            filters.append(DBEqualsFilter(
+                and_op=True,
+                column='type',
+                alias='A',  # custom_assets table
+                value=custom_asset_type,
+            ))
         filter_query.filters = filters
         return filter_query

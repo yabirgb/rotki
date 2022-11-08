@@ -21,9 +21,9 @@ from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
 from rotkehlchen.fval import FVal
 from rotkehlchen.history.price import query_usd_price_zero_if_error
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
+from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.types import (
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     Eth2PubKey,
     ExternalService,
     deserialize_evm_tx_hash,
@@ -66,7 +66,7 @@ class BeaconChain(ExternalServiceWithApiKey):
     We do extend ExternalServiceWithApiKey though so that it becomes easier to add
     in the future.
 
-    https://beaconcha.in/api/v1/docs
+    https://beaconcha.in/api/v1/docs/
     """
 
     def __init__(self, database: 'DBHandler', msg_aggregator: MessagesAggregator) -> None:
@@ -274,7 +274,7 @@ class BeaconChain(ExternalServiceWithApiKey):
 
         return performance
 
-    def get_eth1_address_validators(self, address: ChecksumEthAddress) -> List[ValidatorID]:
+    def get_eth1_address_validators(self, address: ChecksumEvmAddress) -> List[ValidatorID]:
         """Get a list of Validators that are associated with the given eth1 address.
 
         Each entry is a tuple of (optional) validator index and pubkey
@@ -342,7 +342,7 @@ class BeaconChain(ExternalServiceWithApiKey):
                     msg_aggregator=self.msg_aggregator,
                 )
                 deposits.append(Eth2Deposit(
-                    from_address=deserialize_ethereum_address(entry['from_address']),
+                    from_address=deserialize_evm_address(entry['from_address']),
                     pubkey=entry['publickey'],
                     withdrawal_credentials=entry['withdrawal_credentials'],
                     value=Balance(

@@ -1,6 +1,11 @@
 <template>
   <fragment>
-    <td v-if="offset > 0" :colspan="offset" :class="offsetClassName">
+    <td
+      v-if="offset > 0"
+      class="table-expand-container table-expand-container__offset"
+      :colspan="offset"
+      :class="offsetClassName"
+    >
       <slot name="offset" />
     </td>
     <td v-if="visible" class="table-expand-container" :colspan="colspan">
@@ -24,25 +29,28 @@
   </fragment>
 </template>
 
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
 import Fragment from '@/components/helper/Fragment';
 
-export default defineComponent({
-  name: 'TableExpandContainer',
-  components: { Fragment },
-  props: {
-    visible: { required: true, type: Boolean },
-    colspan: { required: true, type: Number },
-    padded: { required: false, type: Boolean, default: true },
-    offset: { required: false, type: Number, default: 0 },
-    offsetClassName: { required: false, type: String, default: '' }
-  }
+defineProps({
+  visible: { required: true, type: Boolean },
+  colspan: { required: true, type: Number },
+  padded: { required: false, type: Boolean, default: true },
+  offset: { required: false, type: Number, default: 0 },
+  offsetClassName: { required: false, type: String, default: '' }
 });
 </script>
 
 <style scoped lang="scss">
 .table-expand-container {
   background-color: var(--v-rotki-light-grey-base) !important;
+
+  @media screen and (max-width: 599px) {
+    width: 599px;
+
+    &__offset {
+      display: none;
+    }
+  }
 }
 </style>

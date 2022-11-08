@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import pathlib
 from os import environ
 
@@ -11,10 +9,10 @@ directory = pathlib.Path(__file__).parent
 
 # Load install_requires from requirements.txt.
 # https://stackoverflow.com/a/59971236/4651668
-requirements = directory.joinpath('requirements.txt').read_text()
-requirements = [str(r) for r in parse_requirements(requirements)]
+requirements_txt = directory.joinpath('requirements.txt').read_text()
+requirements = [str(r) for r in parse_requirements(requirements_txt)]
 
-version = '1.25.1'  # Do not edit: this is maintained by bumpversion (see .bumpversion.cfg)
+version = '1.26.1'  # Do not edit: this is maintained by bumpversion (see .bumpversion.cfg)
 
 setup(
     name='rotkehlchen',
@@ -37,7 +35,7 @@ setup(
             'data/uniswapv2_lp_tokens.json',
             'data/uniswapv2_lp_tokens.meta',
             'data/global.db',
-            'data/curve_pools.json',
+            'data/globaldb_v2_v3_assets.sql',
             'data/nodes.json',
             'chain/ethereum/modules/dxdaomesa/data/contracts.json',
         ],

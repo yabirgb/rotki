@@ -5,51 +5,55 @@
       :asset="currentAsset"
       :opens-details="opensDetails"
       :dense="dense"
+      :asset-styled="assetStyled"
       :enable-association="enableAssociation"
     />
   </div>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { ComputedRef } from 'vue';
 import AssetDetailsBase from '@/components/helper/AssetDetailsBase.vue';
-import { useAssetInfoRetrieval } from '@/store/assets';
+import { useNftAssetInfoStore } from '@/store/assets/nft';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
+import { AssetInfoWithId } from '@/types/assets';
 
-export default defineComponent({
-  name: 'AssetDetails',
-  components: { AssetDetailsBase },
-  props: {
-    asset: {
-      required: true,
-      type: String,
-      validator: (value: string): boolean => {
-        return !!value && value.length > 0;
-      }
-    },
-    opensDetails: { required: false, type: Boolean, default: false },
-    hideName: { required: false, type: Boolean, default: false },
-    dense: { required: false, type: Boolean, default: false },
-    enableAssociation: { required: false, type: Boolean, default: true }
+const props = defineProps({
+  asset: {
+    required: true,
+    type: String,
+    validator: (value: string): boolean => {
+      return !!value && value.length > 0;
+    }
   },
-  setup(props) {
-    const { asset, enableAssociation } = toRefs(props);
+  assetStyled: { required: false, type: Object, default: () => null },
+  opensDetails: { required: false, type: Boolean, default: false },
+  hideName: { required: false, type: Boolean, default: false },
+  dense: { required: false, type: Boolean, default: false },
+  enableAssociation: { required: false, type: Boolean, default: true }
+});
 
-    const { assetInfo } = useAssetInfoRetrieval();
+const { asset, enableAssociation } = toRefs(props);
+const { assetInfo } = useAssetInfoRetrieval();
+const { getNftDetails } = useNftAssetInfoStore();
 
-    const currentAsset = computed(() => {
-      const details = get(assetInfo(get(asset), get(enableAssociation)));
+const assetDetails = assetInfo(asset, enableAssociation);
+const nftDetails = getNftDetails(asset);
 
-      return {
-        symbol: details ? details.symbol : get(asset),
-        name: details ? details.name : get(asset),
-        identifier: details ? details.identifier : get(asset)
-      };
-    });
+const currentAsset: ComputedRef<AssetInfoWithId> = computed(() => {
+  const nftAsset = get(nftDetails);
 
+  if (nftAsset) {
     return {
-      currentAsset
+      symbol: nftAsset.symbol,
+      name: nftAsset.name,
+      identifier: get(asset)
     };
   }
+
+  return {
+    ...get(assetDetails),
+    identifier: get(asset)
+  };
 });
 </script>

@@ -11,7 +11,13 @@ from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
 from rotkehlchen.externalapis.utils import read_integer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress, CovalentTransaction, ExternalService, Timestamp
+from rotkehlchen.types import (
+    ChecksumEvmAddress,
+    CovalentTransaction,
+    EVMTxHash,
+    ExternalService,
+    Timestamp,
+)
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import create_timestamp, ts_now
 
@@ -138,8 +144,7 @@ class Covalent(ExternalServiceWithApiKey):
                 raise RemoteError(
                     f'Covalent API request {response.url} failed '
                     f'with HTTP status code {response.status_code} and '
-                    f'Error message: {error_message} and text',
-                    f'{response.text}',
+                    f'Error message: {error_message} and text {response.text}',
                 )
 
             # success, break out of the loop and return result
@@ -148,7 +153,7 @@ class Covalent(ExternalServiceWithApiKey):
 
     def get_transactions(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
     ) -> Optional[List[CovalentTransaction]]:
@@ -220,14 +225,14 @@ class Covalent(ExternalServiceWithApiKey):
 
         return transactions
 
-    def get_transaction_receipt(self, tx_hash: str) -> Optional[Dict[str, Any]]:
+    def get_transaction_receipt(self, tx_hash: EVMTxHash) -> Optional[Dict[str, Any]]:
         """Gets the receipt for the given transaction hash
 
         May raise:
         - RemoteError due to self._query().
         """
         result = self._query(
-            module=tx_hash,
+            module=tx_hash.hex(),
             action='transaction_v2',
         )
         if result is None:
@@ -245,7 +250,7 @@ class Covalent(ExternalServiceWithApiKey):
 
     def get_token_balances_address(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
     ) -> Optional[List[Dict[str, Any]]]:
         options = {'limit': COVALENT_QUERY_LIMIT, 'page-size': PAGESIZE}
         result = self._query(

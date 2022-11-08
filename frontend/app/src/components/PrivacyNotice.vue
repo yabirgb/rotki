@@ -6,17 +6,13 @@
       color="primary"
       class="privacy-notice__message mb-0"
     >
-      <div>{{ $t('privacy_notice.title') }}</div>
-      <div>{{ $t('privacy_notice.message') }}</div>
+      <div>{{ t('privacy_notice.title') }}</div>
+      <div>{{ t('privacy_notice.message') }}</div>
     </v-alert>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
-
-export default defineComponent({
-  name: 'PrivacyNotice'
-});
+<script setup lang="ts">
+const { t } = useI18n();
 </script>
 <style scoped lang="scss">
 .privacy-notice {

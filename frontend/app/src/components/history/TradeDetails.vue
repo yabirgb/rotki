@@ -1,11 +1,11 @@
 <template>
   <table-expand-container visible :colspan="span">
     <template #title>
-      {{ $t('closed_trades.details.title') }}
+      {{ tc('closed_trades.details.title') }}
     </template>
     <v-row>
       <v-col cols="auto" class="font-weight-medium">
-        {{ $t('closed_trades.details.fee') }}
+        {{ tc('closed_trades.details.fee') }}
       </v-col>
       <v-col>
         <amount-display
@@ -19,15 +19,15 @@
     </v-row>
     <v-row align="center">
       <v-col cols="auto" class="font-weight-medium">
-        {{ $t('closed_trades.details.link') }}
+        {{ tc('closed_trades.details.link') }}
       </v-col>
       <v-col>
         <span v-if="!item.link">
-          {{ $t('closed_trades.details.link_data') }}
+          {{ tc('closed_trades.details.link_data') }}
         </span>
         <span v-else>
           {{ item.link }}
-          <v-tooltip v-if="hasLink(item)" top open-delay="600">
+          <v-tooltip v-if="hasLink" top open-delay="600">
             <template #activator="{ on, attrs }">
               <v-btn
                 small
@@ -36,10 +36,10 @@
                 color="primary"
                 class="ml-2"
                 :class="dark ? null : 'grey lighten-4'"
-                :href="href(item.link)"
-                :target="target"
+                :href="href"
+                target="_blank"
                 v-on="on"
-                @click="openLink(item.link)"
+                @click="onLinkClick()"
               >
                 <v-icon :small="true"> mdi-launch </v-icon>
               </v-btn>
@@ -52,58 +52,35 @@
     <notes-display :notes="item.notes" />
   </table-expand-container>
 </template>
-<script lang="ts">
-import { defineComponent, PropType } from '@vue/composition-api';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import NotesDisplay from '@/components/helper/table/NotesDisplay.vue';
 import TableExpandContainer from '@/components/helper/table/TableExpandContainer.vue';
 import { useTheme } from '@/composables/common';
-import { interop } from '@/electron-interop';
+import { useLinks } from '@/composables/links';
 import { TradeEntry } from '@/store/history/types';
 
-export default defineComponent({
-  name: 'TradeDetails',
-  components: { NotesDisplay, TableExpandContainer },
-  props: {
-    span: {
-      type: Number,
-      required: false,
-      default: 1
-    },
-    item: {
-      required: true,
-      type: Object as PropType<TradeEntry>
-    }
+const props = defineProps({
+  span: {
+    type: Number,
+    required: false,
+    default: 1
   },
-  setup() {
-    const { dark } = useTheme();
-    const hasLink = (trade: TradeEntry) => {
-      return trade.link && trade.link.startsWith('http');
-    };
-    const openLink = (url: string) => {
-      interop.openUrl(url);
-    };
-
-    const target = interop.isPackaged ? undefined : '_blank';
-
-    const href = (url: string) => {
-      if (interop.isPackaged) {
-        return undefined;
-      }
-      return url;
-    };
-
-    return {
-      hasLink,
-      openLink,
-      target,
-      href,
-      dark
-    };
+  item: {
+    required: true,
+    type: Object as PropType<TradeEntry>
   }
 });
+
+const { item } = toRefs(props);
+const { dark } = useTheme();
+const { tc } = useI18n();
+
+const link = computed(() => get(item).link || '');
+const { href, hasLink, onLinkClick } = useLinks(link);
 </script>
 <style scoped lang="scss">
-::v-deep {
+:deep() {
   th {
     &:nth-child(2) {
       span {

@@ -1,25 +1,26 @@
 import { mount, Wrapper } from '@vue/test-utils';
 import flushPromises from 'flush-promises';
-import { createPinia, Pinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { Pinia, setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
-import ExternalServices from '@/components/settings/api-keys/ExternalServices.vue';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
-import { useMainStore } from '@/store/main';
+import ExternalServices from '@/pages/settings/api-keys/external/index.vue';
+import { useExternalServicesApi } from '@/services/settings/external-services-api';
+import { useMessageStore } from '@/store/message';
 import { useSessionStore } from '@/store/session';
-import store from '@/store/store';
 import { ExternalServiceKeys } from '@/types/user';
-import '../../../i18n';
+import createCustomPinia from '../../../utils/create-pinia';
 
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
-
-vi.mock('@/services/rotkehlchen-api');
+vi.mock('@/services/settings/external-services-api', () => ({
+  useExternalServicesApi: vi.fn().mockReturnValue({
+    queryExternalServices: vi.fn(),
+    setExternalServices: vi.fn(),
+    deleteExternalServices: vi.fn()
+  })
+}));
 
 describe('ExternalServices.vue', () => {
   let wrapper: Wrapper<ExternalServices>;
   let pinia: Pinia;
+  let api: ReturnType<typeof useExternalServicesApi>;
 
   const mockResponse: ExternalServiceKeys = {
     etherscan: {
@@ -33,26 +34,24 @@ describe('ExternalServices.vue', () => {
   function createWrapper(): Wrapper<ExternalServices> {
     const vuetify = new Vuetify();
     return mount(ExternalServices, {
-      store,
       pinia,
       vuetify,
-      stubs: ['v-dialog', 'card-title', 'card'],
+      stubs: ['v-dialog', 'card-title', 'card', 'i18n'],
       propsData: {
         value: ''
-      },
-      i18n
+      }
     });
   }
 
   beforeEach(() => {
     document.body.setAttribute('data-app', 'true');
-    pinia = createPinia();
+    pinia = createCustomPinia();
     setActivePinia(pinia);
+    api = useExternalServicesApi();
   });
 
   afterEach(() => {
-    useSessionStore().reset();
-    vi.resetAllMocks();
+    useSessionStore().$reset();
   });
 
   describe('first time', () => {
@@ -67,9 +66,11 @@ describe('ExternalServices.vue', () => {
     test('save the values when etherscan save is pressed', async () => {
       const setService = api.setExternalServices as any;
       setService.mockResolvedValueOnce(mockResponse);
-      wrapper.find('.external-services__etherscan-key input').setValue('123');
+      await wrapper
+        .find('.external-services__etherscan-key input')
+        .setValue('123');
       await wrapper.vm.$nextTick();
-      wrapper
+      await wrapper
         .find('.external-services__etherscan-key .service-key__buttons__save')
         .trigger('click');
       await flushPromises();
@@ -81,17 +82,17 @@ describe('ExternalServices.vue', () => {
     test('save the values when cryptocompare save is pressed', async () => {
       const setService = api.setExternalServices as any;
       setService.mockResolvedValueOnce(mockResponse);
-      wrapper
+      await wrapper
         .find('.external-services__cryptocompare-key input')
         .setValue('123');
       await wrapper.vm.$nextTick();
-      wrapper
+      await wrapper
         .find(
           '.external-services__cryptocompare-key .service-key__buttons__save'
         )
         .trigger('click');
       await flushPromises();
-      const store = useMainStore();
+      const store = useMessageStore();
       expect(store.message.description).toMatch('cryptocompare');
       expect(setService).toHaveBeenCalledWith([
         { name: 'cryptocompare', apiKey: '123' }
@@ -101,13 +102,15 @@ describe('ExternalServices.vue', () => {
     test('save fails with an error', async () => {
       const setService = api.setExternalServices as any;
       setService.mockRejectedValueOnce(new Error('mock failure'));
-      wrapper.find('.external-services__etherscan-key input').setValue('123');
+      await wrapper
+        .find('.external-services__etherscan-key input')
+        .setValue('123');
       await wrapper.vm.$nextTick();
-      wrapper
+      await wrapper
         .find('.external-services__etherscan-key .service-key__buttons__save')
         .trigger('click');
       await flushPromises();
-      const store = useMainStore();
+      const store = useMessageStore();
       expect(store.message.description).toMatch('mock failure');
     });
 
@@ -160,40 +163,32 @@ describe('ExternalServices.vue', () => {
     test('confirm and delete etherscan key', async () => {
       const deleteService = api.deleteExternalServices as any;
       deleteService.mockResolvedValueOnce({});
-      wrapper
+      await wrapper
         .find('.external-services__etherscan-key .service-key__content__delete')
         .trigger('click');
       await wrapper.vm.$nextTick();
 
-      // @ts-ignore
-      expect(wrapper.vm.serviceToDelete).toBe('etherscan');
-
-      wrapper
+      await wrapper
         .find('[data-cy="confirm-dialog"] [data-cy="button-confirm"]')
         .trigger('click');
       await wrapper.vm.$nextTick();
       await flushPromises();
 
       expect(deleteService).toHaveBeenCalledWith('etherscan');
-
-      // @ts-ignore
-      expect(wrapper.vm.serviceToDelete).toBe('');
+      expect(wrapper.find('[data-cy="confirm-dialog"]').exists()).toBeFalsy();
     });
 
     test('delete cryptocompare fails', async () => {
       const deleteService = api.deleteExternalServices as any;
       deleteService.mockRejectedValueOnce(new Error('mock failure'));
-      wrapper
+      await wrapper
         .find(
           '.external-services__cryptocompare-key .service-key__content__delete'
         )
         .trigger('click');
       await wrapper.vm.$nextTick();
 
-      // @ts-ignore
-      expect(wrapper.vm.serviceToDelete).toBe('cryptocompare');
-
-      wrapper
+      await wrapper
         .find('[data-cy="confirm-dialog"] [data-cy="button-confirm"]')
         .trigger('click');
       await wrapper.vm.$nextTick();
@@ -201,9 +196,9 @@ describe('ExternalServices.vue', () => {
 
       expect(deleteService).toHaveBeenCalledWith('cryptocompare');
 
-      // @ts-ignore
-      expect(wrapper.vm.serviceToDelete).toBe('');
-      const store = useMainStore();
+      expect(wrapper.find('[data-cy="confirm-dialog"]').exists()).toBeFalsy();
+
+      const store = useMessageStore();
       expect(store.message.description).toMatch('mock failure');
     });
   });

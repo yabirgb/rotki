@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.chain.evm.contracts import EvmContract
 from rotkehlchen.constants.assets import (
     A_CRV_3CRV,
     A_CRV_3CRVSUSD,
@@ -46,7 +47,6 @@ from rotkehlchen.constants.ethereum import (
     YEARN_YCRV_VAULT,
     YEARN_YFI_VAULT,
     EthereumConstants,
-    EthereumContract,
 )
 from rotkehlchen.constants.misc import ONE
 from rotkehlchen.fval import FVal
@@ -80,8 +80,8 @@ HARVEST_VAULTS = (
 
 def _handle_yearn_curve_vault(
         ethereum: 'EthereumManager',
-        curve_contract: EthereumContract,
-        yearn_contract: EthereumContract,
+        curve_contract: EvmContract,
+        yearn_contract: EvmContract,
         div_decimals: int,
         asset_price: FVal,
 ) -> FVal:
@@ -110,7 +110,7 @@ def _handle_yearn_curve_vault(
 
 def _handle_curvepool_price(
         ethereum: 'EthereumManager',
-        contract: EthereumContract,
+        contract: EvmContract,
         div_decimals: int,
         asset_price: FVal,
 ) -> FVal:
@@ -137,7 +137,7 @@ def _handle_curvepool_price(
 
 def handle_underlying_price_yearn_vault(
         ethereum: 'EthereumManager',
-        contract: EthereumContract,
+        contract: EvmContract,
         div_decimals: int,
         asset_price: Price,
 ) -> FVal:
@@ -149,11 +149,11 @@ def handle_underlying_price_yearn_vault(
 
 def handle_underlying_price_harvest_vault(
         ethereum: 'EthereumManager',
-        token: EthereumToken,
+        token: EvmToken,
         underlying_asset_price: Price,
 ) -> FVal:
     price_per_full_share = ethereum.call_contract(
-        contract_address=token.ethereum_address,
+        contract_address=token.evm_address,
         abi=FARM_ASSET_ABI,
         method_name='getPricePerFullShare',
         arguments=[],
@@ -164,7 +164,7 @@ def handle_underlying_price_harvest_vault(
 
 def handle_defi_price_query(
         ethereum: 'EthereumManager',
-        token: EthereumToken,
+        token: EvmToken,
         underlying_asset_price: Optional[Price],
 ) -> Optional[FVal]:
     """Handles price queries for token/protocols which are queriable on-chain
@@ -232,7 +232,7 @@ def handle_defi_price_query(
     elif token == A_CRV_3CRV:
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_3POOLSWAP, token.decimals, ONE)
     # a3CRV: Comparing address since constant won't be found if user has not updated their DB
-    elif token.ethereum_address == '0xFd2a8fA60Abd58Efe3EeE34dd494cD491dC14900':
+    elif token.evm_address == '0xFd2a8fA60Abd58Efe3EeE34dd494cD491dC14900':
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_A3CRVSWAP, token.decimals, ONE)
     elif token == A_CRV_GUSD:
         usd_value = _handle_curvepool_price(ethereum, CURVEFI_GUSDC3CRVSWAP, token.decimals, ONE)

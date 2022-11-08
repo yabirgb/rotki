@@ -2,19 +2,9 @@
   <settings-option
     #default="{ error, success, update }"
     setting="uiFloatingPrecision"
-    :transform="value => (value ? parseInt(value) : value)"
-    :error-message="
-      precision =>
-        $tc('general_settings.validation.floating_precision.error', 0, {
-          precision
-        })
-    "
-    :success-message="
-      precision =>
-        $tc('general_settings.validation.floating_precision.success', 0, {
-          precision
-        })
-    "
+    :transform="transform"
+    :error-message="errorMessage"
+    :success-message="successMessage"
     @finished="resetFloatingPrecision"
   >
     <v-text-field
@@ -23,7 +13,7 @@
       min="1"
       :max="maxFloatingPrecision"
       class="general-settings__fields__floating-precision"
-      :label="$t('general_settings.amount.labels.floating_precision')"
+      :label="tc('general_settings.amount.labels.floating_precision')"
       type="number"
       :success-messages="success"
       :error-messages="
@@ -35,23 +25,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
 import useVuelidate from '@vuelidate/core';
 import { helpers, required } from '@vuelidate/validators';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import { useValidation } from '@/composables/validation';
-import i18n from '@/i18n';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 
 const floatingPrecision = ref<string>('0');
 const maxFloatingPrecision = 8;
+const { tc } = useI18n();
 const rules = {
   floatingPrecision: {
     required: helpers.withMessage(
-      i18n
-        .t('general_settings.validation.floating_precision.non_empty')
-        .toString(),
+      tc('general_settings.validation.floating_precision.non_empty'),
       required
     )
   }
@@ -64,6 +49,16 @@ const { callIfValid } = useValidation(v$);
 const resetFloatingPrecision = () => {
   set(floatingPrecision, get(current).toString());
 };
+
+const transform = (value?: string) => (value ? parseInt(value) : value);
+const errorMessage = (precision: string) =>
+  tc('general_settings.validation.floating_precision.error', 0, {
+    precision
+  });
+const successMessage = (precision: string) =>
+  tc('general_settings.validation.floating_precision.success', 0, {
+    precision
+  });
 
 onMounted(() => {
   resetFloatingPrecision();

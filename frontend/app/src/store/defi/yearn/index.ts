@@ -1,33 +1,29 @@
-import { computed, ComputedRef, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import { getPremium, useModules } from '@/composables/session';
-import i18n from '@/i18n';
+import { ComputedRef, Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
+import { useModules } from '@/composables/session/modules';
+import { useStatusUpdater } from '@/composables/status';
 import { balanceKeys } from '@/services/consts';
 import { ProtocolVersion } from '@/services/defi/consts';
-import { DEPOSIT } from '@/services/defi/types/consts';
+import { api } from '@/services/rotkehlchen-api';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
+import { useNotifications } from '@/store/notifications';
+import { getStatus, setStatus } from '@/store/status';
+import { useTasks } from '@/store/tasks';
+import { isLoading } from '@/store/utils';
 import {
+  DEPOSIT,
   YearnVaultAsset,
   YearnVaultBalance,
   YearnVaultProfitLoss,
   YearnVaultsBalances,
   YearnVaultsHistory
-} from '@/services/defi/types/yearn';
-import { api } from '@/services/rotkehlchen-api';
-import { useAssetInfoRetrieval } from '@/store/assets';
-import { Section, Status } from '@/store/const';
-import { useNotifications } from '@/store/notifications';
-import { useTasks } from '@/store/tasks';
-import {
-  getStatus,
-  getStatusUpdater,
-  isLoading,
-  setStatus
-} from '@/store/utils';
+} from '@/types/defi/yearn';
 import { Module } from '@/types/modules';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
-import { Zero } from '@/utils/bignumbers';
+import { isEvmIdentifier } from '@/utils/assets';
+import { zeroBalance } from '@/utils/bignumbers';
 import { balanceSum } from '@/utils/calculation';
 
 export const useYearnStore = defineStore('defi/yearn', () => {
@@ -40,7 +36,8 @@ export const useYearnStore = defineStore('defi/yearn', () => {
   const { notify } = useNotifications();
   const { activeModules } = useModules();
   const { assetSymbol } = useAssetInfoRetrieval();
-  const premium = getPremium();
+  const premium = usePremium();
+  const { t } = useI18n();
 
   const yearnVaultsProfit = (
     addresses: string[],
@@ -70,7 +67,7 @@ export const useYearnStore = defineStore('defi/yearn', () => {
 
           if (!yearnVaultsProfit[vault]) {
             let vaultName = vault;
-            if (vault.startsWith('_ceth_')) {
+            if (isEvmIdentifier(vault)) {
               vaultName = `${get(assetSymbol(vault))} Vault`;
             }
 
@@ -132,8 +129,8 @@ export const useYearnStore = defineStore('defi/yearn', () => {
         const allBalances = balances[key];
         const { underlyingToken, vaultToken, roi } = allBalances[0];
 
-        const underlyingValue = { amount: Zero, usdValue: Zero };
-        const vaultValue = { amount: Zero, usdValue: Zero };
+        const underlyingValue = zeroBalance();
+        const vaultValue = zeroBalance();
         const values = { underlyingValue, vaultValue };
         const summary = allBalances.reduce((sum, current) => {
           return {
@@ -198,9 +195,9 @@ export const useYearnStore = defineStore('defi/yearn', () => {
         taskId,
         taskType,
         {
-          title: i18n
-            .t('actions.defi.yearn_vaults.task.title', { version })
-            .toString(),
+          title: t('actions.defi.yearn_vaults.task.title', {
+            version
+          }).toString(),
           numericKeys: balanceKeys
         }
       );
@@ -212,15 +209,13 @@ export const useYearnStore = defineStore('defi/yearn', () => {
       }
     } catch (e: any) {
       notify({
-        title: i18n
-          .t('actions.defi.yearn_vaults.error.title', { version })
-          .toString(),
-        message: i18n
-          .t('actions.defi.yearn_vaults.error.description', {
-            error: e.message,
-            version
-          })
-          .toString(),
+        title: t('actions.defi.yearn_vaults.error.title', {
+          version
+        }).toString(),
+        message: t('actions.defi.yearn_vaults.error.description', {
+          error: e.message,
+          version
+        }).toString(),
         display: true
       });
     }
@@ -273,11 +268,9 @@ export const useYearnStore = defineStore('defi/yearn', () => {
         taskId,
         taskType,
         {
-          title: i18n
-            .t('actions.defi.yearn_vaults_history.task.title', {
-              version: payload.version
-            })
-            .toString(),
+          title: t('actions.defi.yearn_vaults_history.task.title', {
+            version: payload.version
+          }).toString(),
           numericKeys: balanceKeys
         }
       );
@@ -289,17 +282,13 @@ export const useYearnStore = defineStore('defi/yearn', () => {
       }
     } catch (e: any) {
       notify({
-        title: i18n
-          .t('actions.defi.yearn_vaults_history.error.title', {
-            version: payload.version
-          })
-          .toString(),
-        message: i18n
-          .t('actions.defi.yearn_vaults_history.error.description', {
-            error: e.message,
-            version: payload.version
-          })
-          .toString(),
+        title: t('actions.defi.yearn_vaults_history.error.title', {
+          version: payload.version
+        }).toString(),
+        message: t('actions.defi.yearn_vaults_history.error.description', {
+          error: e.message,
+          version: payload.version
+        }).toString(),
         display: true
       });
     }
@@ -307,7 +296,7 @@ export const useYearnStore = defineStore('defi/yearn', () => {
   }
 
   const reset = (version?: ProtocolVersion) => {
-    const { resetStatus } = getStatusUpdater(
+    const { resetStatus } = useStatusUpdater(
       Section.DEFI_YEARN_VAULTS_BALANCES
     );
     if (!version || version === ProtocolVersion.V1) {

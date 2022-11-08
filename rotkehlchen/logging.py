@@ -176,6 +176,7 @@ def configure_logging(args: argparse.Namespace) -> None:
             'backupCount': backups_num,
             'level': loglevel,
             'formatter': 'default',
+            'encoding': 'utf-8',
         }
     else:
         selected_handlers = ['console']
@@ -210,3 +211,4 @@ def configure_logging(args: argparse.Namespace) -> None:
         logging.getLogger('urllib3').setLevel(logging.CRITICAL)
         logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
         logging.getLogger('substrateinterface.base').setLevel(logging.CRITICAL)
+        logging.getLogger('eth_hash').setLevel(logging.CRITICAL)

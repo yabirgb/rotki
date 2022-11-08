@@ -3,16 +3,16 @@ import pytest
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.decoding.constants import CPT_GAS
 from rotkehlchen.chain.ethereum.decoding.decoder import EVMTransactionDecoder
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceipt, EthereumTxReceiptLog
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.db.ethtx import DBEthTx
 from rotkehlchen.fval import FVal
-from rotkehlchen.types import EthereumTransaction, Location, deserialize_evm_tx_hash
+from rotkehlchen.types import EvmTransaction, Location, deserialize_evm_tx_hash
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.hexbytes import hexstring_to_bytes
 
@@ -25,7 +25,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
     msg_aggregator = MessagesAggregator()
     tx_hex = '0x75b81b2edd454a7b564cc55a6b676e2441e155401bde99a38d867028081d2c30'
     evmhash = deserialize_evm_tx_hash(tx_hex)
-    transaction = EthereumTransaction(
+    transaction = EvmTransaction(
         tx_hash=evmhash,
         timestamp=1646375440,
         block_number=14318825,
@@ -47,7 +47,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
             EthereumTxReceiptLog(
                 log_index=350,
                 data=hexstring_to_bytes('0x000000000000000000000000000000000000000000000000aba7e67d21ab4000'),  # noqa: E501
-                address=string_to_ethereum_address('0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0'),
+                address=string_to_evm_address('0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'),  # noqa: E501
@@ -57,7 +57,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
             ), EthereumTxReceiptLog(
                 log_index=351,
                 data=hexstring_to_bytes('0x0000000000000000000000000000000000000000000000000000000000000299000000000000000000000000000000000000000000000000aba7e67d21ab4000'),  # noqa: E501
-                address=string_to_ethereum_address('0x378Ba9B73309bE80BF4C2c027aAD799766a7ED5A'),
+                address=string_to_evm_address('0x378Ba9B73309bE80BF4C2c027aAD799766a7ED5A'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0x4766921f5c59646d22d7d266a29164c8e9623684d8dfdbd931731dfdca025238'),  # noqa: E501
@@ -75,7 +75,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
     decoder = EVMTransactionDecoder(
         database=database,
         ethereum_manager=ethereum_manager,
-        eth_transactions=eth_transactions,
+        transactions=eth_transactions,
         msg_aggregator=msg_aggregator,
     )
     with database.user_write() as cursor:
@@ -97,7 +97,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
                 usd_value=ZERO,
             ),
             location_label='0x362C51b56D3c8f79aecf367ff301d1aFd42EDCEA',
-            notes='Burned 0.00393701451 ETH in gas from 0x362C51b56D3c8f79aecf367ff301d1aFd42EDCEA',  # noqa: E501
+            notes='Burned 0.00393701451 ETH for gas',
             counterparty=CPT_GAS,
         ), HistoryBaseEntry(
             event_identifier=HistoryBaseEntry.deserialize_event_identifier(
@@ -108,7 +108,7 @@ def test_votium_claim(database, ethereum_manager, eth_transactions):
             location=Location.BLOCKCHAIN,
             event_type=HistoryEventType.RECEIVE,
             event_subtype=HistoryEventSubType.REWARD,
-            asset=EthereumToken('0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0'),
+            asset=EvmToken('eip155:1/erc20:0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0'),
             balance=Balance(amount=FVal('12.369108326706528256'), usd_value=ZERO),
             location_label='0x362C51b56D3c8f79aecf367ff301d1aFd42EDCEA',
             notes='Receive 12.369108326706528256 FXS from votium bribe',

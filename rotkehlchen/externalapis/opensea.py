@@ -19,10 +19,11 @@ import requests
 from cryptography.fernet import Fernet
 from eth_utils import to_checksum_address
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import Asset
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.misc import NFT_DIRECTIVE, ZERO
+from rotkehlchen.constants.resolver import ethaddress_to_identifier
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.misc import RemoteError
@@ -32,7 +33,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_optional_to_optional_fval
-from rotkehlchen.types import ChecksumEthAddress, ExternalService
+from rotkehlchen.types import ChecksumEvmAddress, ExternalService
 from rotkehlchen.user_messages import MessagesAggregator
 
 if TYPE_CHECKING:
@@ -100,6 +101,7 @@ class Opensea(ExternalServiceWithApiKey):
         self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0'})  # noqa: E501
         self.collections: Dict[str, Collection] = {}
         self.backup_key: Optional[str] = None
+        self.eth_asset = A_ETH.resolve_to_crypto_asset()
 
     def maybe_get_backup_key(self) -> Optional[str]:
         """This will attempt to fetch the backup key from our server if not already fetched"""
@@ -227,7 +229,7 @@ class Opensea(ExternalServiceWithApiKey):
     def _deserialize_nft(
             self,
             entry: Dict[str, Any],
-            owner_address: ChecksumEthAddress,
+            owner_address: ChecksumEvmAddress,
             eth_usd_price: FVal,
     ) -> 'NFT':
         """May raise:
@@ -241,16 +243,18 @@ class Opensea(ExternalServiceWithApiKey):
             )
 
         try:
-            last_sale = entry.get('last_sale')
-            if last_sale:
+            last_sale: Optional[Dict[str, Any]] = entry.get('last_sale')
+            if last_sale is not None and last_sale.get('payment_token') is not None:
                 if last_sale['payment_token']['symbol'] in ('ETH', 'WETH'):
-                    payment_token = A_ETH
+                    payment_asset = self.eth_asset
                 else:
-                    payment_token = EthereumToken(
-                        to_checksum_address(last_sale['payment_token']['address']),
-                    )
+                    payment_asset = Asset(
+                        ethaddress_to_identifier(
+                            to_checksum_address(last_sale['payment_token']['address']),
+                        ),
+                    ).resolve_to_evm_token()
 
-                amount = asset_normalized_value(int(last_sale['total_price']), payment_token)
+                amount = asset_normalized_value(int(last_sale['total_price']), payment_asset)
                 eth_price = FVal(last_sale['payment_token']['eth_price'])
                 last_price_in_eth = amount * eth_price
             else:
@@ -299,7 +303,7 @@ class Opensea(ExternalServiceWithApiKey):
         except KeyError as e:
             raise DeserializationError(f'Could not find key {str(e)} when processing Opensea NFT data') from e  # noqa: E501
 
-    def gather_account_collections(self, account: ChecksumEthAddress) -> None:
+    def gather_account_collections(self, account: ChecksumEvmAddress) -> None:
         """Gathers account collection information and keeps them in memory"""
         offset = 0
         options = {'offset': offset, 'limit': CONTRACTS_MAX_LIMIT, 'asset_owner': account}  # noqa: E501
@@ -338,7 +342,7 @@ class Opensea(ExternalServiceWithApiKey):
                 floor_price=floor_price,
             )
 
-    def get_account_nfts(self, account: ChecksumEthAddress) -> List[NFT]:
+    def get_account_nfts(self, account: ChecksumEvmAddress) -> List[NFT]:
         """May raise RemoteError"""
         offset = 0
         options = {'order_direction': 'desc', 'offset': offset, 'limit': ASSETS_MAX_LIMIT, 'owner': account}  # noqa: E501

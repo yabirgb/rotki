@@ -5,26 +5,20 @@ import {
   Eth2Deposits,
   Eth2Details
 } from '@rotki/common/lib/staking/eth2';
-import { ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import { omitBy } from 'lodash';
 import isEqual from 'lodash/isEqual';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import { getPremium } from '@/composables/session';
-import i18n from '@/i18n';
+import { usePremium } from '@/composables/premium';
+import { useStatusUpdater } from '@/composables/status';
 import { balanceKeys } from '@/services/consts';
-import { api } from '@/services/rotkehlchen-api';
-import { Section, Status } from '@/store/const';
+import { useAdexApi } from '@/services/staking/adex';
+import { useEth2Api } from '@/services/staking/eth2';
 import { useNotifications } from '@/store/notifications';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
+import { getStatus, setStatus } from '@/store/status';
 import { useTasks } from '@/store/tasks';
-import {
-  getStatus,
-  getStatusUpdater,
-  isLoading,
-  setStatus
-} from '@/store/utils';
+import { isLoading } from '@/store/utils';
 import { Module } from '@/types/modules';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { Zero } from '@/utils/bignumbers';
@@ -55,16 +49,19 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
   const details = ref<Eth2Details>([]);
   const stats = ref<Eth2DailyStats>(defaultStats());
   const pagination = ref<Eth2DailyStatsPayload>(defaultPagination());
-  const premium = getPremium();
+  const premium = usePremium();
   const { awaitTask, isTaskRunning } = useTasks();
   const { notify } = useNotifications();
+  const { t, tc } = useI18n();
+
+  const api = useEth2Api();
 
   const fetchStakingDetails = async (refresh: boolean = false) => {
     if (!get(premium)) {
       return;
     }
 
-    const { setStatus, loading, getStatus, resetStatus } = getStatusUpdater(
+    const { setStatus, loading, getStatus, resetStatus } = useStatusUpdater(
       Section.STAKING_ETH2
     );
 
@@ -83,7 +80,7 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
           taskId,
           taskType,
           {
-            title: i18n.tc('actions.staking.eth2.task.title'),
+            title: tc('actions.staking.eth2.task.title'),
             numericKeys: []
           }
         );
@@ -92,14 +89,10 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
       } catch (e: any) {
         logger.error(e);
         notify({
-          title: i18n.tc('actions.staking.eth2.error.title'),
-          message: i18n.tc(
-            'actions.staking.eth2.error.description',
-            undefined,
-            {
-              error: e.message
-            }
-          ),
+          title: tc('actions.staking.eth2.error.title'),
+          message: tc('actions.staking.eth2.error.description', undefined, {
+            error: e.message
+          }),
           display: true
         });
         resetStatus();
@@ -118,7 +111,7 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
           taskId,
           taskType,
           {
-            title: `${i18n.t('actions.staking.eth2_deposits.task.title')}`,
+            title: `${t('actions.staking.eth2_deposits.task.title')}`,
             numericKeys: []
           }
         );
@@ -127,13 +120,10 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
       } catch (e: any) {
         logger.error(e);
         notify({
-          title: `${i18n.t('actions.staking.eth2_deposits.error.title')}`,
-          message: `${i18n.t(
-            'actions.staking.eth2_deposits.error.description',
-            {
-              error: e.message
-            }
-          )}`,
+          title: `${t('actions.staking.eth2_deposits.error.title')}`,
+          message: `${t('actions.staking.eth2_deposits.error.description', {
+            error: e.message
+          })}`,
           display: true
         });
       }
@@ -149,7 +139,7 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
     }
 
     const taskType = TaskType.STAKING_ETH2_STATS;
-    const { setStatus, loading, isFirstLoad, resetStatus } = getStatusUpdater(
+    const { setStatus, loading, isFirstLoad, resetStatus } = useStatusUpdater(
       Section.STAKING_ETH2_STATS
     );
 
@@ -174,10 +164,10 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
       const { taskId } = await api.eth2StatsTask(defaults);
 
       const taskMeta: TaskMeta = {
-        title: i18n.t('actions.eth2_staking_stats.task.title').toString(),
-        description: i18n
-          .t('actions.eth2_staking_stats.task.description')
-          .toString(),
+        title: t('actions.eth2_staking_stats.task.title').toString(),
+        description: t(
+          'actions.eth2_staking_stats.task.description'
+        ).toString(),
         numericKeys: []
       };
 
@@ -223,10 +213,10 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
       logger.error(e);
       resetStatus();
       notify({
-        title: i18n.t('actions.eth2_staking_stats.error.title').toString(),
-        message: i18n
-          .t('actions.eth2_staking_stats.error.message', { message: e.message })
-          .toString(),
+        title: t('actions.eth2_staking_stats.error.title').toString(),
+        message: t('actions.eth2_staking_stats.error.message', {
+          message: e.message
+        }).toString(),
         display: true
       });
     }
@@ -253,7 +243,7 @@ export const useEth2StakingStore = defineStore('staking/eth2', () => {
     set(stats, defaultStats());
     set(pagination, defaultPagination());
 
-    const { resetStatus } = getStatusUpdater(Section.STAKING_ETH2);
+    const { resetStatus } = useStatusUpdater(Section.STAKING_ETH2);
     resetStatus();
     resetStatus(Section.STAKING_ETH2_DEPOSITS);
     resetStatus(Section.STAKING_ETH2_STATS);
@@ -273,9 +263,12 @@ export const useAdexStakingStore = defineStore('staking/adex', () => {
   const adexBalances = ref<AdexBalances>({});
   const adexHistory = ref<AdexHistory>({});
 
-  const premium = getPremium();
+  const premium = usePremium();
   const { notify } = useNotifications();
   const { awaitTask } = useTasks();
+  const { t } = useI18n();
+
+  const api = useAdexApi();
 
   const fetchAdex = async (refresh: boolean) => {
     if (!get(premium)) {
@@ -302,15 +295,15 @@ export const useAdexStakingStore = defineStore('staking/adex', () => {
         taskId,
         taskType,
         {
-          title: `${i18n.t('actions.staking.adex_balances.task.title')}`,
+          title: `${t('actions.staking.adex_balances.task.title')}`,
           numericKeys: balanceKeys
         }
       );
       set(adexBalances, result);
     } catch (e: any) {
       notify({
-        title: `${i18n.t('actions.staking.adex_balances.error.title')}`,
-        message: `${i18n.t('actions.staking.adex_balances.error.description', {
+        title: `${t('actions.staking.adex_balances.error.title')}`,
+        message: `${t('actions.staking.adex_balances.error.description', {
           error: e.message
         })}`,
         display: true
@@ -328,7 +321,7 @@ export const useAdexStakingStore = defineStore('staking/adex', () => {
         taskId,
         taskType,
         {
-          title: `${i18n.t('actions.staking.adex_history.task.title')}`,
+          title: `${t('actions.staking.adex_history.task.title')}`,
           numericKeys: [...balanceKeys, 'total_staked_amount']
         }
       );
@@ -336,8 +329,8 @@ export const useAdexStakingStore = defineStore('staking/adex', () => {
       set(adexHistory, result);
     } catch (e: any) {
       notify({
-        title: `${i18n.t('actions.staking.adex_history.error.title')}`,
-        message: `${i18n.t('actions.staking.adex_history.error.description', {
+        title: `${t('actions.staking.adex_history.error.title')}`,
+        message: `${t('actions.staking.adex_history.error.description', {
           error: e.message
         })}`,
         display: true

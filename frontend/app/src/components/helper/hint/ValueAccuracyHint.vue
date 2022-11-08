@@ -5,27 +5,18 @@
         mdi-information
       </v-icon>
     </template>
-    <span>{{ $t('price_accuracy_hint.tooltip') }}</span>
+    <span>{{ t('price_accuracy_hint.tooltip') }}</span>
   </v-tooltip>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
-import { CURRENCY_USD } from '@/data/currencies';
+<script setup lang="ts">
 import { useGeneralSettingsStore } from '@/store/settings/general';
+import { CURRENCY_USD } from '@/types/currencies';
 
-export default defineComponent({
-  name: 'ValueAccuracyHint',
-  setup() {
-    const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const { t } = useI18n();
+const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
 
-    const notUsd = computed(() => {
-      return get(currencySymbol) !== CURRENCY_USD;
-    });
-
-    return { notUsd };
-  }
+const notUsd = computed(() => {
+  return get(currencySymbol) !== CURRENCY_USD;
 });
 </script>

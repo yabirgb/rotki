@@ -23,35 +23,22 @@
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { exchangeName } from '@/components/history/consts';
+import { PropType } from 'vue';
 import { SupportedExchange } from '@/types/exchanges';
+import { useTradeLocations } from '@/types/trades';
 
-export default defineComponent({
-  name: 'ExchangeAmountRow',
-  props: {
-    balance: { required: true, type: BigNumber },
-    exchange: { required: true, type: String as PropType<SupportedExchange> }
-  },
-  setup(props) {
-    const { exchange } = toRefs(props);
+const props = defineProps({
+  balance: { required: true, type: BigNumber },
+  exchange: { required: true, type: String as PropType<SupportedExchange> }
+});
 
-    const name = computed<string>(() => {
-      if (!get(exchange)) return '';
-      return exchangeName(get(exchange));
-    });
+const { exchange } = toRefs(props);
+const { exchangeName } = useTradeLocations();
 
-    return {
-      name
-    };
-  }
+const name = computed<string>(() => {
+  if (!get(exchange)) return '';
+  return exchangeName(exchange);
 });
 </script>

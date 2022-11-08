@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from pysqlcipher3 import dbapi2 as sqlcipher
 
@@ -47,7 +47,8 @@ class DBHistoryEvents():
 
         May raise:
         - DeserializationError if the event could not be serialized for the DB
-        - sqlcipher.DatabaseError: If anything went wrong at insertion
+        - sqlcipher.IntegrityError: If the asset of the added history event does not exist in
+        the DB. Can only happen if an event with an unresolved asset is passed.
         """
         write_cursor.execute(HISTORY_INSERT, event.serialize_for_db())
         identifier = write_cursor.lastrowid
@@ -64,7 +65,7 @@ class DBHistoryEvents():
     def add_history_events(    # pylint: disable=no-self-use
             self,
             write_cursor: 'DBCursor',
-            history: List[HistoryBaseEntry],
+            history: Sequence[HistoryBaseEntry],
     ) -> None:
         """Insert a list of history events in database.
 
@@ -162,7 +163,7 @@ class DBHistoryEvents():
         )
         return [x[0] for x in cursor]
 
-    def get_history_events(      # pylint: disable=no-self-use
+    def get_history_events(
             self,
             cursor: 'DBCursor',
             filter_query: HistoryEventFilterQuery,
@@ -183,9 +184,12 @@ class DBHistoryEvents():
         output = []
         for entry in cursor:
             try:
-                output.append(HistoryBaseEntry.deserialize_from_db(entry))
+                deserialized = HistoryBaseEntry.deserialize_from_db(entry)
             except (DeserializationError, UnknownAsset) as e:
                 log.debug(f'Failed to deserialize history event {entry} due to {str(e)}')
+                continue
+
+            output.append(deserialized)
 
         return output
 
@@ -221,7 +225,7 @@ class DBHistoryEvents():
         result = []
         cursor = self.db.conn.cursor()
         cursor.execute(query, bindings)
-        for identifier, amount_raw, asset_name, timestamp in cursor:
+        for identifier, amount_raw, asset_identifier, timestamp in cursor:
             try:
                 amount = deserialize_fval(
                     value=amount_raw,
@@ -232,7 +236,7 @@ class DBHistoryEvents():
                     (
                         identifier,
                         amount,
-                        Asset(asset_name),
+                        Asset(asset_identifier).check_existence(),
                         ts_ms_to_sec(TimestampMS(timestamp)),
                     ),
                 )
@@ -244,7 +248,7 @@ class DBHistoryEvents():
             except UnknownAsset as e:
                 log.error(
                     f'Failed to read asset from historic base entry {identifier} '
-                    f'with asset identifier {asset_name}. {str(e)}',
+                    f'with asset identifier {asset_identifier}. {str(e)}',
                 )
         return result
 
@@ -260,7 +264,7 @@ class DBHistoryEvents():
         cursor.execute(query, bindings)
         for asset_id in cursor:
             try:
-                assets.append(Asset(asset_id[0]))
+                assets.append(Asset(asset_id[0]).check_existence())
             except (UnknownAsset, DeserializationError) as e:
                 self.db.msg_aggregator.add_error(
                     f'Found asset {asset_id} in the base history events table and '
@@ -306,7 +310,7 @@ class DBHistoryEvents():
         assets_amounts = []
         for row in cursor:
             try:
-                asset = Asset(row[0])
+                asset = Asset(row[0]).check_existence()
                 amount = deserialize_fval(
                     value=row[1],
                     name='total amount in history events stats',

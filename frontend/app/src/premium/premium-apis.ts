@@ -1,13 +1,12 @@
 import { AssetBalanceWithPrice, BigNumber } from '@rotki/common';
+import { AssetInfo } from '@rotki/common/lib/data';
 import { ProfitLossModel } from '@rotki/common/lib/defi';
-import { BalancerBalanceWithOwner } from '@rotki/common/lib/defi/balancer';
 import {
   AdexApi,
   AssetsApi,
   BalancerApi,
   BalancesApi,
   CompoundApi,
-  DexTradesApi,
   StatisticsApi,
   SushiApi,
   UserSettingsApi,
@@ -20,43 +19,58 @@ import {
   TimedAssetBalances,
   TimedBalances
 } from '@rotki/common/lib/statistics';
-import { computed, ComputedRef, Ref } from '@vue/composition-api';
-import { get, toRefs } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+import { MaybeRef } from '@vueuse/core';
+import { ComputedRef, Ref } from 'vue';
+import { setupLiquidityPosition } from '@/composables/defi';
 import { truncateAddress } from '@/filters';
 import { api } from '@/services/rotkehlchen-api';
-import { useAssetInfoRetrieval, useIgnoredAssetsStore } from '@/store/assets';
+import { useStatisticsApi } from '@/services/statistics/statistics-api';
+import { useIgnoredAssetsStore } from '@/store/assets/ignored';
+import { useNftAssetInfoStore } from '@/store/assets/nft';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
+import { useAggregatedBalancesStore } from '@/store/balances/aggregated';
+import { useBalancesBreakdownStore } from '@/store/balances/breakdown';
+import { useBalancePricesStore } from '@/store/balances/prices';
 import { useBalancerStore } from '@/store/defi/balancer';
 import { useCompoundStore } from '@/store/defi/compound';
 import { useSushiswapStore } from '@/store/defi/sushiswap';
-import { useDexTradesStore } from '@/store/defi/trades';
-import { useUniswapStore } from '@/store/defi/uniswap';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useSessionSettingsStore } from '@/store/settings/session';
 import { useAdexStakingStore } from '@/store/staking';
 import { useStatisticsStore } from '@/store/statistics';
-import { useStore } from '@/store/utils';
+import { One } from '@/utils/bignumbers';
 
 export const assetsApi = (): AssetsApi => {
-  const { getAssetInfo, getAssetSymbol, getAssetIdentifierForSymbol } =
-    useAssetInfoRetrieval();
+  const { assetInfo, assetSymbol, tokenAddress } = useAssetInfoRetrieval();
+
+  const { getNftDetails } = useNftAssetInfoStore();
+
   return {
-    assetInfo: getAssetInfo,
-    assetSymbol: getAssetSymbol,
-    getIdentifierForSymbol: getAssetIdentifierForSymbol
+    assetInfo: (identifier: MaybeRef<string>) =>
+      computed(() => {
+        const nft = get(getNftDetails(identifier)) as AssetInfo | null;
+        return nft ?? get(assetInfo(identifier));
+      }),
+    assetSymbol: (identifier: MaybeRef<string>) =>
+      computed(() => {
+        const nft = get(getNftDetails(identifier)) as AssetInfo | null;
+        return nft?.symbol ?? get(assetSymbol(identifier));
+      }),
+    tokenAddress: (identifier: MaybeRef<string>) => tokenAddress(identifier)
   };
 };
 
 export const statisticsApi = (): StatisticsApi => {
   const { isAssetIgnored } = useIgnoredAssetsStore();
   const { fetchNetValue, getNetValue } = useStatisticsStore();
+  const statsApi = useStatisticsApi();
   return {
     async assetValueDistribution(): Promise<TimedAssetBalances> {
-      return api.queryLatestAssetValueDistribution();
+      return statsApi.queryLatestAssetValueDistribution();
     },
     async locationValueDistribution(): Promise<LocationData> {
-      return api.queryLatestLocationValueDistribution();
+      return statsApi.queryLatestLocationValueDistribution();
     },
     async ownedAssets(): Promise<OwnedAssets> {
       const owned = await api.assets.queryOwnedAssets();
@@ -67,7 +81,7 @@ export const statisticsApi = (): StatisticsApi => {
       start: number,
       end: number
     ): Promise<TimedBalances> {
-      return api.queryTimedBalancesData(asset, start, end);
+      return statsApi.queryTimedBalancesData(asset, start, end);
     },
     async fetchNetValue(): Promise<void> {
       await fetchNetValue();
@@ -113,26 +127,25 @@ export const adexApi = (): AdexApi => {
 };
 
 export const balancesApi = (): BalancesApi => {
-  const store = useStore();
+  const { exchangeRate } = useBalancePricesStore();
+  const { balancesByLocation } = storeToRefs(useBalancesBreakdownStore());
+  const { balances } = useAggregatedBalancesStore();
   return {
-    byLocation: computed<Record<string, BigNumber>>(() => {
-      return store.getters['balances/byLocation'];
-    }),
-    aggregatedBalances: computed<AssetBalanceWithPrice[]>(() => {
-      return store.getters['balances/aggregatedBalances'];
-    }),
-    exchangeRate: currency =>
-      computed(() => store.getters['balances/exchangeRate'](currency))
+    byLocation: balancesByLocation as ComputedRef<Record<string, BigNumber>>,
+    aggregatedBalances: balances() as ComputedRef<AssetBalanceWithPrice[]>,
+    exchangeRate: (currency: string) =>
+      computed(() => get(exchangeRate(currency)) ?? One)
   };
 };
 
 export const balancerApi = (): BalancerApi => {
   const store = useBalancerStore();
-  const { balanceList, pools, addresses } = storeToRefs(store);
+  const { pools, addresses } = storeToRefs(store);
   return {
     balancerProfitLoss: (addresses: string[]) => store.profitLoss(addresses),
     balancerEvents: (addresses: string[]) => store.eventList(addresses),
-    balancerBalances: balanceList as Ref<BalancerBalanceWithOwner[]>,
+    balancerBalances: (addresses: string[]) =>
+      store.balancerBalances(addresses),
     balancerPools: pools,
     balancerAddresses: addresses,
     fetchBalancerBalances: async (refresh: boolean) => {
@@ -159,19 +172,6 @@ export const compoundApi = (): CompoundApi => {
   };
 };
 
-export const dexTradeApi = (): DexTradesApi => {
-  const store = useDexTradesStore();
-  const { fetchTrades: fetchUniswapTrades } = useUniswapStore();
-  const { fetchTrades: fetchSushiswapTrades } = useSushiswapStore();
-  const { fetchTrades: fetchBalancerTrades } = useBalancerStore();
-  return {
-    dexTrades: addresses => store.dexTrades(addresses),
-    fetchBalancerTrades,
-    fetchSushiswapTrades,
-    fetchUniswapTrades
-  };
-};
-
 export const sushiApi = (): SushiApi => {
   const store = useSushiswapStore();
   const { addresses, pools } = toRefs(store);
@@ -191,6 +191,7 @@ export const sushiApi = (): SushiApi => {
 
 export const utilsApi = (): UtilsApi => {
   return {
-    truncate: truncateAddress
+    truncate: truncateAddress,
+    getPoolName: setupLiquidityPosition().getPoolName
   };
 };

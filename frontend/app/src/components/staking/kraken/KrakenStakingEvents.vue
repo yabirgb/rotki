@@ -3,10 +3,10 @@
     <template #title>
       <refresh-button
         :loading="loading"
-        :tooltip="$tc('kraken_staking_events.refresh_tooltip')"
+        :tooltip="tc('kraken_staking_events.refresh_tooltip')"
         @refresh="refresh"
       />
-      {{ $t('kraken_staking_events.titles') }}
+      {{ t('kraken_staking_events.titles') }}
       <v-icon v-if="loading" color="primary" class="ml-2">
         mdi-spin mdi-loading
       </v-icon>
@@ -32,12 +32,12 @@
           :limit="events.entriesLimit"
           :total="events.entriesTotal"
           :colspan="headers.length"
-          :label="$tc('kraken_staking_events.upgrade.label')"
+          :label="tc('kraken_staking_events.upgrade.label')"
         />
       </template>
       <template #header.usdValue>
         {{
-          $t('common.value_in_symbol', {
+          t('common.value_in_symbol', {
             symbol: currencySymbol
           })
         }}
@@ -64,260 +64,119 @@
   </card>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  Ref,
-  ref,
-  toRefs,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import { DataTableHeader } from 'vuetify';
 import ValueAccuracyHint from '@/components/helper/hint/ValueAccuracyHint.vue';
 import RefreshButton from '@/components/helper/RefreshButton.vue';
 import BadgeDisplay from '@/components/history/BadgeDisplay.vue';
 import TableFilter from '@/components/history/filtering/TableFilter.vue';
-import {
-  MatchedKeyword,
-  SearchMatcher
-} from '@/components/history/filtering/types';
 import UpgradeRow from '@/components/history/UpgradeRow.vue';
-import { useTheme } from '@/composables/common';
-import { SupportedCurrency } from '@/data/currencies';
-import i18n from '@/i18n';
-import { useAssetInfoRetrieval } from '@/store/assets';
+import { useKrakenStakingFilter } from '@/composables/filters/kraken-staking';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { krakenStakingEventTypeData } from '@/store/staking/consts';
+import { useKrakenStakingEventTypes } from '@/store/staking/consts';
 import {
   KrakenStakingEvents,
   KrakenStakingEventType,
   KrakenStakingPagination,
   KrakenStakingPaginationOptions
 } from '@/types/staking';
-import { convertToTimestamp, getDateInputISOFormat } from '@/utils/date';
 
-const useHeaders = (currencySymbol: Ref<SupportedCurrency>) => {
-  return computed<DataTableHeader[]>(() => [
-    {
-      text: i18n.t('common.event').toString(),
-      value: 'type'
-    },
-    {
-      text: i18n.t('common.asset').toString(),
-      value: 'asset'
-    },
-    {
-      text: i18n.t('common.datetime').toString(),
-      value: 'timestamp'
-    },
-    {
-      text: i18n.t('common.amount').toString(),
-      value: 'amount',
-      align: 'end'
-    },
-    {
-      text: i18n
-        .t('common.value_in_symbol', {
-          symbol: get(currencySymbol)
-        })
-        .toString(),
-      value: 'usdValue',
-      align: 'end'
-    }
-  ]);
-};
-
-enum KrakenStakingKeys {
-  TYPE = 'type',
-  ASSET = 'asset',
-  START = 'start',
-  END = 'end'
-}
-
-enum KrakenStakingValueKeys {
-  TYPE = 'eventSubtypes',
-  ASSET = 'asset',
-  START = 'fromTimestamp',
-  END = 'toTimestamp'
-}
-
-const getEventTypeIdentifier = (label: string) => {
-  return (
-    get(krakenStakingEventTypeData).find(data => data.label === label)
-      ?.identifier ?? label
-  );
-};
-
-const useMatchers = (events: Ref<KrakenStakingEvents>) => {
-  const { getAssetIdentifierForSymbol } = useAssetInfoRetrieval();
-  const { dateInputFormat } = storeToRefs(useFrontendSettingsStore());
-  return computed<SearchMatcher<KrakenStakingKeys, KrakenStakingValueKeys>[]>(
-    () => {
-      const krakenStakingEventTypeValues = get(krakenStakingEventTypeData).map(
-        data => data.label
-      );
-
-      return [
-        {
-          key: KrakenStakingKeys.ASSET,
-          keyValue: KrakenStakingValueKeys.ASSET,
-          description: i18n.t('kraken_staking_events.filter.asset').toString(),
-          suggestions: () => get(events).assets,
-          validate: (asset: string) => get(events).assets.includes(asset),
-          transformer: (asset: string) =>
-            getAssetIdentifierForSymbol(asset) ?? asset
-        },
-        {
-          key: KrakenStakingKeys.TYPE,
-          keyValue: KrakenStakingValueKeys.TYPE,
-          description: i18n.t('kraken_staking_events.filter.type').toString(),
-          suggestions: () => krakenStakingEventTypeValues,
-          validate: (option: string) =>
-            krakenStakingEventTypeValues.includes(option as any),
-          transformer: (type: string) => getEventTypeIdentifier(type)
-        },
-        {
-          key: KrakenStakingKeys.START,
-          keyValue: KrakenStakingValueKeys.START,
-          description: i18n
-            .t('kraken_staking_events.filter.start_date')
-            .toString(),
-          suggestions: () => [],
-          hint: i18n
-            .t('kraken_staking_events.filter.date_hint', {
-              format: getDateInputISOFormat(get(dateInputFormat))
-            })
-            .toString(),
-          validate: value => {
-            return (
-              value.length > 0 &&
-              !isNaN(convertToTimestamp(value, get(dateInputFormat)))
-            );
-          },
-          transformer: (date: string) =>
-            convertToTimestamp(date, get(dateInputFormat)).toString()
-        },
-        {
-          key: KrakenStakingKeys.END,
-          keyValue: KrakenStakingValueKeys.END,
-          description: i18n
-            .t('kraken_staking_events.filter.end_date')
-            .toString(),
-          suggestions: () => [],
-          hint: i18n
-            .t('kraken_staking_events.filter.date_hint', {
-              format: getDateInputISOFormat(get(dateInputFormat))
-            })
-            .toString(),
-          validate: value => {
-            return (
-              value.length > 0 &&
-              !isNaN(convertToTimestamp(value, get(dateInputFormat)))
-            );
-          },
-          transformer: (date: string) =>
-            convertToTimestamp(date, get(dateInputFormat)).toString()
-        }
-      ];
-    }
-  );
-};
-
-export default defineComponent({
-  name: 'KrakenStakingEvents',
-  components: {
-    BadgeDisplay,
-    TableFilter,
-    RefreshButton,
-    UpgradeRow,
-    ValueAccuracyHint
+const props = defineProps({
+  events: {
+    required: true,
+    type: Object as PropType<KrakenStakingEvents>
   },
-  props: {
-    events: {
-      required: true,
-      type: Object as PropType<KrakenStakingEvents>
-    },
-    loading: {
-      required: false,
-      type: Boolean,
-      default: false
-    }
-  },
-  emit: ['update:pagination', 'refresh'],
-  setup(props, { emit }) {
-    const { events } = toRefs(props);
-    const filters: Ref<MatchedKeyword<KrakenStakingValueKeys>> = ref({});
-
-    const { itemsPerPage } = storeToRefs(useFrontendSettingsStore());
-    const { isMobile } = useTheme();
-
-    const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
-
-    const options = ref<KrakenStakingPaginationOptions>({
-      page: 1,
-      itemsPerPage: get(itemsPerPage),
-      sortBy: [],
-      sortDesc: []
-    });
-
-    const showUpgradeRow = computed(() => {
-      const { entriesLimit, entriesTotal } = get(events);
-      return entriesLimit <= entriesTotal && entriesLimit > 0;
-    });
-
-    const updatePagination = ({
-      itemsPerPage,
-      page,
-      sortBy,
-      sortDesc
-    }: KrakenStakingPaginationOptions) => {
-      const { asset, eventSubtypes, fromTimestamp, toTimestamp } = get(filters);
-      const pagination: KrakenStakingPagination = {
-        orderByAttributes: sortBy.length > 0 ? sortBy : ['timestamp'],
-        ascending: sortDesc.length > 0 ? sortDesc.map(bool => !bool) : [false],
-        limit: itemsPerPage,
-        offset: (page - 1) * itemsPerPage,
-        fromTimestamp: fromTimestamp as string,
-        toTimestamp: toTimestamp as string,
-        eventSubtypes: eventSubtypes ? [eventSubtypes as string] : undefined,
-        asset: (asset as string) || undefined
-      };
-      emit('update:pagination', pagination);
-    };
-
-    const updateFilter = (matchers: MatchedKeyword<KrakenStakingValueKeys>) => {
-      set(filters, matchers);
-      set(options, { ...get(options), page: 1 });
-    };
-
-    const refresh = () => emit('refresh');
-
-    watch(options, options => updatePagination(options));
-
-    const getEventTypeLabel = (eventType: KrakenStakingEventType) => {
-      return (
-        get(krakenStakingEventTypeData).find(
-          data => data.identifier === eventType
-        )?.label ?? eventType
-      );
-    };
-
-    return {
-      options,
-      isMobile,
-      showUpgradeRow,
-      tableHeaders: useHeaders(currencySymbol),
-      matchers: useMatchers(events),
-      refresh,
-      updateFilter,
-      currencySymbol,
-      getEventTypeLabel
-    };
+  loading: {
+    required: false,
+    type: Boolean,
+    default: false
   }
 });
+
+const emit = defineEmits(['update:pagination', 'refresh']);
+const { events } = toRefs(props);
+
+const { itemsPerPage } = storeToRefs(useFrontendSettingsStore());
+const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const { krakenStakingEventTypeData } = useKrakenStakingEventTypes();
+
+const options = ref<KrakenStakingPaginationOptions>({
+  page: 1,
+  itemsPerPage: get(itemsPerPage),
+  sortBy: [],
+  sortDesc: []
+});
+
+const { t, tc } = useI18n();
+
+const showUpgradeRow = computed(() => {
+  const { entriesLimit, entriesTotal } = get(events);
+  return entriesLimit <= entriesTotal && entriesLimit > 0;
+});
+
+const tableHeaders = computed<DataTableHeader[]>(() => [
+  {
+    text: t('common.event').toString(),
+    value: 'type'
+  },
+  {
+    text: t('common.asset').toString(),
+    value: 'asset'
+  },
+  {
+    text: t('common.datetime').toString(),
+    value: 'timestamp'
+  },
+  {
+    text: t('common.amount').toString(),
+    value: 'amount',
+    align: 'end'
+  },
+  {
+    text: t('common.value_in_symbol', {
+      symbol: get(currencySymbol)
+    }).toString(),
+    value: 'usdValue',
+    align: 'end'
+  }
+]);
+
+const { filters, matchers, updateFilter } = useKrakenStakingFilter();
+
+const updatePagination = ({
+  itemsPerPage,
+  page,
+  sortBy,
+  sortDesc
+}: KrakenStakingPaginationOptions) => {
+  const { asset, eventSubtypes, fromTimestamp, toTimestamp } = get(filters);
+  const pagination: KrakenStakingPagination = {
+    orderByAttributes: sortBy.length > 0 ? sortBy : ['timestamp'],
+    ascending: sortDesc.length > 0 ? sortDesc.map(bool => !bool) : [false],
+    limit: itemsPerPage,
+    offset: (page - 1) * itemsPerPage,
+    fromTimestamp: fromTimestamp as string,
+    toTimestamp: toTimestamp as string,
+    eventSubtypes: eventSubtypes ? [eventSubtypes as string] : undefined,
+    asset: (asset as string) || undefined
+  };
+  emit('update:pagination', pagination);
+};
+
+const refresh = () => emit('refresh');
+
+const getEventTypeLabel = (eventType: KrakenStakingEventType) => {
+  return (
+    get(krakenStakingEventTypeData).find(data => data.identifier === eventType)
+      ?.label ?? eventType
+  );
+};
+
+watch(filters, () => {
+  set(options, { ...get(options), page: 1 });
+});
+
+watch(options, options => updatePagination(options));
 </script>

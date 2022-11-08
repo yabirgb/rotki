@@ -1,41 +1,39 @@
+import os
 import warnings as test_warnings
 
 import pytest
 from eth_utils import is_checksum_address
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import Asset, CryptoAsset, CustomAsset, EvmToken, FiatAsset, Nft
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.spam_assets import KNOWN_ETH_SPAM_TOKENS
 from rotkehlchen.assets.types import AssetType
-from rotkehlchen.assets.utils import get_or_create_ethereum_token, symbol_to_ethereum_token
+from rotkehlchen.assets.utils import get_or_create_evm_token, symbol_to_ethereum_token
 from rotkehlchen.constants.assets import A_DAI, A_USDT
 from rotkehlchen.constants.resolver import ethaddress_to_identifier
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.db.custom_assets import DBCustomAssets
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import InputError
 from rotkehlchen.externalapis.coingecko import DELISTED_ASSETS, Coingecko
 from rotkehlchen.globaldb.handler import GlobalDBHandler
+from rotkehlchen.types import ChainID
 
 
 def test_unknown_asset():
     """Test than an unknown asset will throw"""
     with pytest.raises(UnknownAsset):
-        Asset('jsakdjsladjsakdj')
+        FiatAsset('jsakdjsladjsakdj')
 
 
 def test_asset_nft():
     a = Asset('_nft_foo')
     assert a.identifier == '_nft_foo'
-    assert a.symbol is not None
-    assert a.name == 'nft with id _nft_foo'
-    assert a.started is not None
-    assert a.forked is None
-    assert a.swapped_for is None
-    assert a.cryptocompare is not None
-    assert a.coingecko is None
+    should_not_exist = {'name', 'symbol', 'started', 'forked', 'swapped_for', 'cryptocompare', 'coingecko'}  # noqa: E501
+    assert len(should_not_exist & a.__dict__.keys()) == 0
 
 
 def test_repr():
-    btc_repr = repr(Asset('BTC'))
+    btc_repr = repr(CryptoAsset('BTC'))
     assert btc_repr == '<Asset identifier:BTC name:Bitcoin symbol:BTC>'
 
 
@@ -69,13 +67,13 @@ def test_asset_equals():
 
 
 def test_ethereum_tokens():
-    rdn_asset = EthereumToken('0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6')
-    assert rdn_asset.ethereum_address == '0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6'
+    rdn_asset = EvmToken('eip155:1/erc20:0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6')
+    assert rdn_asset.evm_address == '0x255Aa6DF07540Cb5d3d297f0D0D4D84cb52bc8e6'
     assert rdn_asset.decimals == 18
-    assert rdn_asset.is_eth_token()
+    assert rdn_asset.is_evm_token()
 
-    with pytest.raises(UnknownAsset):
-        EthereumToken('BTC')
+    with pytest.raises(WrongAssetType):
+        EvmToken('BTC')
 
 
 def test_cryptocompare_asset_support(cryptocompare):
@@ -106,7 +104,10 @@ def test_cryptocompare_asset_support(cryptocompare):
         ethaddress_to_identifier('0x9a9bB9b4b11BF8eccff84B58a6CCCCD4058A7f0D'),  # noqa: E501 # Bitcoin card but Vindax Coin in CC
         ethaddress_to_identifier('0x1da015eA4AD2d3e5586E54b9fB0682Ca3CA8A17a'),  # noqa: E501 # Dragon Token but Dark Token in CC
         ethaddress_to_identifier('0x9C78EE466D6Cb57A4d01Fd887D2b5dFb2D46288f'),  # noqa: E501 # Must (Cometh) but Must protocol in CC
+        'eip155:137/erc20:0x9C78EE466D6Cb57A4d01Fd887D2b5dFb2D46288f',  # noqa: E501 # Must (Cometh) but Must protocol in CC
         ethaddress_to_identifier('0x73968b9a57c6E53d41345FD57a6E6ae27d6CDB2F'),  # noqa: E501 # Stake DAO token but TerraSDT in CC
+        'eip155:137/erc20:0x361A5a4993493cE00f61C32d4EcCA5512b82CE90',  # noqa: E501 # Stake DAO token but TerraSDT in CC
+        'eip155:42161/erc20:0x7bA4a00d54A07461D9DB2aEF539e91409943AdC9',  # noqa: E501 # Stake DAO token but TerraSDT in CC
         ethaddress_to_identifier('0x3449FC1Cd036255BA1EB19d65fF4BA2b8903A69a'),  # noqa: E501 # Basis Cash but BACoin in CC
         ethaddress_to_identifier('0xaF1250fa68D7DECD34fD75dE8742Bc03B29BD58e'),  # noqa: E501 # waiting until cryptocompare fixes historical price for this. https://github.com/rotki/rotki/pull/2176
         'FLOW',    # FLOW from dapper labs but "Flow Protocol" in CC
@@ -117,11 +118,11 @@ def test_cryptocompare_asset_support(cryptocompare):
         ethaddress_to_identifier('0x6a6c2adA3Ce053561C2FbC3eE211F23d9b8C520a'),  # noqa: E501 # Tontoken but Tokamak network in CC
         ethaddress_to_identifier('0xB5FE099475d3030DDe498c3BB6F3854F762A48Ad'),  # noqa: E501 # Finiko token but FunKeyPai network in CC
         ethaddress_to_identifier('0xb0dFd28d3CF7A5897C694904Ace292539242f858'),  # noqa: E501 # Lotto token but LottoCoin in CC
+        'eip155:56/erc20:0xF301C8435D4dFA51641f71B0615aDD794b52c8E9',
         ethaddress_to_identifier('0xE4E822C0d5b329E8BB637972467d2E313824eFA0'),  # noqa: E501 # Dfinance token but XFinance in CC
         ethaddress_to_identifier('0xE081b71Ed098FBe1108EA48e235b74F122272E68'),  # noqa: E501 # Gold token but Golden Goose in CC
         'ACM',     # AC Milan Fan Token but Actinium in CC
         'TFC',     # TheFutbolCoin but The Freedom Coin in CC
-        ethaddress_to_identifier('0x69af81e73A73B40adF4f3d4223Cd9b1ECE623074'),  # noqa: E501 # Mask Network but NFTX Hashmask Index in CC
         ethaddress_to_identifier('0xE4f726Adc8e89C6a6017F01eadA77865dB22dA14'),  # noqa: E501 # balanced crypto pie but 0xE4f726Adc8e89C6a6017F01eadA77865dB22dA14 in CC
         ethaddress_to_identifier('0x7aBc60B3290F68c85f495fD2e0c3Bd278837a313'),  # noqa: E501 # Cyber Movie Chain but Crowdmachine in CC
         ethaddress_to_identifier('0xBAE235823D7255D9D48635cEd4735227244Cd583'),  # noqa: E501 # Staker Token but Gateio Stater in CC
@@ -129,39 +130,47 @@ def test_cryptocompare_asset_support(cryptocompare):
         ethaddress_to_identifier('0x1FA3bc860bF823d792f04F662f3AA3a500a68814'),  # noqa: E501 # 1X Short Bitcoin Token but Hedgecoin in CC
         ethaddress_to_identifier('0xc7283b66Eb1EB5FB86327f08e1B5816b0720212B'),  # noqa: E501 # Tribe Token (FEI) but another TribeToken in CC
         ethaddress_to_identifier('0x16980b3B4a3f9D89E33311B5aa8f80303E5ca4F8'),  # noqa: E501 # Kira Network (KEX) but another KEX in CC
+        'eip155:56/erc20:0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E',  # noqa: E501 # Kira Network (KEX) but another KEX in CC
         'DON',     # Donnie Finance but Donation Coin in CC
         'BAG',     # Baguette but not in CC
         ethaddress_to_identifier('0xDe30da39c46104798bB5aA3fe8B9e0e1F348163F'),  # noqa: E501 # Gitcoin (GTC) but another GTC in CC
         ethaddress_to_identifier('0x6D0F5149c502faf215C89ab306ec3E50b15e2892'),  # noqa: E501 # Portion (PRT) but another PRT in CC
-        'ANI',     # Animecoin (ANI) but another ANI in CC
-        'XEP',     # Electra Protocol (XEP) but another XEP in CC
+        'eip155:56/erc20:0xAF00aAc2431b04EF6afD904d19B08D5146e3A9A0',  # noqa: E501 # Portion (PRT) but another PRT in CC
+        'eip155:56/erc20:0xaC472D0EED2B8a2f57a6E304eA7eBD8E88D1d36f',  # Animecoin (ANI) but another ANI in CC  # noqa: E501
+        'eip155:56/erc20:0xb897D0a0f68800f8Be7D69ffDD1c24b69f57Bf3e',  # Electra Protocol (XEP) but another XEP in CC  # noqa: E501
         ethaddress_to_identifier('0xcbb20D755ABAD34cb4a9b5fF6Dd081C76769f62e'),  # noqa: E501 # Cash Global Coin (CGC) but another CGC in CC
         ethaddress_to_identifier('0x9BE89D2a4cd102D8Fecc6BF9dA793be995C22541'),  # noqa: E501 # Binance Wrapped BTC (BBTC) but another BBTC in CC
-        'NRV',     # Nerve Finance (NRV) but another NRV in CC
+        'eip155:56/erc20:0x42F6f551ae042cBe50C739158b4f0CAC0Edb9096',  # noqa: E501 # Nerve Finance (NRV) but another NRV in CC
         'EDR-2',   # Endor Protocol Token but we have E-Dinar Coin
         ethaddress_to_identifier('0xDa007777D86AC6d989cC9f79A73261b3fC5e0DA0'),  # noqa: E501 # Dappnode (NODE) but another NODE in CC
-        'QI',  # noqa: E501 # BENQI (QI) but another QI in CC
+        'QI',  # BENQI (QI) but another QI in CC
         ethaddress_to_identifier('0x1A4b46696b2bB4794Eb3D4c26f1c55F9170fa4C5'),  # noqa: E501 # BitDao (BIT) but another BIT in CC
         ethaddress_to_identifier('0x993864E43Caa7F7F12953AD6fEb1d1Ca635B875F'),  # noqa: E501 # Singularity DAO (SDAO) but another SDAO in CC
+        'eip155:56/erc20:0x90Ed8F1dc86388f14b64ba8fb4bbd23099f18240',  # noqa: E501 # Singularity DAO (SDAO) but another SDAO in CC
         ethaddress_to_identifier('0x114f1388fAB456c4bA31B1850b244Eedcd024136'),  # noqa: E501 # Cool Vauld (COOL) but another COOL in CC
         ethaddress_to_identifier('0xD70240Dd62F4ea9a6A2416e0073D72139489d2AA'),  # noqa: E501 # Glyph vault (GLYPH) but another GLYPH in CC
         ethaddress_to_identifier('0x269616D549D7e8Eaa82DFb17028d0B212D11232A'),  # noqa: E501 # PUNK vault (PUNK) but another PUNK in CC
         ethaddress_to_identifier('0x2d94AA3e47d9D5024503Ca8491fcE9A2fB4DA198'),  # noqa: E501 # Bankless token (BANK) but another BANK in CC
+        'eip155:137/erc20:0xDB7Cb471dd0b49b29CAB4a1C14d070f27216a0Ab',  # noqa: E501 # Bankless token (BANK) but another BANK in CC
         ethaddress_to_identifier('0x1456688345527bE1f37E9e627DA0837D6f08C925'),  # noqa: E501 # USDP stablecoin (USDP) but another USDP in CC
-        'POLIS',  # noqa: E501 # Star Atlas DAO (POLIS) but another POLIS in CC
+        'POLIS',  # Star Atlas DAO (POLIS) but another POLIS in CC
         ethaddress_to_identifier('0x670f9D9a26D3D42030794ff035d35a67AA092ead'),  # noqa: E501 # XBullion Token (GOLD) but another GOLD in CC
         ethaddress_to_identifier('0x3b58c52C03ca5Eb619EBa171091c86C34d603e5f'),  # noqa: E501 # MCI Coin (MCI) but another MCI in CC
         ethaddress_to_identifier('0x5dD57Da40e6866C9FcC34F4b6DDC89F1BA740DfE'),  # noqa: E501 # Bright(BRIGHT) but another BRIGHT in CC
+        'eip155:100/erc20:0x83FF60E2f93F8eDD0637Ef669C69D5Fb4f64cA8E',  # noqa: E501 # Bright(BRIGHT) but another BRIGHT in CC
         ethaddress_to_identifier('0x40284109c3309A7C3439111bFD93BF5E0fBB706c'),  # noqa: E501 # Motiv protocol but another MOV in CC
         ethaddress_to_identifier('0xba5BDe662c17e2aDFF1075610382B9B691296350'),  # noqa: E501 # Super Rare but another RARE in CC
         ethaddress_to_identifier('0x9D65fF81a3c488d585bBfb0Bfe3c7707c7917f54'),  # noqa: E501 # SSV token but another SSV in CC
         ethaddress_to_identifier('0x7b35Ce522CB72e4077BaeB96Cb923A5529764a00'),  # noqa: E501 # Impermax but another IMX in CC
+        'eip155:137/erc20:0x60bB3D364B765C497C8cE50AE0Ae3f0882c5bD05',  # noqa: E501 # Impermax but another IMX in CC
+        'eip155:42161/erc20:0x9c67eE39e3C4954396b9142010653F17257dd39C',  # noqa: E501 # Impermax but another IMX in CC
+        'eip155:43114/erc20:0xeA6887e4a9CdA1B77E70129E5Fba830CdB5cdDef',  # noqa: E501 # Impermax but another IMX in CC
         ethaddress_to_identifier('0x47481c1b44F2A1c0135c45AA402CE4F4dDE4D30e'),  # noqa: E501 # Meetple but another MPT in CC
-        'CATE',  # catecoin but another CATE in CC
-        'CHESS'  # tranchess but another CHESS in CC
+        'eip155:56/erc20:0xE4FAE3Faa8300810C835970b9187c268f55D998F',  # noqa: E501 # catecoin but another CATE in CC
+        'eip155:56/erc20:0x20de22029ab63cf9A7Cf5fEB2b737Ca1eE4c82A6'  # noqa: E501 # tranchess but another CHESS in CC
         'BNC',  # Bifrost but another BNC in CC
-        'BNX',  # BinaryX but anohter BNX in CC
-        'DAR',  # Mines of Dalarnia but a different DAR in CC
+        'eip155:56/erc20:0x8C851d1a123Ff703BD1f9dabe631b69902Df5f97',  # noqa: E501 # BinaryX but anohter BNX in CC
+        'eip155:56/erc20:0x23CE9e926048273eF83be0A3A8Ba9Cb6D45cd978',  # noqa: E501 # Mines of Dalarnia but a different DAR in CC
         ethaddress_to_identifier('0xEf51c9377FeB29856E61625cAf9390bD0B67eA18'),  # noqa: E501 # Bionic but another BNC in CC
         'CHESS',  # tranchess but another chess in CC
         'BNC',  # bifrost but another BNC in CC
@@ -170,8 +179,10 @@ def test_cryptocompare_asset_support(cryptocompare):
         'STARS',  # StarLaunch but another STARS in CC
         ethaddress_to_identifier('0x60EF10EDfF6D600cD91caeCA04caED2a2e605Fe5'),  # noqa: E501 # Mochi inu but MOCHI SWAP in CC
         ethaddress_to_identifier('0x3496B523e5C00a4b4150D6721320CdDb234c3079'),  # noqa: E501 # numbers protocol but another NUM in CC
+        'eip155:56/erc20:0xeCEB87cF00DCBf2D4E2880223743Ff087a995aD9',  # noqa: E501 # numbers protocol but another NUM in CC
         ethaddress_to_identifier('0x8dB253a1943DdDf1AF9bcF8706ac9A0Ce939d922'),  # noqa: E501 # unbound protocol but another UNB in CC
-        'GODZ',  # gozilla but another GODZ in CC
+        'eip155:56/erc20:0x301AF3Eff0c904Dc5DdD06FAa808f653474F7FcC',  # noqa: E501 # unbound protocol but another UNB in CC
+        'eip155:56/erc20:0xDa4714fEE90Ad7DE50bC185ccD06b175D23906c1',  # noqa: E501 # gozilla but another GODZ in CC
         'DFL',  # Defi land but another DFL in CC
         'CDEX',  # Codex but another CDEX in CC
         'MIMO',  # mimosa but another MIMO in CC
@@ -181,10 +192,10 @@ def test_cryptocompare_asset_support(cryptocompare):
         ethaddress_to_identifier('0xfC1Cb4920dC1110fD61AfaB75Cf085C1f871b8C6'),  # noqa: E501 # edenloop but cc has electron
         ethaddress_to_identifier('0x3392D8A60B77F8d3eAa4FB58F09d835bD31ADD29'),  # noqa: E501 # indiegg but cc has indicoin
         'NBT',  # nanobyte but cc has nix bridge
-        'NHCT',  # Hurricane nft but cc has nano healthcare
+        'eip155:43114/erc20:0x3CE2fceC09879af073B53beF5f4D04327a1bC032',  # noqa: E501 # Hurricane nft but cc has nano healthcare
         'ZBC',  # zebec but cc has zilbercoin
         'MINE',  # spacemine but cc has instamine
-        'SIN',  # sincity but cc has sinnoverse
+        'eip155:56/erc20:0x6397de0F9aEDc0F7A8Fa8B438DDE883B9c201010',  # noqa: E501 # sincity but cc has sinnoverse
         'GST-2',  # green satoshi coin but cc has gstcoin
         ethaddress_to_identifier('0xBa3335588D9403515223F109EdC4eB7269a9Ab5D'),  # noqa: E501 # gearbox but cc has metagear
         ethaddress_to_identifier('0xA68Dd8cB83097765263AdAD881Af6eeD479c4a33'),  # noqa: E501 # fees.wtf but cc has WTF token
@@ -199,6 +210,23 @@ def test_cryptocompare_asset_support(cryptocompare):
         'WELL',  # Moonwell but cc has well
         ethaddress_to_identifier('0xeEd4d7316a04ee59de3d301A384262FFbDbd589a'),  # noqa: E501 # Page network but cc has PhiGold
         ethaddress_to_identifier('0xbb70AdbE39408cB1E5258702ea8ADa7c81165b73'),  # noqa: E501 # AnteDao but cc has ante
+        'eip155:56/erc20:0xDCEcf0664C33321CECA2effcE701E710A2D28A3F',  # Alpaca USD but cc has appeal dollar  # noqa: E501
+        'GBPT',  # pound but cc has listed poundtoken
+        'MNFT',  # mongol NFT but cc has marvelous NFT
+        'ETHS',  # Ethereum PoS fork IOU but CC has ethereum script
+        'eip155:137/erc20:0xabEDe05598760E399ed7EB24900b30C51788f00F',  # noqa: E501 # stepwatch but cc has kava swap
+        'BSX',  # basilixc but cc has bitspace
+        'eip155:43114/erc20:0xb54f16fB19478766A268F172C9480f8da1a7c9C3',  # noqa: E501 # wonderland but a different time in cc
+        'eip155:56/erc20:0x5F2F6c4C491B690216E0f8Ea753fF49eF4E36ba6',  # noqa: E501 # Metaland but cc has crops
+        ethaddress_to_identifier('0x2620638EDA99F9e7E902Ea24a285456EE9438861'),  # noqa: E501 # crust storeage but cc has consentium
+        'FB',  # fitbit but cc has fenerbache
+        'CMP',  # cadecius but cc has compcoin
+        'KUSD',  # kolibri usd but cc has kowala
+        ethaddress_to_identifier('0x4b13006980aCB09645131b91D259eaA111eaF5Ba'),  # noqa: E501 # mycelium but cc has a different one
+        'eip155:42161/erc20:0xC74fE4c715510Ec2F8C61d70D397B32043F55Abe',  # noqa: E501 # mycelium but cc has a different one
+        'eip155:56/erc20:0xfEB4e9B932eF708c498Cc997ABe51D0EE39300cf',  # noqa: E501 # getkicks but cc has sessia
+        ethaddress_to_identifier('0x06450dEe7FD2Fb8E39061434BAbCFC05599a6Fb8'),  # noqa: E501 xen crypto but cc has xenxin
+        ethaddress_to_identifier('0x3593D125a4f7849a1B059E64F4517A86Dd60c95d'),  # noqa: E501 mantra dao but cc has another MO
     )
     for asset_data in GlobalDBHandler().get_all_asset_data(mapping=False):
         potential_support = (
@@ -217,14 +245,14 @@ def test_cryptocompare_asset_support(cryptocompare):
 def test_all_assets_json_tokens_address_is_checksummed():
     """Test that all ethereum saved token asset addresses are checksummed"""
     for asset_data in GlobalDBHandler().get_all_asset_data(mapping=False):
-        if not asset_data.asset_type == AssetType.ETHEREUM_TOKEN:
+        if not asset_data.asset_type == AssetType.EVM_TOKEN:
             continue
 
         msg = (
             f'Ethereum token\'s {asset_data.name} ethereum address '
-            f'is not checksummed {asset_data.ethereum_address}'
+            f'is not checksummed {asset_data.address}'
         )
-        assert is_checksum_address(asset_data.ethereum_address), msg
+        assert is_checksum_address(asset_data.address), msg
 
 
 def test_asset_identifiers_are_unique_all_lowercased():
@@ -239,17 +267,22 @@ def test_asset_identifiers_are_unique_all_lowercased():
 
 def test_case_does_not_matter_for_asset_constructor():
     """Test that whatever case we give to asset constructor result is the same"""
-    a1 = Asset('bTc')
-    a2 = Asset('BTC')
+    a1 = CryptoAsset('bTc')
+    a2 = CryptoAsset('BTC')
     assert a1 == a2
     assert a1.identifier == 'BTC'
     assert a2.identifier == 'BTC'
 
-    a3 = symbol_to_ethereum_token('UsDt')
-    a4 = symbol_to_ethereum_token('usdt')
-    assert a3.identifier == a4.identifier == ethaddress_to_identifier('0xdAC17F958D2ee523a2206206994597C13D831ec7')  # noqa: E501
+    # We use a token that is only in ethereum (redacted)
+    a3 = symbol_to_ethereum_token('BTRFLY')
+    a4 = symbol_to_ethereum_token('BtRfLy')
+    assert a3.identifier == a4.identifier == ethaddress_to_identifier('0xC0d4Ceb216B3BA9C3701B291766fDCbA977ceC3A')  # noqa: E501
 
 
+@pytest.mark.skipif(
+    'CI' in os.environ,
+    reason='SLOW TEST -- it executes locally every time we check the assets so can be skipped',
+)
 def test_coingecko_identifiers_are_reachable():
     """
     Test that all assets have a coingecko entry and that all the identifiers exist in coingecko
@@ -457,8 +490,23 @@ def test_coingecko_identifiers_are_reachable():
         'USDE',
         # gearbox is not returned by the coingecko api
         ethaddress_to_identifier('0xBa3335588D9403515223F109EdC4eB7269a9Ab5D'),
-        # bitcoindark bu coingecko has bitdollars
+        # bitcoindark but coingecko has bitdollars
         'BTCD',
+        ethaddress_to_identifier('0x78a73B6CBc5D183CE56e786f6e905CaDEC63547B'),
+        # defidollar but has been marked as inactive
+        ethaddress_to_identifier('0x5BC25f649fc4e26069dDF4cF4010F9f706c23831'),
+        # zeus but has been marked as inactive
+        ethaddress_to_identifier('0xe7E4279b80D319EDe2889855135A22021baf0907'),
+        # tok but has been marked as inactive
+        ethaddress_to_identifier('0x9a49f02e128a8E989b443a8f94843C0918BF45E7'),
+        # fabrik but another ft in coingecko
+        ethaddress_to_identifier('0x78a73B6CBc5D183CE56e786f6e905CaDEC63547B'),
+        # memorycoin but cc has monopoly
+        'MMC',
+        # lendconnect but cc has localtraders
+        ethaddress_to_identifier('0x05C7065d644096a4E4C3FE24AF86e36dE021074b'),
+        # tether GBPT but cc has poundtoken
+        'GBPT',
     )
     for asset_data in GlobalDBHandler().get_all_asset_data(mapping=False):
         identifier = asset_data.identifier
@@ -512,7 +560,7 @@ def test_coingecko_identifiers_are_reachable():
 def test_asset_with_unknown_type_does_not_crash(asset_resolver):  # pylint: disable=unused-argument
     """Test that finding an asset with an unknown type does not crash rotki"""
     with pytest.raises(UnknownAsset):
-        Asset('COMPRLASSET2')
+        CryptoAsset('COMPRLASSET2')
     # After the test runs we must reset the asset resolver so that it goes back to
     # the normal list of assets
     AssetResolver._AssetResolver__instance = None
@@ -520,37 +568,41 @@ def test_asset_with_unknown_type_does_not_crash(asset_resolver):  # pylint: disa
 
 @pytest.mark.parametrize('use_clean_caching_directory', [True])
 @pytest.mark.parametrize('force_reinitialize_asset_resolver', [True])
-def test_get_or_create_ethereum_token(globaldb, database):
+def test_get_or_create_evm_token(globaldb, database):
     cursor = globaldb.conn.cursor()
     assets_num = cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0]
-    assert A_DAI == get_or_create_ethereum_token(
+    assert A_DAI == get_or_create_evm_token(
         userdb=database,
         symbol='DAI',
-        ethereum_address='0x6B175474E89094C44Da98b954EedeAC495271d0F',
+        evm_address='0x6B175474E89094C44Da98b954EedeAC495271d0F',
+        chain=ChainID.ETHEREUM,
     )
     # Try getting a DAI token of a different address. Shold add new token to DB
-    new_token = get_or_create_ethereum_token(
+    new_token = get_or_create_evm_token(
         userdb=database,
         symbol='DAI',
-        ethereum_address='0xA379B8204A49A72FF9703e18eE61402FAfCCdD60',
+        evm_address='0xA379B8204A49A72FF9703e18eE61402FAfCCdD60',
+        chain=ChainID.ETHEREUM,
     )
     assert cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0] == assets_num + 1
     assert new_token.symbol == 'DAI'
-    assert new_token.ethereum_address == '0xA379B8204A49A72FF9703e18eE61402FAfCCdD60'
+    assert new_token.evm_address == '0xA379B8204A49A72FF9703e18eE61402FAfCCdD60'
     # Try getting a symbol of normal chain with different address. Should add new token to DB
-    new_token = get_or_create_ethereum_token(
+    new_token = get_or_create_evm_token(
         userdb=database,
         symbol='DOT',
-        ethereum_address='0xB179B8204A49672FF9703e18eE61402FAfCCdD60',
+        evm_address='0xB179B8204A49672FF9703e18eE61402FAfCCdD60',
+        chain=ChainID.ETHEREUM,
     )
     assert new_token.symbol == 'DOT'
-    assert new_token.ethereum_address == '0xB179B8204A49672FF9703e18eE61402FAfCCdD60'
+    assert new_token.evm_address == '0xB179B8204A49672FF9703e18eE61402FAfCCdD60'
     assert cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0] == assets_num + 2
     # Check that token with wrong symbol but existing address is returned
-    assert A_USDT == get_or_create_ethereum_token(
+    assert A_USDT == get_or_create_evm_token(
         userdb=database,
         symbol='ROFL',
-        ethereum_address='0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        evm_address='0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        chain=ChainID.ETHEREUM,
     )
     assert cursor.execute('SELECT COUNT(*) from assets;').fetchone()[0] == assets_num + 2
 
@@ -562,3 +614,27 @@ def test_spam_assets_are_valid():
         assert 'name' in info
         assert 'symbol' in info
         assert 'decimals' in info
+
+
+def test_resolve_nft():
+    """Test that a special case of nft is handled when checking asset type and when resolving"""
+    nft_asset = Asset('_nft_foo')
+    assert nft_asset.is_nft() is True
+    assert nft_asset.is_fiat() is False
+    assert nft_asset.resolve() == Nft.initialize(
+        identifier='_nft_foo',
+        chain=ChainID.ETHEREUM,
+    )
+
+
+def test_symbol_or_name(database):
+    db_custom_assets = DBCustomAssets(database)
+    db_custom_assets.add_custom_asset(CustomAsset.initialize(
+        identifier='xyz',
+        name='custom name',
+        custom_asset_type='lolkek',
+    ))
+    assert Asset('ETH').symbol_or_name() == 'ETH'
+    assert Asset('xyz').symbol_or_name() == 'custom name'
+    with pytest.raises(UnknownAsset):
+        Asset('i-dont-exist').symbol_or_name()

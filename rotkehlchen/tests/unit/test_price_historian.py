@@ -7,8 +7,9 @@ from rotkehlchen.constants.assets import A_BTC, A_USD
 from rotkehlchen.errors.price import NoPriceForGivenTimestamp, PriceQueryUnsupportedAsset
 from rotkehlchen.externalapis.coingecko import Coingecko
 from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+from rotkehlchen.externalapis.defillama import Defillama
 from rotkehlchen.fval import FVal
-from rotkehlchen.globaldb.manual_price_oracle import ManualPriceOracle
+from rotkehlchen.globaldb.manual_price_oracles import ManualPriceOracle
 from rotkehlchen.history.price import PriceHistorian
 from rotkehlchen.history.types import (
     DEFAULT_HISTORICAL_PRICE_ORACLES_ORDER,
@@ -29,6 +30,7 @@ def fixture_fake_price_historian(historical_price_oracles_order):
         data_directory=MagicMock(spec=Path),
         cryptocompare=MagicMock(spec=Cryptocompare),
         coingecko=MagicMock(spec=Coingecko),
+        defillama=MagicMock(spec=Defillama),
     )
     price_historian.set_oracles_order(historical_price_oracles_order)
     return price_historian
@@ -42,6 +44,8 @@ def test_all_common_methods_implemented():
             instance = Coingecko
         elif oracle == HistoricalPriceOracle.CRYPTOCOMPARE:
             instance = Cryptocompare
+        elif oracle == HistoricalPriceOracle.DEFILLAMA:
+            instance = Defillama
         elif oracle == HistoricalPriceOracle.MANUAL:
             instance = ManualPriceOracle
         else:
@@ -169,6 +173,7 @@ def test_manual_oracle_correctly_returns_price(globaldb, fake_price_historian):
     oracle_instances = price_historian._oracle_instances
     oracle_instances[1].query_historical_price.side_effect = PriceQueryUnsupportedAsset('bitcoin')
     oracle_instances[2].query_historical_price.side_effect = PriceQueryUnsupportedAsset('bitcoin')
+    oracle_instances[3].query_historical_price.side_effect = PriceQueryUnsupportedAsset('bitcoin')
     # Query price, should return the manual price
     price = price_historian.query_historical_price(
         from_asset=A_BTC,

@@ -1,11 +1,12 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from rotkehlchen.accounting.structures.base import (
     HistoryBaseEntry,
     HistoryEventSubType,
     HistoryEventType,
 )
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.constants import ZERO_ADDRESS
 from rotkehlchen.chain.ethereum.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.ethereum.decoding.structures import ActionItem
@@ -25,24 +26,53 @@ from rotkehlchen.chain.ethereum.modules.convex.constants import (
 )
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceiptLog
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value
-from rotkehlchen.types import ChecksumEthAddress, EthereumTransaction
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
+from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hex_or_bytes_to_int
+
+if TYPE_CHECKING:
+    from rotkehlchen.chain.ethereum.decoding.base import BaseDecoderTools
+    from rotkehlchen.chain.ethereum.manager import EthereumManager
+    from rotkehlchen.user_messages import MessagesAggregator
+
+logger = logging.getLogger(__name__)
+log = RotkehlchenLogsAdapter(logger)
 
 
 class ConvexDecoder(DecoderInterface):
-    @staticmethod
+
+    def __init__(
+            self,
+            ethereum_manager: 'EthereumManager',
+            base_tools: 'BaseDecoderTools',
+            msg_aggregator: 'MessagesAggregator',
+    ) -> None:
+        super().__init__(
+            ethereum_manager=ethereum_manager,
+            base_tools=base_tools,
+            msg_aggregator=msg_aggregator,
+        )
+
     def _decode_convex_events(
+            self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         amount_raw = hex_or_bytes_to_int(tx_log.data[0:32])
         interacted_address = hex_or_bytes_to_address(tx_log.topics[1])
 
         for event in decoded_events:
-            amount = asset_normalized_value(amount_raw, event.asset)
+            try:
+                crypto_asset = event.asset.resolve_to_crypto_asset()
+            except (UnknownAsset, WrongAssetType):
+                self.notify_user(event=event, counterparty=CPT_CONVEX)
+                continue
+
+            amount = asset_normalized_value(amount_raw, crypto_asset)
             if (
                 event.location_label == transaction.from_address == interacted_address is False or
                 (event.counterparty != ZERO_ADDRESS and event.balance.amount != amount)
@@ -56,16 +86,16 @@ class ConvexDecoder(DecoderInterface):
                     event.event_subtype = HistoryEventSubType.RETURN_WRAPPED
                     event.counterparty = CPT_CONVEX
                     if tx_log.address in CONVEX_POOLS:
-                        event.notes = f'Return {event.balance.amount} {event.asset.symbol} to convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
+                        event.notes = f'Return {event.balance.amount} {crypto_asset.symbol} to convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
                     else:
-                        event.notes = f'Return {event.balance.amount} {event.asset.symbol} to convex'  # noqa: E501
+                        event.notes = f'Return {event.balance.amount} {crypto_asset.symbol} to convex'  # noqa: E501
                 else:
                     event.event_type = HistoryEventType.DEPOSIT
                     event.counterparty = CPT_CONVEX
                     if tx_log.address in CONVEX_POOLS:
-                        event.notes = f'Deposit {event.balance.amount} {event.asset.symbol} into convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
+                        event.notes = f'Deposit {event.balance.amount} {crypto_asset.symbol} into convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
                     else:
-                        event.notes = f'Deposit {event.balance.amount} {event.asset.symbol} into convex'  # noqa: E501
+                        event.notes = f'Deposit {event.balance.amount} {crypto_asset.symbol} into convex'  # noqa: E501
             elif (
                 event.event_type == HistoryEventType.RECEIVE and
                 event.event_subtype == HistoryEventSubType.NONE
@@ -73,30 +103,36 @@ class ConvexDecoder(DecoderInterface):
                 if tx_log.topics[0] in WITHDRAWAL_TOPICS:
                     event.event_type = HistoryEventType.WITHDRAWAL
                     if tx_log.address in CONVEX_POOLS:
-                        event.notes = f'Withdraw {event.balance.amount} {event.asset.symbol} from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
+                        event.notes = f'Withdraw {event.balance.amount} {crypto_asset.symbol} from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
                     else:
-                        event.notes = f'Withdraw {event.balance.amount} {event.asset.symbol} from convex'  # noqa: E501
+                        event.notes = f'Withdraw {event.balance.amount} {crypto_asset.symbol} from convex'  # noqa: E501
                     event.counterparty = CPT_CONVEX
                 elif tx_log.topics[0] in REWARD_TOPICS:
                     event.event_subtype = HistoryEventSubType.REWARD
                     event.counterparty = CPT_CONVEX
                     if tx_log.address in CONVEX_POOLS:
-                        event.notes = f'Claim {event.balance.amount} {event.asset.symbol} reward from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
+                        event.notes = f'Claim {event.balance.amount} {crypto_asset.symbol} reward from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
                     else:
-                        event.notes = f'Claim {event.balance.amount} {event.asset.symbol} reward from convex'  # noqa: E501
-        return None, None
+                        event.notes = f'Claim {event.balance.amount} {crypto_asset.symbol} reward from convex'  # noqa: E501
+        return None, []
 
     @staticmethod
     def _maybe_enrich_convex_transfers(
-            token: EthereumToken,  # pylint: disable=unused-argument
+            token: EvmToken,  # pylint: disable=unused-argument
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             event: HistoryBaseEntry,
             action_items: List[ActionItem],  # pylint: disable=unused-argument
     ) -> bool:
-        """Used for rewards paid with abracadabras. Problem is that the transfer event in this
+        """
+        Used for rewards paid with abracadabras. Problem is that the transfer event in this
         case happens at the end of the transaction and there is no reward event after it to
-        emit event processing."""
+        emit event processing.
+
+        May raise:
+        - UnknownAsset
+        - WrongAssetType
+        """
         if (
             tx_log.topics[0] == TRANSFER_TOPIC and
             tx_log.topics[1] in CONVEX_ABRAS_HEX and
@@ -104,17 +140,18 @@ class ConvexDecoder(DecoderInterface):
             event.event_type == HistoryEventType.RECEIVE and
             event.event_subtype == HistoryEventSubType.NONE
         ):
+            crypto_asset = event.asset.resolve_to_crypto_asset()
             event.event_subtype = HistoryEventSubType.REWARD
             if tx_log.address in CONVEX_POOLS:
-                event.notes = f'Claim {event.balance.amount} {event.asset.symbol} reward from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
+                event.notes = f'Claim {event.balance.amount} {crypto_asset.symbol} reward from convex {CONVEX_POOLS[tx_log.address]} pool'  # noqa: E501
             else:
-                event.notes = f'Claim {event.balance.amount} {event.asset.symbol} reward from convex'  # noqa: E501
+                event.notes = f'Claim {event.balance.amount} {crypto_asset.symbol} reward from convex'  # noqa: E501
             event.counterparty = CPT_CONVEX
             return True
         return False
 
-    def addresses_to_decoders(self) -> Dict[ChecksumEthAddress, Tuple[Any, ...]]:
-        decoder_mappings: Dict[ChecksumEthAddress, Tuple[Callable, ...]] = {
+    def addresses_to_decoders(self) -> Dict[ChecksumEvmAddress, Tuple[Any, ...]]:
+        decoder_mappings: Dict[ChecksumEvmAddress, Tuple[Callable, ...]] = {
             BOOSTER: (self._decode_convex_events,),
             CVX_LOCKER: (self._decode_convex_events,),
             CVX_LOCKER_V2: (self._decode_convex_events,),

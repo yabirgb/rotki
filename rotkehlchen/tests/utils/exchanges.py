@@ -1,14 +1,15 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch
 
-from rotkehlchen.assets.asset import Asset
-from rotkehlchen.constants.assets import A_BTC, A_ETH, A_EUR
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
+from rotkehlchen.assets.converters import KRAKEN_TO_WORLD, asset_from_kraken
+from rotkehlchen.constants.assets import A_BTC, A_DAI, A_ETH, A_ETH2, A_EUR
 from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.db.dbhandler import DBHandler
-from rotkehlchen.db.filtering import TradesFilterQuery
+from rotkehlchen.errors.asset import UnprocessableTradePair
 from rotkehlchen.exchanges.binance import BINANCE_BASE_URL, BINANCEUS_BASE_URL, Binance
 from rotkehlchen.exchanges.bitcoinde import Bitcoinde
 from rotkehlchen.exchanges.bitfinex import Bitfinex
@@ -698,6 +699,7 @@ def create_test_ftx(
     return mock
 
 
+# This function is dynamically used in rotkehlchen_api_server_with_exchanges
 def create_test_gemini(
         api_key,
         api_secret,
@@ -871,12 +873,9 @@ def check_saved_events_for_exchange(
         should_exist: bool,
         queryrange_formatstr: str = '{exchange}_{type}_{exchange}',
 ) -> None:
+    """Check that an exchange has saved events"""
     with db.conn.read_ctx() as cursor:
-        trades = db.get_trades(
-            cursor,
-            filter_query=TradesFilterQuery.make(location=exchange_location),
-            has_premium=True,
-        )
+        trades = cursor.execute('SELECT * FROM trades where location=?;', (exchange_location.serialize_for_db(),)).fetchall()  # noqa: E501
         trades_range = db.get_used_query_range(cursor, queryrange_formatstr.format(exchange=exchange_location, type='trades'))  # noqa: E501
         margins_range = db.get_used_query_range(cursor, queryrange_formatstr.format(exchange=exchange_location, type='margins'))  # noqa: E501
         movements_range = db.get_used_query_range(cursor, queryrange_formatstr.format(exchange=exchange_location, type='asset_movements'))  # noqa: E501
@@ -1108,7 +1107,7 @@ TRANSACTIONS_RESPONSE = """{
     "confirmations": 86
    },
     "to": {
-      "resource": "ethereum_address",
+      "resource": "evm_address",
       "address": "0x6dcd6449dbca615e40d696328209686ea95327b2",
       "currency": "ETH",
       "address_info": {"address": "0xboo"}
@@ -1134,7 +1133,7 @@ TRANSACTIONS_RESPONSE = """{
   "resource_path": "/v2/accounts/foo/transactions/coo",
   "instant_exchange": false,
     "to": {
-      "resource": "ethereum_address",
+      "resource": "evm_address",
       "address": "0x6dcd6449dbca615e40d696328209686ea95327b2",
       "currency": "ETH",
       "address_info": {"address": "0xboo"}
@@ -1261,3 +1260,51 @@ def mock_normal_coinbase_query(url, **kwargs):  # pylint: disable=unused-argumen
         return MockResponse(200, '{"data": [{"id": "5fs23"}]}')
     # else
     raise AssertionError(f'Unexpected url {url} for test')
+
+
+def kraken_to_world_pair(pair: str) -> Tuple[AssetWithOracles, AssetWithOracles]:
+    """Turns a pair from kraken to our base/quote asset tuple
+
+    Can throw:
+        - UknownAsset if one of the assets of the pair are not known
+        - DeserializationError if one of the assets is not a sting
+        - UnprocessableTradePair if the pair can't be processed and
+          split into its base/quote assets
+    """
+    # handle dark pool pairs
+    if pair[-2:] == '.d':
+        pair = pair[:-2]
+
+    if len(pair) == 6 and pair[0:3] in ('EUR', 'USD', 'AUD'):
+        # This is for the FIAT to FIAT pairs that kraken introduced
+        base_asset_str = pair[0:3]
+        quote_asset_str = pair[3:]
+    elif pair == 'ETHDAI':
+        return A_ETH.resolve_to_asset_with_oracles(), A_DAI.resolve_to_asset_with_oracles()
+    elif pair == 'ETH2.SETH':
+        return A_ETH2.resolve_to_asset_with_oracles(), A_ETH.resolve_to_asset_with_oracles()
+    elif pair[0:2] in KRAKEN_TO_WORLD:
+        base_asset_str = pair[0:2]
+        quote_asset_str = pair[2:]
+    elif pair[0:3] in KRAKEN_TO_WORLD:
+        base_asset_str = pair[0:3]
+        quote_asset_str = pair[3:]
+    elif pair[0:3] in ('XBT', 'ETH', 'XDG', 'LTC', 'XRP'):
+        # Some assets can have the 'X' prefix omitted for some pairs
+        base_asset_str = pair[0:3]
+        quote_asset_str = pair[3:]
+    elif pair[0:4] in KRAKEN_TO_WORLD:
+        base_asset_str = pair[0:4]
+        quote_asset_str = pair[4:]
+    elif pair[0:5] in KRAKEN_TO_WORLD:
+        base_asset_str = pair[0:5]
+        quote_asset_str = pair[5:]
+    elif pair[0:6] in KRAKEN_TO_WORLD:
+        base_asset_str = pair[0:6]
+        quote_asset_str = pair[6:]
+    else:
+        raise UnprocessableTradePair(pair)
+
+    base_asset = asset_from_kraken(base_asset_str)
+    quote_asset = asset_from_kraken(quote_asset_str)
+    return base_asset, quote_asset

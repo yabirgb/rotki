@@ -2,20 +2,20 @@
   <div>
     <v-row>
       <v-col>
-        <import-source source="blockfi-trades">
+        <import-source source="blockfi_trades">
           <template #upload-title>
             <i18n tag="span" path="import_data.blockfi.import">
-              <strong> {{ $t('import_data.blockfi.import_trade') }}</strong>
+              <strong> {{ t('import_data.blockfi.import_trade') }}</strong>
             </i18n>
           </template>
         </import-source>
       </v-col>
       <v-col>
-        <import-source source="blockfi-transactions">
+        <import-source source="blockfi_transactions">
           <template #upload-title>
             <i18n tag="span" path="import_data.blockfi.import">
               <strong>
-                {{ $t('import_data.blockfi.import_transactions') }}
+                {{ t('import_data.blockfi.import_transactions') }}
               </strong>
             </i18n>
           </template>
@@ -25,21 +25,17 @@
 
     <div class="pt-4">
       <i18n tag="span" path="import_data.blockfi.note">
-        <strong>{{ $t('import_data.blockfi.source_name') }}</strong>
+        <strong>{{ t('import_data.blockfi.source_name') }}</strong>
       </i18n>
       <ul>
-        <li>{{ $t('import_data.blockfi.line_one') }}</li>
-        <li>{{ $t('import_data.blockfi.line_two') }}</li>
+        <li>{{ t('import_data.blockfi.line_one') }}</li>
+        <li>{{ t('import_data.blockfi.line_two') }}</li>
       </ul>
     </div>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
 import ImportSource from '@/components/import/ImportSource.vue';
 
-export default defineComponent({
-  name: 'BlockFiImport',
-  components: { ImportSource }
-});
+const { t } = useI18n();
 </script>

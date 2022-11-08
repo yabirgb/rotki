@@ -36,7 +36,7 @@ def test_query_statistics_netvalue(
     """Test that using the statistics netvalue over time endpoint works"""
     # Disable caching of query results
     rotki = rotkehlchen_api_server_with_exchanges.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     setup = setup_balances(rotki, ethereum_accounts, btc_accounts)
 
     # query balances and save data in DB to have data to test the statistics endpoint
@@ -78,7 +78,7 @@ def test_query_statistics_asset_balance(
     start_time = ts_now()
     # Disable caching of query results
     rotki = rotkehlchen_api_server_with_exchanges.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     setup = setup_balances(rotki, ethereum_accounts, btc_accounts)
 
     # query balances and save data in DB to have data to test the statistics endpoint
@@ -93,12 +93,12 @@ def test_query_statistics_asset_balance(
     assert_proper_response(response)
 
     # and now test that statistics work fine for ETH, with default time range (0 - now)
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server_with_exchanges,
-            "statisticsassetbalanceresource",
-            asset="ETH",
+            'statisticsassetbalanceresource',
         ),
+        json={'asset': 'ETH'},
     )
     if start_with_valid_premium:
         result = assert_proper_response_with_result(response)
@@ -117,12 +117,11 @@ def test_query_statistics_asset_balance(
         )
 
     # and now test that statistics work fine for BTC, with given time range
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server_with_exchanges,
-            "statisticsassetbalanceresource",
-            asset="BTC",
-        ), json={'from_timestamp': 0, 'to_timestamp': start_time + 60000},
+            'statisticsassetbalanceresource',
+        ), json={'from_timestamp': 0, 'to_timestamp': start_time + 60000, 'asset': 'BTC'},
     )
     if start_with_valid_premium:
         result = assert_proper_response_with_result(response)
@@ -141,12 +140,11 @@ def test_query_statistics_asset_balance(
         )
 
     # finally test that if the time range is not including the saved balances we get nothing back
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server_with_exchanges,
-            "statisticsassetbalanceresource",
-            asset="BTC",
-        ), json={'from_timestamp': 0, 'to_timestamp': start_time - 1},
+            'statisticsassetbalanceresource',
+        ), json={'from_timestamp': 0, 'to_timestamp': start_time - 1, 'asset': 'BTC'},
     )
     if start_with_valid_premium:
         result = assert_proper_response_with_result(response)
@@ -165,19 +163,18 @@ def test_query_statistics_asset_balance_errors(rotkehlchen_api_server, rest_api_
     start_time = ts_now()
 
     # Check that no asset given is an error
-    response = requests.get(f'http://localhost:{rest_api_port}/api/1/statistics/balance')
+    response = requests.post(f'http://localhost:{rest_api_port}/api/1/statistics/balance')
     assert_error_response(
         response=response,
-        status_code=HTTPStatus.NOT_FOUND,
+        status_code=HTTPStatus.BAD_REQUEST,
     )
 
     # Check that an invalid asset given is an error
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server,
-            "statisticsassetbalanceresource",
-            asset="NOTAREALASSSETLOL",
-        ), json={'from_timestamp': 0, 'to_timestamp': start_time},
+            'statisticsassetbalanceresource',
+        ), json={'from_timestamp': 0, 'to_timestamp': start_time, 'asset': 'NOTAREALASSSETLOL'},
     )
     assert_error_response(
         response=response,
@@ -186,12 +183,11 @@ def test_query_statistics_asset_balance_errors(rotkehlchen_api_server, rest_api_
     )
 
     # Check that giving invalid value for from_timestamp is an error
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server,
-            "statisticsassetbalanceresource",
-            asset="BTC",
-        ), json={'from_timestamp': 'dsad', 'to_timestamp': start_time},
+            'statisticsassetbalanceresource',
+        ), json={'from_timestamp': 'dsad', 'to_timestamp': start_time, 'asset': 'BTC'},
     )
     assert_error_response(
         response=response,
@@ -200,12 +196,11 @@ def test_query_statistics_asset_balance_errors(rotkehlchen_api_server, rest_api_
     )
 
     # Check that giving invalid value for to_timestamp is an error
-    response = requests.get(
+    response = requests.post(
         api_url_for(
             rotkehlchen_api_server,
-            "statisticsassetbalanceresource",
-            asset="BTC",
-        ), json={'from_timestamp': 0, 'to_timestamp': 53434.32},
+            'statisticsassetbalanceresource',
+        ), json={'from_timestamp': 0, 'to_timestamp': 53434.32, 'asset': 'BTC'},
     )
     assert_error_response(
         response=response,
@@ -230,7 +225,7 @@ def test_query_statistics_value_distribution(
     start_time = ts_now()
     # Disable caching of query results
     rotki = rotkehlchen_api_server_with_exchanges.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     token_balances = {A_RDN: ['111000', '4000000']}
     setup = setup_balances(
         rotki=rotki,
@@ -410,7 +405,7 @@ def test_query_statistics_renderer(rotkehlchen_api_server, start_with_valid_prem
         response = requests.get(
             api_url_for(
                 rotkehlchen_api_server,
-                "statisticsrendererresource",
+                'statisticsrendererresource',
             ),
         )
     if start_with_valid_premium:

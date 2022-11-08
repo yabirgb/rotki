@@ -31,52 +31,36 @@
           text
           class="message-dialog__buttons__confirm"
           @click="dismiss()"
-          v-text="$t('common.actions.ok')"
-        />
+        >
+          {{ t('common.actions.ok') }}
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  ref,
-  toRefs,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-
-export default defineComponent({
-  name: 'MessageDialog',
-  props: {
-    title: { required: true, type: String },
-    message: { required: true, type: String },
-    success: { required: false, type: Boolean, default: false }
-  },
-  emits: ['dismiss'],
-  setup(props, { emit }) {
-    const { message, success } = toRefs(props);
-    const visible = ref<boolean>(false);
-
-    watch(message, message => {
-      set(visible, message.length > 0);
-    });
-
-    const icon = computed<string>(() => {
-      return get(success) ? 'mdi-check-circle ' : 'mdi-alert-circle';
-    });
-
-    const dismiss = () => emit('dismiss');
-
-    return {
-      visible,
-      icon,
-      dismiss
-    };
-  }
+<script setup lang="ts">
+const props = defineProps({
+  title: { required: true, type: String },
+  message: { required: true, type: String },
+  success: { required: false, type: Boolean, default: false }
 });
+
+const emit = defineEmits(['dismiss']);
+const { message, success } = toRefs(props);
+const visible = ref<boolean>(false);
+
+watch(message, message => {
+  set(visible, message.length > 0);
+});
+
+const icon = computed<string>(() => {
+  return get(success) ? 'mdi-check-circle ' : 'mdi-alert-circle';
+});
+
+const dismiss = () => emit('dismiss');
+
+const { t } = useI18n();
 </script>
 
 <style scoped lang="scss">

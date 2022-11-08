@@ -30,7 +30,7 @@ from rotkehlchen.db.settings import ModifiableDBSettings
 from rotkehlchen.errors.asset import UnknownAsset, UnprocessableTradePair
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.exchanges.data_structures import Trade
-from rotkehlchen.exchanges.kraken import KRAKEN_DELISTED, Kraken, kraken_to_world_pair
+from rotkehlchen.exchanges.kraken import KRAKEN_DELISTED, Kraken
 from rotkehlchen.fval import FVal
 from rotkehlchen.serialization.deserialize import deserialize_timestamp_from_kraken
 from rotkehlchen.tests.utils.api import (
@@ -54,7 +54,7 @@ from rotkehlchen.tests.utils.constants import (
     A_WAVES,
     A_XTZ,
 )
-from rotkehlchen.tests.utils.exchanges import try_get_first_exchange
+from rotkehlchen.tests.utils.exchanges import kraken_to_world_pair, try_get_first_exchange
 from rotkehlchen.tests.utils.history import TEST_END_TS, prices
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.tests.utils.pnl_report import query_api_create_and_get_report
@@ -100,6 +100,7 @@ def test_coverage_of_kraken_balances(kraken):
     got_assets.remove('CHF.HOLD')
     got_assets.remove('CAD.HOLD')
     got_assets.remove('AUD.HOLD')
+    got_assets.remove('AED.HOLD')
 
     diff = expected_assets.symmetric_difference(got_assets)
     if len(diff) != 0:

@@ -1,23 +1,28 @@
+import logging
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
+from rotkehlchen.chain.ethereum.decoding.constants import NAUGHTY_ERC721
 from rotkehlchen.constants import ONE
-from rotkehlchen.types import ChecksumEthAddress
+from rotkehlchen.types import ChecksumEvmAddress
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler
     from rotkehlchen.db.drivers.gevent import DBCursor
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceiptLog
 from rotkehlchen.chain.ethereum.utils import token_normalized_value
-from rotkehlchen.types import EthereumTransaction, Location
+from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.types import EvmTokenKind, EvmTransaction, Location
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hex_or_bytes_to_int, ts_sec_to_ms
 
-from .constants import NAUGHTY_ERC721
 from .utils import address_is_exchange
+
+logger = logging.getLogger(__name__)
+log = RotkehlchenLogsAdapter(logger)
 
 
 class BaseDecoderTools():
@@ -49,13 +54,13 @@ class BaseDecoderTools():
     def refresh_tracked_accounts(self, cursor: 'DBCursor') -> None:
         self.tracked_accounts = self.database.get_blockchain_accounts(cursor)
 
-    def is_tracked(self, adddress: ChecksumEthAddress) -> bool:
+    def is_tracked(self, adddress: ChecksumEvmAddress) -> bool:
         return adddress in self.tracked_accounts.eth
 
     def decode_direction(
             self,
-            from_address: ChecksumEthAddress,
-            to_address: Optional[ChecksumEthAddress],
+            from_address: ChecksumEvmAddress,
+            to_address: Optional[ChecksumEvmAddress],
     ) -> Optional[Tuple[HistoryEventType, Optional[str], str, str]]:
         """Depending on addresses, if they are tracked by the user or not, if they
         are an exchange address etc. determine the type of event to classify the transfer as"""
@@ -100,9 +105,9 @@ class BaseDecoderTools():
 
     def decode_erc20_721_transfer(
             self,
-            token: EthereumToken,
+            token: EvmToken,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
     ) -> Optional[HistoryBaseEntry]:
         """
         Caller should know this is a transfer of either an ERC20 or an ERC721 token.
@@ -112,15 +117,6 @@ class BaseDecoderTools():
         - DeserializationError
         - ConversionError
         """
-        if token.ethereum_address in NAUGHTY_ERC721:
-            token_type = 'erc721'
-        elif len(tx_log.topics) == 3:  # typical ERC20 has 2 indexed args
-            token_type = 'erc20'
-        elif len(tx_log.topics) == 4:  # typical ERC721 has 3 indexed args
-            token_type = 'erc721'
-        else:
-            return None
-
         from_address = hex_or_bytes_to_address(tx_log.topics[1])
         to_address = hex_or_bytes_to_address(tx_log.topics[2])
         direction_result = self.decode_direction(
@@ -130,21 +126,37 @@ class BaseDecoderTools():
         if direction_result is None:
             return None
 
+        extra_data = None
         event_type, location_label, counterparty, verb = direction_result
         amount_raw_or_token_id = hex_or_bytes_to_int(tx_log.data)
-        if token_type == 'erc20':
+        if token.token_kind == EvmTokenKind.ERC20:
             amount = token_normalized_value(token_amount=amount_raw_or_token_id, token=token)
             if event_type == HistoryEventType.SPEND:
                 notes = f'{verb} {amount} {token.symbol} from {location_label} to {counterparty}'
             else:
                 notes = f'{verb} {amount} {token.symbol} from {counterparty} to {location_label}'
-        else:
-            token_id = hex_or_bytes_to_int(tx_log.data)
+        elif token.token_kind == EvmTokenKind.ERC721:
+            try:
+                if token.evm_address in NAUGHTY_ERC721:  # id is in the data
+                    token_id = hex_or_bytes_to_int(tx_log.data[0:32])
+                else:
+                    token_id = hex_or_bytes_to_int(tx_log.topics[3])
+            except IndexError as e:
+                log.debug(
+                    f'At decoding of token {token.evm_address} as ERC721 got '
+                    f'insufficient number of topics: {tx_log.topics} and error: {str(e)}',
+                )
+                return None
+
             amount = ONE
+            name = 'ERC721 token' if token.name == '' else token.name
+            extra_data = {'token_id': token_id, 'token_name': name}
             if event_type == HistoryEventType.SPEND:
-                notes = f'{verb} {token.name} with id {token_id} from {location_label} to {counterparty}'  # noqa: E501
+                notes = f'{verb} {name} with id {token_id} from {location_label} to {counterparty}'  # noqa: E501
             else:
-                notes = f'{verb} {token.name} with id {token_id} from {counterparty} to {location_label}'  # noqa: E501
+                notes = f'{verb} {name} with id {token_id} from {counterparty} to {location_label}'  # noqa: E501
+        else:
+            return None  # unknown kind
 
         return HistoryBaseEntry(
             event_identifier=transaction.tx_hash,
@@ -158,4 +170,5 @@ class BaseDecoderTools():
             event_type=event_type,
             event_subtype=HistoryEventSubType.NONE,
             counterparty=counterparty,
+            extra_data=extra_data,
         )

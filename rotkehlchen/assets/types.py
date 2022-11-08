@@ -1,15 +1,16 @@
 from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Optional
 
+from rotkehlchen.types import ChainID, EvmTokenKind
 from rotkehlchen.utils.mixins.dbenum import DBEnumMixIn
 
 if TYPE_CHECKING:
-    from rotkehlchen.types import ChecksumEthAddress, Timestamp
+    from rotkehlchen.types import ChecksumEvmAddress, Timestamp
 
 
 class AssetType(DBEnumMixIn):
     FIAT = 1
     OWN_CHAIN = 2
-    ETHEREUM_TOKEN = 3
+    EVM_TOKEN = 3
     OMNI_TOKEN = 4
     NEO_TOKEN = 5
     COUNTERPARTY_TOKEN = 6
@@ -29,10 +30,21 @@ class AssetType(DBEnumMixIn):
     EOS_TOKEN = 20
     FUSION_TOKEN = 21
     LUNIVERSE_TOKEN = 22
-    OTHER = 23
+    OTHER = 23  # OTHER and OWN chain are probably the same thing -- needs checking
     AVALANCHE_TOKEN = 24
     SOLANA_TOKEN = 25
     NFT = 26
+    CUSTOM_ASSET = 27
+
+    @staticmethod
+    def is_crypto_asset(asset_type: 'AssetType') -> bool:
+        crypto_asset_types_values = set(range(4, 27))
+        crypto_asset_types_values.add(2)  # include `OWN_CHAIN`
+        return asset_type.value in crypto_asset_types_values
+
+
+ASSETS_WITH_NO_CRYPTO_ORACLES = {AssetType.NFT, AssetType.CUSTOM_ASSET}
+NON_CRYPTO_ASSETS = {AssetType.CUSTOM_ASSET, AssetType.FIAT}
 
 
 class AssetData(NamedTuple):
@@ -46,7 +58,9 @@ class AssetData(NamedTuple):
     started: Optional['Timestamp']
     forked: Optional[str]
     swapped_for: Optional[str]
-    ethereum_address: Optional['ChecksumEthAddress']
+    address: Optional['ChecksumEvmAddress']
+    chain: Optional[ChainID]
+    token_kind: Optional[EvmTokenKind]
     decimals: Optional[int]
     # None means, no special mapping. '' means not supported
     cryptocompare: Optional[str]
@@ -57,4 +71,8 @@ class AssetData(NamedTuple):
         result = self._asdict()  # pylint: disable=no-member
         result.pop('identifier')
         result['asset_type'] = str(self.asset_type)
+        if self.chain is not None:
+            result['chain'] = self.chain.serialize()
+        if self.token_kind is not None:
+            result['token_kind'] = self.token_kind.serialize()
         return result

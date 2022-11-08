@@ -44,9 +44,11 @@ class DataHandler():
             self.username = 'no_user'
             self.password = ''
             self.user_data_dir: Optional[Path] = None
-            with self.db.conn.read_ctx() as cursor:
-                self.db.update_owned_assets_in_globaldb(cursor)
-            self.db.logout()
+            db = getattr(self, 'db', None)
+            if db is not None:
+                with self.db.conn.read_ctx() as cursor:
+                    self.db.update_owned_assets_in_globaldb(cursor)
+                self.db.logout()
             self.logged_in = False
 
     def change_password(self, new_password: str) -> bool:
@@ -73,7 +75,8 @@ class DataHandler():
         - AuthenticationError if the given user does not exist, or if
         sqlcipher version problems are detected
         - DBUpgradeError if the rotki DB version is newer than the software or
-        there is a DB upgrade and there is an error.
+        there is a DB upgrade and there is an error or if the version is older
+        than the one supported.
         """
         user_data_dir = self.data_directory / username
         if create_new:
@@ -190,12 +193,13 @@ class DataHandler():
         Returns a b64 encoded binary blob"""
         log.info('Compress and encrypt DB')
         compressor = zlib.compressobj(level=9)
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            tempdb = Path(tmpdirname) / 'temp.db'
-            self.db.export_unencrypted(tempdb)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as tempdbfile:
+            tempdbpath = Path(tempdbfile.name)
+            tempdbfile.close()  # close the file to allow re-opening by export_unencrypted in windows https://github.com/rotki/rotki/issues/5051  # noqa: E501
+            self.db.export_unencrypted(tempdbpath)
             source_data = bytearray()
             compressed_data = bytearray()
-            with open(tempdb, 'rb') as src_f:
+            with open(tempdbpath, 'rb') as src_f:
                 block = src_f.read(BUFFERSIZE)
                 while block:
                     source_data += block
@@ -208,6 +212,8 @@ class DataHandler():
             hashlib.sha256(source_data).digest(),
         ).decode()
         encrypted_data = encrypt(password.encode(), bytes(compressed_data))
+        # cleanup temp file to avoid windows problem (https://github.com/rotki/rotki/issues/5051)
+        tempdbpath.unlink()
         return B64EncodedBytes(encrypted_data.encode()), original_data_hash
 
     def decompress_and_decrypt_db(self, password: str, encrypted_data: B64EncodedString) -> None:
@@ -218,11 +224,11 @@ class DataHandler():
         May Raise:
         - UnableToDecryptRemoteData due to decrypt()
         - DBUpgradeError if the rotki DB version is newer than the software or
-        there is a DB upgrade and there is an error.
+        there is a DB upgrade and there is an error or if the version is older
+        than the one supported.
         - SystemPermissionError if the DB file permissions are not correct
         """
         log.info('Decompress and decrypt DB')
-
         # First make a backup of the DB we are about to replace
         date = timestamp_to_date(ts=ts_now(), formatstr='%Y_%m_%d_%H_%M_%S', treat_as_local=True)
         shutil.copyfile(

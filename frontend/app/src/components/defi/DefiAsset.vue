@@ -2,8 +2,7 @@
   <div class="defi-asset d-flex flex-row align-center">
     <asset-icon
       size="32px"
-      :identifier="`_ceth_${asset.tokenAddress}`"
-      :symbol="asset.tokenSymbol"
+      :identifier="createEvmIdentifierFromAddress(asset.tokenAddress)"
     />
     <span class="ml-3">{{ asset.tokenSymbol }}</span>
     <v-spacer />
@@ -21,24 +20,16 @@
     </div>
   </div>
 </template>
-<script lang="ts">
-import { defineComponent, PropType } from '@vue/composition-api';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import AmountDisplay from '@/components/display/AmountDisplay.vue';
 import AssetIcon from '@/components/helper/display/icons/AssetIcon.vue';
 import { DefiAsset } from '@/store/defi/types';
+import { createEvmIdentifierFromAddress } from '@/utils/assets';
 
-export default defineComponent({
-  name: 'DefiAsset',
-  components: { AmountDisplay, AssetIcon },
-  props: {
-    asset: { required: true, type: Object as PropType<DefiAsset> }
-  },
-  setup() {
-    const assetPadding: number = 1;
-
-    return {
-      assetPadding
-    };
-  }
+defineProps({
+  asset: { required: true, type: Object as PropType<DefiAsset> }
 });
+
+const assetPadding: number = 1;
 </script>

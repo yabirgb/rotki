@@ -10,10 +10,6 @@
         <div
           class="overall-balances__net-worth text-center font-weight-medium mb-2"
         >
-          <loading
-            v-if="loading"
-            class="overall-balances__net-worth__loading text-start ms-2"
-          />
           <div :style="`font-size: ${adjustedTotalNetWorthFontSize}em`">
             <amount-display
               class="ps-4"
@@ -26,20 +22,28 @@
         <div class="overall-balances__net-worth-change py-2">
           <span
             :class="balanceClass"
-            class="pa-1 px-2 d-flex flex-row overall-balances__net-worth-change__pill"
+            class="pa-1 px-2 overall-balances__net-worth-change__pill"
           >
-            <span class="me-2">{{ indicator }}</span>
-            <amount-display
-              v-if="!loading"
-              show-currency="symbol"
-              :fiat-currency="currencySymbol"
-              :value="balanceDelta"
+            <loading
+              v-if="isLoading"
+              class="overall-balances__net-worth__loading d-flex justify-center mt-n2"
             />
-            <percentage-display
-              v-if="!loading"
-              class="ms-2 px-1 text--secondary pe-2"
-              :value="percentage"
-            />
+            <span v-else class="d-flex flex-row">
+              <span class="me-2">
+                <v-icon>{{ indicator }}</v-icon>
+              </span>
+              <amount-display
+                v-if="!isLoading"
+                show-currency="symbol"
+                :fiat-currency="currencySymbol"
+                :value="balanceDelta"
+              />
+              <percentage-display
+                v-if="!isLoading"
+                class="ms-2 px-1 text--secondary pe-2"
+                :value="percentage"
+              />
+            </span>
           </span>
         </div>
         <timeframe-selector
@@ -53,7 +57,7 @@
           class="d-flex justify-center align-center flex-grow-1 overall-balances__net-worth-chart"
         >
           <net-worth-chart
-            v-if="!loading"
+            v-if="!isLoading"
             :chart-data="timeframeData"
             :timeframe="timeframe"
             :timeframes="allTimeframes"
@@ -65,7 +69,7 @@
               color="primary"
             />
             <div class="pt-5 text-caption">
-              {{ $t('overall_balances.loading') }}
+              {{ t('overall_balances.loading') }}
             </div>
           </div>
         </div>
@@ -76,44 +80,34 @@
 
 <script setup lang="ts">
 import { TimeUnit } from '@rotki/common/lib/settings';
-import { TimeFramePeriod, timeframes } from '@rotki/common/lib/settings/graphs';
 import {
-  computed,
-  defineAsyncComponent,
-  onMounted,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+  TimeFramePeriod,
+  TimeFramePersist,
+  timeframes,
+  TimeFrameSetting
+} from '@rotki/common/lib/settings/graphs';
 import dayjs from 'dayjs';
-import { storeToRefs } from 'pinia';
-import { setupStatusChecking } from '@/composables/common';
-import { Section } from '@/store/const';
+import NetWorthChart from '@/components/dashboard/NetWorthChart.vue';
+import Loading from '@/components/helper/Loading.vue';
+import TimeframeSelector from '@/components/helper/TimeframeSelector.vue';
+import { useSectionLoading } from '@/composables/common';
 import { usePremiumStore } from '@/store/session/premium';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useSessionSettingsStore } from '@/store/settings/session';
 import { isPeriodAllowed } from '@/store/settings/utils';
 import { useStatisticsStore } from '@/store/statistics';
+import { Section } from '@/types/status';
+import { assert } from '@/utils/assertions';
 import { bigNumberify } from '@/utils/bignumbers';
 
-const TimeframeSelector = defineAsyncComponent(
-  () => import('@/components/helper/TimeframeSelector.vue')
-);
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const Loading = defineAsyncComponent(
-  () => import('@/components/helper/Loading.vue')
-);
-const AmountDisplay = defineAsyncComponent(
-  () => import('@/components/display/AmountDisplay.vue')
-);
-const NetWorthChart = defineAsyncComponent(
-  () => import('@/components/dashboard/NetWorthChart.vue')
-);
-
+const { t } = useI18n();
 const { currencySymbol, floatingPrecision } = storeToRefs(
   useGeneralSettingsStore()
 );
-const { timeframe } = storeToRefs(useSessionSettingsStore());
+const sessionStore = useSessionSettingsStore();
+const { update } = sessionStore;
+const { timeframe } = storeToRefs(sessionStore);
 const { premium } = storeToRefs(usePremiumStore());
 const statistics = useStatisticsStore();
 const { fetchNetValue, getNetValue } = statistics;
@@ -121,15 +115,12 @@ const { totalNetWorth } = storeToRefs(statistics);
 const frontendStore = useFrontendSettingsStore();
 const { visibleTimeframes } = storeToRefs(frontendStore);
 
-const { isSectionRefreshing } = setupStatusChecking();
-const loading = computed(() => {
-  const sections = [Section.BLOCKCHAIN_ETH, Section.BLOCKCHAIN_BTC];
-  for (const section of sections) {
-    if (get(isSectionRefreshing(section))) {
-      return true;
-    }
-  }
-  return false;
+const { isSectionRefreshing } = useSectionLoading();
+const isLoading = computed(() => {
+  return (
+    get(isSectionRefreshing(Section.BLOCKCHAIN_ETH)) ||
+    get(isSectionRefreshing(Section.BLOCKCHAIN_BTC))
+  );
 });
 
 const startingValue = computed(() => {
@@ -181,30 +172,39 @@ const percentage = computed(() => {
 });
 
 const indicator = computed(() => {
-  if (get(loading)) {
+  if (get(isLoading)) {
     return '';
   }
-  return get(balanceDelta).isNegative() ? '▼' : '▲';
+  return get(balanceDelta).isNegative() ? 'mdi-menu-down' : 'mdi-menu-up';
 });
 
 const balanceClass = computed(() => {
-  if (get(loading)) {
+  if (get(isLoading)) {
     return 'rotki-grey lighten-3';
   }
   return get(balanceDelta).isNegative() ? 'rotki-red lighten-1' : 'rotki-green';
 });
 
-const setTimeframe = (value: TimeFramePeriod) => {
-  set(timeframe, value);
-  frontendStore.updateSetting({ lastKnownTimeframe: value });
+const setTimeframe = async (value: TimeFrameSetting) => {
+  assert(value !== TimeFramePersist.REMEMBER);
+  sessionStore.update({ timeframe: value });
+  await frontendStore.updateSetting({ lastKnownTimeframe: value });
 };
 
 watch(premium, async () => fetchNetValue());
 
 onMounted(() => {
-  if (get(premium) && !isPeriodAllowed(get(timeframe))) {
-    set(timeframe, TimeFramePeriod.TWO_WEEKS);
+  const isPremium = get(premium);
+  const selectedTimeframe = get(timeframe);
+  if (!isPremium && !isPeriodAllowed(selectedTimeframe)) {
+    update({ timeframe: TimeFramePeriod.TWO_WEEKS });
   }
+});
+
+const { showGraphRangeSelector } = storeToRefs(useFrontendSettingsStore());
+const chartSectionHeight = computed<string>(() => {
+  const height = 208 + (get(showGraphRangeSelector) ? 60 : 0);
+  return `${height}px`;
 });
 </script>
 <style scoped lang="scss">
@@ -216,7 +216,7 @@ onMounted(() => {
   }
 
   &__net-worth {
-    ::v-deep {
+    :deep() {
       .amount-display {
         &__value {
           font-size: 3.5em;
@@ -261,6 +261,7 @@ onMounted(() => {
     width: 100%;
 
     &__loader {
+      min-height: v-bind(chartSectionHeight);
       display: flex;
       height: 100%;
       flex-direction: column;

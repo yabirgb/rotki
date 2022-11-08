@@ -1,18 +1,25 @@
 import { mount, ThisTypedMountOptions, Wrapper } from '@vue/test-utils';
-import { createPinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
-import Vuex from 'vuex';
 import TabNavigation from '@/components/helper/TabNavigation.vue';
-import store from '@/store/store';
+import { getClass } from '@/types/tabs';
 
-Vue.use(Vuetify);
-Vue.use(Vuex);
-Vue.use(PiniaVuePlugin);
+vi.mock('vue-router/composables', () => ({
+  useRoute: vi.fn().mockReturnValue({
+    path: '/dashboard/info/'
+  })
+}));
+
+vi.mock('@/composables/common', () => ({
+  useTheme: vi.fn().mockReturnValue({
+    currentBreakpoint: computed(() => ({
+      xsOnly: false
+    }))
+  })
+}));
 
 describe('TabNavigation.vue', () => {
   let wrapper: Wrapper<any>;
-  let nav: any;
   const data = [{ name: 'tab', routeTo: '/route/to/tab', hidden: true }];
 
   function createWrapper(options: ThisTypedMountOptions<any> = {}) {
@@ -21,7 +28,6 @@ describe('TabNavigation.vue', () => {
     setActivePinia(pinia);
     return mount(TabNavigation, {
       pinia,
-      store,
       vuetify,
       ...options
     });
@@ -31,18 +37,16 @@ describe('TabNavigation.vue', () => {
     wrapper = createWrapper({
       propsData: {
         tabContents: data
-      },
-      mocks: { $route: { path: '/dashboard/info/' } }
+      }
     });
-    nav = wrapper.vm as any;
   });
 
   test('gets proper class out of path', async () => {
-    const className = nav.getClass('/dashboard/info');
+    const className = getClass('/dashboard/info');
     expect(className).toEqual('dashboard__info');
   });
 
   test('do not return any tabs that are hidden', async () => {
-    expect(nav.visibleTabs).toMatchObject([]);
+    expect(wrapper.findAll('.tab-navigation__tabs__tab')).toHaveLength(0);
   });
 });

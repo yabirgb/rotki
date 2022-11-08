@@ -1,4 +1,4 @@
-import { TradeLocation } from '@/services/history/types';
+import { TradeLocation } from '@/types/history/trade-location';
 import { bigNumberify, Zero } from '@/utils/bignumbers';
 import { toSentenceCase } from '@/utils/text';
 import { AccountBalancesPage } from './index';
@@ -22,21 +22,26 @@ export class ManualBalancesPage extends AccountBalancesPage {
 
   addBalance(balance: FixtureManualBalance) {
     cy.get('.big-dialog').should('be.visible');
-    cy.get('.manual-balances-form__asset')
-      .type(balance.keyword)
-      .type('{enter}');
+    cy.get('.manual-balances-form__asset').type(balance.keyword);
+    cy.get('[data-cy="no_assets"]').should('not.exist');
+    cy.get(`#asset-${balance.asset.toLowerCase()}`).should('be.visible');
+    cy.get('.v-autocomplete__content .v-list > div').should($list => {
+      expect($list.eq(0)).to.contain(balance.asset);
+    });
+    cy.get('.manual-balances-form__asset').type('{enter}');
     cy.get('.manual-balances-form__label').type(balance.label);
     cy.get('.manual-balances-form__amount').type(balance.amount);
     for (const tag of balance.tags) {
       cy.get('.manual-balances-form__tags').type(tag).type('{enter}');
     }
+
     cy.get('.manual-balances-form__location').click();
-    cy.get('.manual-balances-form__location div.v-select__selections input')
-      .type(`{selectall}{backspace}`)
-      .type(balance.location)
-      .type('{enter}');
+    cy.get('.manual-balances-form__location').type(`{selectall}{backspace}`);
+    cy.get('.manual-balances-form__location').type(balance.location);
+    cy.get('.manual-balances-form__location').type('{enter}');
+    cy.get('.v-autocomplete__content').should('not.be.visible');
     cy.get('.big-dialog__buttons__confirm').click();
-    cy.get('.big-dialog', { timeout: 45000 }).should('not.be.visible');
+    cy.get('.big-dialog', { timeout: 120000 }).should('not.be.visible');
   }
 
   visibleEntries(visible: number) {
@@ -113,7 +118,7 @@ export class ManualBalancesPage extends AccountBalancesPage {
       const rowClass = `.manual-balance__location__${balanceLocation.location}`;
       cy.get('body').then($body => {
         if ($body.find(rowClass).length > 0) {
-          cy.get(`${rowClass} td:nth-child(5) [data-cy="display-amount"]`).each(
+          cy.get(`${rowClass} td:nth-child(6) [data-cy="display-amount"]`).each(
             $amount => {
               balanceLocation.renderedValue =
                 balanceLocation.renderedValue.plus(

@@ -11,7 +11,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.utils import symbol_to_asset_or_token
 from rotkehlchen.constants.assets import A_EUR
 from rotkehlchen.errors.asset import UnknownAsset
@@ -45,8 +45,8 @@ log = RotkehlchenLogsAdapter(logger)
 # This corresponds to md5('') and is used in signature generation
 MD5_EMPTY_STR = 'd41d8cd98f00b204e9800998ecf8427e'
 
-# Pairs can be found in Basic API doc:
-# https://www.bitcoin.de/en/api/tapi/v4/docu#handelspaarliste_c2f
+# Pairs can be found in Basic API doc https://www.bitcoin.de/en/api/basic. There is no api to
+# query this pairs.
 BITCOINDE_TRADING_PAIRS = (
     'btceur',
     'bcheur',
@@ -54,18 +54,27 @@ BITCOINDE_TRADING_PAIRS = (
     'etheur',
     'bsveur',
     'ltceur',
-    'iotabtc',
-    'dashbtc',
-    'gntbtc',
-    'ltcbtc',
+    'xrpeur',
+    'dogeeur',
+    'soleur',
+    'trxeur',
+    'iotabtc',  # not listed anymore
+    'dashbtc',  # not listed anymore
+    'gntbtc',  # not listed anymore
+    'ltcbtc',  # not listed anymore
 )
+BITCOINDE_TO_WORLD_SYMBOLS = {
+    'SOL': 'SOL-2',
+}
 
 
-def bitcoinde_asset(symbol: str) -> Asset:
-    return symbol_to_asset_or_token(symbol.upper())
+def bitcoinde_asset(symbol: str) -> AssetWithOracles:
+    upper_symbol = symbol.upper()
+    rotki_id = BITCOINDE_TO_WORLD_SYMBOLS.get(upper_symbol, upper_symbol)
+    return symbol_to_asset_or_token(rotki_id)
 
 
-def bitcoinde_pair_to_world(pair: str) -> Tuple[Asset, Asset]:
+def bitcoinde_pair_to_world(pair: str) -> Tuple[AssetWithOracles, AssetWithOracles]:
     if len(pair) == 6:
         tx_asset = bitcoinde_asset(pair[:3])
         native_asset = bitcoinde_asset(pair[3:])
@@ -253,7 +262,7 @@ class Bitcoinde(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             return False, str(e)
 
     def query_balances(self, **kwargs: Any) -> ExchangeQueryBalances:
-        assets_balance: Dict[Asset, Balance] = {}
+        assets_balance: Dict[AssetWithOracles, Balance] = {}
         try:
             resp_info = self._api_query('get', 'account')
         except RemoteError as e:
@@ -266,7 +275,13 @@ class Bitcoinde(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
         log.debug(f'Bitcoin.de account response: {resp_info}')
         for currency, balance in resp_info['data']['balances'].items():
-            asset = bitcoinde_asset(currency)
+            try:
+                asset = bitcoinde_asset(currency)
+            except UnknownAsset as e:
+                self.msg_aggregator.add_error(
+                    f'Failed to read balance for asset {e.identifier} at Bitcoin.de. Please '
+                    f'report this error.',
+                )
             try:
                 usd_price = Inquirer().find_usd_price(asset=asset)
             except RemoteError as e:
@@ -334,7 +349,7 @@ class Bitcoinde(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found bitcoin.de trade with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:

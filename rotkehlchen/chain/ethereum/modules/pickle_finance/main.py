@@ -2,15 +2,15 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
 
 from rotkehlchen.accounting.structures.balance import AssetBalance, Balance
-from rotkehlchen.chain.ethereum.contracts import EthereumContract
-from rotkehlchen.chain.ethereum.utils import multicall_2, token_normalized_value_decimals
+from rotkehlchen.chain.ethereum.utils import token_normalized_value_decimals
+from rotkehlchen.chain.evm.contracts import EvmContract
 from rotkehlchen.constants.assets import A_PICKLE
 from rotkehlchen.constants.ethereum import PICKLE_DILL, PICKLE_DILL_REWARDS
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.serialization.deserialize import deserialize_timestamp
-from rotkehlchen.types import ChecksumEthAddress, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 
@@ -45,21 +45,22 @@ class PickleFinance(EthereumModule):
         self.database = database
         self.premium = premium
         self.msg_aggregator = msg_aggregator
-        self.rewards_contract = EthereumContract(
+        self.rewards_contract = EvmContract(
             address=PICKLE_DILL_REWARDS.address,
             abi=PICKLE_DILL_REWARDS.abi,
             deployed_block=PICKLE_DILL_REWARDS.deployed_block,
         )
-        self.dill_contract = EthereumContract(
+        self.dill_contract = EvmContract(
             address=PICKLE_DILL.address,
             abi=PICKLE_DILL.abi,
             deployed_block=PICKLE_DILL.deployed_block,
         )
+        self.pickle = A_PICKLE.resolve_to_evm_token()
 
     def get_dill_balances(
         self,
-        addresses: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, DillBalance]:
+        addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, DillBalance]:
         """
         Query information for amount locked, pending rewards and time until unlock
         for Pickle's dill.
@@ -76,8 +77,7 @@ class PickleFinance(EthereumModule):
             (PICKLE_DILL.address, self.dill_contract.encode(method_name='locked', arguments=[x]))
             for x in addresses
         ]
-        outputs = multicall_2(
-            ethereum=self.ethereum,
+        outputs = self.ethereum.multicall_2(
             require_success=False,
             calls=rewards_calls + balance_calls,
         )
@@ -98,11 +98,11 @@ class PickleFinance(EthereumModule):
                     )
                     dill_rewards = token_normalized_value_decimals(
                         token_amount=rewards[0],  # pylint: disable=unsubscriptable-object
-                        token_decimals=A_PICKLE.decimals,
+                        token_decimals=self.pickle.decimals,
                     )
                     dill_locked = token_normalized_value_decimals(
                         token_amount=dill_amounts[0],  # pylint: disable=unsubscriptable-object
-                        token_decimals=A_PICKLE.decimals,
+                        token_decimals=self.pickle.decimals,
                     )
                     balance = DillBalance(
                         dill_amount=AssetBalance(
@@ -131,11 +131,11 @@ class PickleFinance(EthereumModule):
 
     def balances_in_protocol(
         self,
-        addresses: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, List['AssetBalance']]:
+        addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, List['AssetBalance']]:
         """Queries all the pickles deposited and available to claim in the protocol"""
         dill_balances = self.get_dill_balances(addresses)
-        balances_per_address: Dict[ChecksumEthAddress, List['AssetBalance']] = defaultdict(list)
+        balances_per_address: Dict[ChecksumEvmAddress, List['AssetBalance']] = defaultdict(list)
         for address, dill_balance in dill_balances.items():
             pickles = dill_balance.dill_amount + dill_balance.pending_rewards
             if pickles.balance.amount != 0:
@@ -143,10 +143,10 @@ class PickleFinance(EthereumModule):
         return balances_per_address
 
     # -- Methods following the EthereumModule interface -- #
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
-        return self.balances_in_protocol([address]).get(address, None)
+    def on_account_addition(self, address: ChecksumEvmAddress) -> None:
+        pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

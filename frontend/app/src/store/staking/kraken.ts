@@ -1,19 +1,15 @@
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { defineStore } from 'pinia';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
-import { useAssetInfoRetrieval } from '@/store/assets';
-import { Section, Status } from '@/store/const';
+import { useStatusUpdater } from '@/composables/status';
+import { useKrakenApi } from '@/services/staking/kraken';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
 import { useNotifications } from '@/store/notifications';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useTasks } from '@/store/tasks';
-import { getStatusUpdater } from '@/store/utils';
 import {
   KrakenStakingEvents,
   KrakenStakingPagination,
   ReceivedAmount
 } from '@/types/staking';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { Zero } from '@/utils/bignumbers';
@@ -41,7 +37,10 @@ export const useKrakenStakingStore = defineStore('staking/kraken', () => {
   const pagination = ref(defaultPagination());
   const rawEvents = ref<KrakenStakingEvents>(defaultEventState());
 
+  const api = useKrakenApi();
+
   const { getAssociatedAssetIdentifier } = useAssetInfoRetrieval();
+  const { t } = useI18n();
 
   const events = computed<KrakenStakingEvents>(() => {
     const eventsValue = get(rawEvents) as KrakenStakingEvents;
@@ -75,7 +74,7 @@ export const useKrakenStakingStore = defineStore('staking/kraken', () => {
 
   const { isTaskRunning, awaitTask } = useTasks();
   const { notify } = useNotifications();
-  const { isFirstLoad, loading, setStatus, resetStatus } = getStatusUpdater(
+  const { isFirstLoad, loading, setStatus, resetStatus } = useStatusUpdater(
     Section.STAKING_KRAKEN
   );
 
@@ -83,7 +82,7 @@ export const useKrakenStakingStore = defineStore('staking/kraken', () => {
     const { taskId } = await api.refreshKrakenStaking();
 
     const taskMeta: TaskMeta = {
-      title: i18n.t('actions.kraken_staking.task.title').toString(),
+      title: t('actions.kraken_staking.task.title').toString(),
       numericKeys: []
     };
 
@@ -121,10 +120,10 @@ export const useKrakenStakingStore = defineStore('staking/kraken', () => {
       logger.error(e);
       resetStatus();
       notify({
-        title: i18n.t('actions.kraken_staking.error.title').toString(),
-        message: i18n
-          .t('actions.kraken_staking.error.message', { message: e.message })
-          .toString(),
+        title: t('actions.kraken_staking.error.title').toString(),
+        message: t('actions.kraken_staking.error.message', {
+          message: e.message
+        }).toString(),
         display: true
       });
     }

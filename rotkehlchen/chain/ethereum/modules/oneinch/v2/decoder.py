@@ -6,9 +6,9 @@ from rotkehlchen.chain.ethereum.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.ethereum.decoding.structures import ActionItem
 from rotkehlchen.chain.ethereum.decoding.utils import maybe_reshuffle_events
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceiptLog
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value, ethaddress_to_asset
-from rotkehlchen.types import ChecksumEthAddress, EthereumTransaction
+from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hex_or_bytes_to_int
 
 from ..constants import CPT_ONEINCH_V2
@@ -33,20 +33,20 @@ class Oneinchv2Decoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
     def _decode_swapped(  # pylint: disable=no-self-use
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         sender = hex_or_bytes_to_address(tx_log.topics[1])
         source_token_address = hex_or_bytes_to_address(tx_log.topics[2])
         destination_token_address = hex_or_bytes_to_address(tx_log.topics[3])
 
         source_token = ethaddress_to_asset(source_token_address)
         if source_token is None:
-            return None, None
+            return None, []
         destination_token = ethaddress_to_asset(destination_token_address)
         if destination_token is None:
-            return None, None
+            return None, []
 
         receiver = hex_or_bytes_to_address(tx_log.data[0:32])
         spent_amount_raw = hex_or_bytes_to_int(tx_log.data[64:96])
@@ -73,26 +73,26 @@ class Oneinchv2Decoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
                 in_event = event
 
         maybe_reshuffle_events(out_event=out_event, in_event=in_event, events_list=decoded_events)
-        return None, None
+        return None, []
 
     def decode_action(
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: Optional[List[ActionItem]],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         if tx_log.topics[0] == SWAPPED:
             return self._decode_swapped(tx_log=tx_log, transaction=transaction, decoded_events=decoded_events, all_logs=all_logs)  # noqa: E501
 
-        return None, None
+        return None, []
 
     # -- DecoderInterface methods
 
-    def addresses_to_decoders(self) -> Dict[ChecksumEthAddress, Tuple[Any, ...]]:
+    def addresses_to_decoders(self) -> Dict[ChecksumEvmAddress, Tuple[Any, ...]]:
         return {
-            string_to_ethereum_address('0x111111125434b319222CdBf8C261674aDB56F3ae'): (self.decode_action,),  # noqa: E501
+            string_to_evm_address('0x111111125434b319222CdBf8C261674aDB56F3ae'): (self.decode_action,),  # noqa: E501
         }
 
     def counterparties(self) -> List[str]:

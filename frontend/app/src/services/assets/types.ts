@@ -1,23 +1,6 @@
-import { AssetEntry, NumericString, BigNumber } from '@rotki/common';
-import { BaseAsset, SupportedAsset } from '@rotki/common/lib/data';
+import { AssetEntry, NumericString } from '@rotki/common';
 import { z } from 'zod';
 import { CONFLICT_RESOLUTION } from '@/services/assets/consts';
-
-export const UnderlyingToken = z.object({
-  address: z.string(),
-  weight: z.string()
-});
-
-export type UnderlyingToken = z.infer<typeof UnderlyingToken>;
-
-export const EthereumToken = BaseAsset.extend({
-  address: z.string(),
-  decimals: z.number(),
-  underlyingTokens: z.array(UnderlyingToken).optional(),
-  protocol: z.string().optional()
-});
-
-export type EthereumToken = z.infer<typeof EthereumToken>;
 
 export interface AssetIdResponse {
   readonly identifier: string;
@@ -34,31 +17,58 @@ export interface ConflictResolution {
   readonly [assetId: string]: ConflictResolutionStrategy;
 }
 
-export type ManagedAsset = EthereumToken | SupportedAsset;
-
-export interface HistoricalPrice {
+export interface AssetPair {
   readonly fromAsset: string;
   readonly toAsset: string;
-  readonly timestamp: number;
-  readonly price: BigNumber;
 }
 
-export interface HistoricalPriceFormPayload {
-  readonly fromAsset: string;
-  readonly toAsset: string;
-  readonly timestamp: number;
-  readonly price: string;
-}
+export const AssetPair = z.object({
+  fromAsset: z.string(),
+  toAsset: z.string()
+});
 
-export interface HistoricalPriceDeletePayload {
-  readonly fromAsset: string;
-  readonly toAsset: string;
-  readonly timestamp: number;
-}
+export const ManualPrice = AssetPair.extend({
+  price: NumericString
+});
 
-export interface HistoricalPricePayload {
-  readonly fromAsset: string;
-  readonly toAsset: string;
+export type ManualPrice = z.infer<typeof ManualPrice>;
+
+export const ManualPrices = z.array(ManualPrice);
+export type ManualPrices = z.infer<typeof ManualPrices>;
+
+export const HistoricalPrice = ManualPrice.extend({
+  timestamp: z.number()
+});
+export type HistoricalPrice = z.infer<typeof HistoricalPrice>;
+
+export const HistoricalPrices = z.array(HistoricalPrice);
+export type HistoricalPrices = z.infer<typeof HistoricalPrices>;
+
+export const ManualPriceFormPayload = AssetPair.extend({
+  price: z.string()
+});
+
+export type ManualPriceFormPayload = z.infer<typeof ManualPriceFormPayload>;
+
+export const HistoricalPriceFormPayload = ManualPriceFormPayload.extend({
+  timestamp: z.number()
+});
+
+export type HistoricalPriceFormPayload = z.infer<
+  typeof HistoricalPriceFormPayload
+>;
+
+export const HistoricalPriceDeletePayload = AssetPair.extend({
+  timestamp: z.number()
+});
+
+export type HistoricalPriceDeletePayload = z.infer<
+  typeof HistoricalPriceDeletePayload
+>;
+
+export interface ManualPricePayload {
+  readonly fromAsset: string | null;
+  readonly toAsset: string | null;
 }
 
 export const PriceInformation = z.object({
@@ -69,9 +79,8 @@ export const PriceInformation = z.object({
 });
 
 export type PriceInformation = z.infer<typeof PriceInformation>;
-export const AssetPrice = PriceInformation.merge(AssetEntry);
 
-export type AssetPrice = z.infer<typeof AssetPrice>;
+export const AssetPrice = PriceInformation.merge(AssetEntry);
 
 export const AssetPriceArray = z.array(AssetPrice);
 

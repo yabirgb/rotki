@@ -23,12 +23,12 @@
                 to="/settings/modules"
                 small
               >
-                {{ $t('module_not_active.settings_link') }}
+                {{ t('module_not_active.settings_link') }}
               </router-link>
             </template>
             <template #text>
               <div v-if="modules.length > 1">
-                {{ $t('module_not_active.at_least_one') }}
+                {{ t('module_not_active.at_least_one') }}
               </div>
             </template>
             <template #module>
@@ -47,56 +47,42 @@
   </div>
 </template>
 
-<script lang="ts">
-import {
-  defineComponent,
-  getCurrentInstance,
-  onMounted,
-  PropType,
-  ref
-} from '@vue/composition-api';
-import { set } from '@vueuse/core';
-import { SUPPORTED_MODULES } from '@/components/defi/wizard/consts';
-import { Module } from '@/types/modules';
+<script setup lang="ts">
+import { getCurrentInstance, onMounted, PropType, ref } from 'vue';
+
+import { Module, SUPPORTED_MODULES } from '@/types/modules';
 import { assert } from '@/utils/assertions';
 
-export default defineComponent({
-  props: {
-    modules: {
-      required: true,
-      type: Array as PropType<Module[]>,
-      validator: (value: Module[]) =>
-        value.every(module => Object.values(Module).includes(module))
-    }
-  },
-  setup() {
-    const top = ref(0);
-
-    const name = (module: string): string => {
-      const data = SUPPORTED_MODULES.find(value => value.identifier === module);
-      return data?.name ?? '';
-    };
-
-    const icon = (module: Module): string => {
-      const data = SUPPORTED_MODULES.find(value => value.identifier === module);
-      return data?.icon ?? '';
-    };
-
-    onMounted(() => {
-      const currentInstance = getCurrentInstance();
-      assert(currentInstance);
-      const $el = currentInstance.proxy.$el;
-      const { top: topPoint } = $el.getBoundingClientRect();
-      set(top, topPoint);
-    });
-
-    return {
-      top,
-      name,
-      icon
-    };
+defineProps({
+  modules: {
+    required: true,
+    type: Array as PropType<Module[]>,
+    validator: (value: Module[]) =>
+      value.every(module => Object.values(Module).includes(module))
   }
 });
+
+const top = ref(0);
+
+const name = (module: string): string => {
+  const data = SUPPORTED_MODULES.find(value => value.identifier === module);
+  return data?.name ?? '';
+};
+
+const icon = (module: Module): string => {
+  const data = SUPPORTED_MODULES.find(value => value.identifier === module);
+  return data?.icon ?? '';
+};
+
+onMounted(() => {
+  const currentInstance = getCurrentInstance();
+  assert(currentInstance);
+  const $el = currentInstance.proxy.$el;
+  const { top: topPoint } = $el.getBoundingClientRect();
+  set(top, topPoint);
+});
+
+const { t } = useI18n();
 </script>
 
 <style scoped lang="scss">

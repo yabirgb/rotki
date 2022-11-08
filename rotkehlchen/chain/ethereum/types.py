@@ -1,20 +1,20 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, NamedTuple, Tuple, Type
+from typing import Any, Dict, Literal, NamedTuple, Tuple, Type
 
 from eth_typing import HexAddress, HexStr
 
 from rotkehlchen.fval import FVal
-from rotkehlchen.types import ChecksumEthAddress
+from rotkehlchen.types import ChecksumEvmAddress, SupportedBlockchain
 
 ETHERSCAN_NODE_NAME = 'etherscan'
 
 
-def string_to_ethereum_address(value: str) -> ChecksumEthAddress:
+def string_to_evm_address(value: str) -> ChecksumEvmAddress:
     """This is a conversion without any checks of a string to ethereum address
 
     Is only used for typing.
     """
-    return ChecksumEthAddress(HexAddress(HexStr(value)))
+    return ChecksumEvmAddress(HexAddress(HexStr(value)))
 
 
 class NodeName(NamedTuple):
@@ -26,22 +26,15 @@ class NodeName(NamedTuple):
     name: str
     endpoint: str
     owned: bool
+    blockchain: Literal[SupportedBlockchain.ETHEREUM, SupportedBlockchain.KUSAMA, SupportedBlockchain.POLKADOT, SupportedBlockchain.AVALANCHE]  # noqa: E501
 
     def serialize(self) -> Dict[str, Any]:
         return {
             'name': self.name,
             'endpoint': self.endpoint,
             'owned': self.owned,
+            'blockchain': self.blockchain.value,
         }
-
-
-class EnsContractParams(NamedTuple):
-    """Parameters for a contract"""
-
-    address: ChecksumEthAddress
-    abi: List[Any]
-    method_name: str
-    arguments: List[Any]
 
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=True)
@@ -59,15 +52,17 @@ class WeightedNode:
             'weight': self.weight.to_percentage(precision=2, with_perc_sign=False),
             'owned': self.node_info.owned,
             'active': self.active,
+            'blockchain': self.node_info.blockchain.value,
         }
 
-    def serialize_for_db(self) -> Tuple[str, str, bool, bool, str]:
+    def serialize_for_db(self) -> Tuple[str, str, bool, bool, str, str]:
         return (
             self.node_info.name,
             self.node_info.endpoint,
             self.node_info.owned,
             self.active,
             str(self.weight),
+            self.node_info.blockchain.value,
         )
 
     @classmethod
@@ -81,6 +76,7 @@ class WeightedNode:
                 name=data['node'],
                 endpoint=data['endpoint'],
                 owned=bool(data['owned']),
+                blockchain=SupportedBlockchain(data['blockchain']),  # type: ignore
             ),
             weight=FVal(data['weight']) / 100,
             active=bool(data['active']),

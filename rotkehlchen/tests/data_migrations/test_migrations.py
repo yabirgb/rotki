@@ -13,7 +13,7 @@ from rotkehlchen.data_migrations.manager import (
 )
 from rotkehlchen.fval import FVal
 from rotkehlchen.tests.utils.exchanges import check_saved_events_for_exchange
-from rotkehlchen.types import Location, TradeType
+from rotkehlchen.types import Location, SupportedBlockchain, TradeType
 
 
 def _create_invalid_icon(icon_identifier: str, icons_dir: Path) -> Path:
@@ -206,9 +206,10 @@ def test_migration_4(rotkehlchen_api_server):
             'SELECT * from settings where name=?', ('eth_rpc_endpoint',),
         )
         assert cursor.fetchone() is None, 'Setting should have been deleted'
+
     with open(dir_path / 'data' / 'nodes.json', 'r') as f:
         nodes = json.loads(f.read())
-        web3_nodes = database.get_web3_nodes()
+        web3_nodes = database.get_web3_nodes(blockchain=SupportedBlockchain.ETHEREUM)
         assert len(web3_nodes) == len(nodes) + 1
         for node in nodes:
             for web3_node in web3_nodes:
@@ -218,8 +219,9 @@ def test_migration_4(rotkehlchen_api_server):
                     assert web3_node.node_info.owned == node['owned']
                     assert web3_node.weight == FVal(node['weight'])
                     continue
-        assert web3_nodes[-1].node_info.owned is True
-        assert web3_nodes[-1].node_info.endpoint == 'https://localhost:5222'
+        assert len(web3_nodes) >= 5
+        assert web3_nodes[5].node_info.owned is True
+        assert web3_nodes[5].node_info.endpoint == 'https://localhost:5222'
 
 
 @pytest.mark.parametrize('data_migration_version', [None])
@@ -245,7 +247,41 @@ def test_migration_4_no_own_endpoint(rotkehlchen_api_server):
             'SELECT * from settings where name=?', ('eth_rpc_endpoint',),
         )
         assert cursor.fetchone() is None, 'Setting should have been deleted'
-    web3_nodes = database.get_web3_nodes()
+    web3_nodes = database.get_web3_nodes(blockchain=SupportedBlockchain.ETHEREUM)
     with open(dir_path / 'data' / 'nodes.json', 'r') as f:
         nodes = json.loads(f.read())
         assert len(nodes) == len(web3_nodes)
+
+
+@pytest.mark.parametrize('data_migration_version', [None])
+@pytest.mark.parametrize('perform_migrations_at_unlock', [False])
+@pytest.mark.parametrize('perform_upgrades_at_unlock', [False])
+@pytest.mark.parametrize('use_clean_caching_directory', [True])
+@pytest.mark.parametrize('perform_nodes_insertion', [False])
+def test_migration_5(rotkehlchen_api_server):
+    """
+    Test that the fith data migration for rotki works.
+    - Create two fake icons and check that the file name was correctly updated
+    """
+    rotki = rotkehlchen_api_server.rest_api.rotkehlchen
+    migration_patch = patch(
+        'rotkehlchen.data_migrations.manager.MIGRATION_LIST',
+        new=MIGRATION_LIST[4:],
+    )
+    # Create some fake icon files
+    icons_path = rotki.icon_manager.icons_dir
+    Path(icons_path, '_ceth_0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490_small.png').touch()
+    Path(icons_path, '_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D_small.png').touch()
+    Path(icons_path, '_ceth_0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9_small.png').touch()
+    Path(icons_path, 'eip155%3A1%2Ferc20%3A0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9_small.png').touch()  # noqa: E501
+    # the two files + the custom assets folder
+    assert len(list(rotki.icon_manager.icons_dir.iterdir())) == 5
+    with migration_patch:
+        DataMigrationManager(rotki).maybe_migrate_data()
+
+    assert Path(icons_path, 'eip155%3A1%2Ferc20%3A0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490_small.png').is_file() is True  # noqa: E501
+    assert Path(icons_path, 'eip155%3A1%2Ferc20%3A0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D_small.png').is_file() is True  # noqa: E501
+    assert Path(icons_path, 'eip155%3A1%2Ferc20%3A0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D_small.png').is_file() is True  # noqa: E501
+    assert Path(icons_path, '_ceth_0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490_small.png').exists() is False  # noqa: E501
+    assert Path(icons_path, '_ceth_0x6DEA81C8171D0bA574754EF6F8b412F2Ed88c54D_small.png').exists() is False  # noqa: E501
+    assert Path(icons_path, '_ceth_0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9_small.png').exists() is False  # noqa: E501

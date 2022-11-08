@@ -19,8 +19,8 @@ from rotkehlchen.db.ranges import DBQueryRanges
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
-    ChecksumEthAddress,
-    EthereumTransaction,
+    ChecksumEvmAddress,
+    EvmTransaction,
     EVMTxHash,
     Timestamp,
     deserialize_evm_tx_hash,
@@ -48,12 +48,12 @@ class EthTransactions:
         super().__init__()
         self.ethereum = ethereum
         self.database = database
-        self.address_tx_locks: Dict[ChecksumEthAddress, Semaphore] = defaultdict(Semaphore)
+        self.address_tx_locks: Dict[ChecksumEvmAddress, Semaphore] = defaultdict(Semaphore)
         self.missing_receipts_lock = Semaphore()
         self.msg_aggregator = database.msg_aggregator
 
     @contextmanager
-    def wait_until_no_query_for(self, addresses: List[ChecksumEthAddress]) -> Iterator[None]:
+    def wait_until_no_query_for(self, addresses: List[ChecksumEvmAddress]) -> Iterator[None]:
         """Will acquire all locks relevant to an address and yield to the caller"""
         locks = []
         for address in addresses:
@@ -68,7 +68,7 @@ class EthTransactions:
 
     def single_address_query_transactions(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> None:
@@ -115,7 +115,7 @@ class EthTransactions:
             filter_query: ETHTransactionsFilterQuery,
             has_premium: bool = False,
             only_cache: bool = False,
-    ) -> Tuple[List[EthereumTransaction], int]:
+    ) -> Tuple[List[EvmTransaction], int]:
         """Queries for all transactions of an ethereum address or of all addresses.
 
         Returns a list of all transactions filtered and sorted according to the parameters.
@@ -155,7 +155,7 @@ class EthTransactions:
 
     def _get_transactions_for_range(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> None:
@@ -227,7 +227,7 @@ class EthTransactions:
 
     def _get_internal_transactions_for_ranges(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> None:
@@ -319,7 +319,7 @@ class EthTransactions:
 
     def _get_erc20_transfers_for_ranges(
             self,
-            address: ChecksumEthAddress,
+            address: ChecksumEvmAddress,
             start_ts: Timestamp,
             end_ts: Timestamp,
     ) -> None:
@@ -474,4 +474,8 @@ class EthTransactions:
             with self.database.user_write() as cursor:
                 for entry in hash_results:
                     tx_receipt_data = self.ethereum.get_transaction_receipt(tx_hash=entry)
-                    dbethtx.add_receipt_data(cursor, tx_receipt_data)
+                    try:
+                        dbethtx.add_receipt_data(cursor, tx_receipt_data)
+                    except sqlcipher.IntegrityError as e:  # pylint: disable=no-member
+                        if 'UNIQUE constraint failed: ethtx_receipts.tx_hash' not in str(e):
+                            raise  # if receipt is already added by other greenlet it's fine

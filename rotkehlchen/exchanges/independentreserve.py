@@ -12,7 +12,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.constants.assets import (
     A_AAVE,
     A_ADA,
@@ -127,7 +127,7 @@ IR_TO_WORLD = {
 }
 
 
-def independentreserve_asset(symbol: str) -> Asset:
+def independentreserve_asset(symbol: str) -> AssetWithOracles:
     """Returns the asset corresponding to the independentreserve symbol
 
     May raise UnknownAsset
@@ -135,7 +135,7 @@ def independentreserve_asset(symbol: str) -> Asset:
     asset = IR_TO_WORLD.get(symbol, None)
     if asset is None:
         raise UnknownAsset(symbol)
-    return asset
+    return asset.resolve_to_asset_with_oracles()
 
 
 def _trade_from_independentreserve(raw_trade: Dict) -> Trade:
@@ -353,7 +353,7 @@ class Independentreserve(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             return False, str(e)
 
     def query_balances(self, **kwargs: Any) -> ExchangeQueryBalances:
-        assets_balance: Dict[Asset, Balance] = {}
+        assets_balance: Dict[AssetWithOracles, Balance] = {}
         try:
             response = self._api_query(verb='post', method_type='Private', path='GetAccounts')
         except RemoteError as e:
@@ -372,7 +372,7 @@ class Independentreserve(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found IndependentReserve balance result with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except RemoteError as e:  # raised only by find_usd_price
@@ -445,7 +445,7 @@ class Independentreserve(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found IndependentReserve trade with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -504,7 +504,7 @@ class Independentreserve(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                         movements.append(movement)
                 except UnknownAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unknown IndependentReserve asset {e.asset_name}. '
+                        f'Found unknown IndependentReserve asset {e.identifier}. '
                         f'Ignoring the deposit/withdrawal containing it.',
                     )
                     continue

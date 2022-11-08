@@ -8,9 +8,8 @@ from web3 import Web3
 from web3.exceptions import BadFunctionCallOutput
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import EthereumToken
-from rotkehlchen.assets.utils import get_or_create_ethereum_token
-from rotkehlchen.chain.ethereum.contracts import EthereumContract
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.assets.utils import get_or_create_evm_token
 from rotkehlchen.chain.ethereum.interfaces.ammswap.types import AssetToPrice, LiquidityPoolAsset
 from rotkehlchen.chain.ethereum.interfaces.ammswap.utils import (
     TokenDetails,
@@ -21,7 +20,7 @@ from rotkehlchen.chain.ethereum.modules.uniswap.v3.types import (
     NFTLiquidityPool,
 )
 from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV3Oracle
-from rotkehlchen.chain.ethereum.utils import multicall_2
+from rotkehlchen.chain.evm.contracts import EvmContract
 from rotkehlchen.constants.assets import A_USDC
 from rotkehlchen.constants.ethereum import (
     UNISWAP_V3_FACTORY,
@@ -33,7 +32,7 @@ from rotkehlchen.errors.misc import NotERC20Conformant, RemoteError
 from rotkehlchen.errors.price import PriceQueryUnsupportedAsset
 from rotkehlchen.fval import FVal
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress, Price
+from rotkehlchen.types import ChainID, ChecksumEvmAddress, Price
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import get_chunks
 
@@ -58,11 +57,11 @@ class UnrecognizedFeeTierException(Exception):
 
 def uniswap_v3_lp_token_balances(
         userdb: 'DBHandler',
-        address: ChecksumEthAddress,
+        address: ChecksumEvmAddress,
         ethereum: 'EthereumManager',
         msg_aggregator: MessagesAggregator,
-        price_known_assets: Set[EthereumToken],
-        price_unknown_assets: Set[EthereumToken],
+        price_known_tokens: Set[EvmToken],
+        price_unknown_tokens: Set[EvmToken],
 ) -> List[NFTLiquidityPool]:
     """
     Fetches all the Uniswap V3 LP positions for the specified address.
@@ -99,7 +98,7 @@ def uniswap_v3_lp_token_balances(
 
     May raise RemoteError if querying NFT manager contract fails.
     """
-    nft_manager_contract = EthereumContract(
+    nft_manager_contract = EvmContract(
         address=UNISWAP_V3_NFT_MANAGER.address,
         abi=UNISWAP_V3_NFT_MANAGER.abi,
         deployed_block=UNISWAP_V3_NFT_MANAGER.deployed_block,
@@ -107,7 +106,7 @@ def uniswap_v3_lp_token_balances(
     balances: List[NFTLiquidityPool] = []
     try:
         amount_of_positions = nft_manager_contract.call(
-            ethereum=ethereum,
+            manager=ethereum,
             method_name='balanceOf',
             arguments=[address],
         )
@@ -125,8 +124,7 @@ def uniswap_v3_lp_token_balances(
         try:
             # Get tokens IDs from the Positions NFT contract using the user address and
             # the indexes i.e from 0 to (total number of user positions in the chunk - 1)
-            tokens_ids_multicall = multicall_2(
-                ethereum=ethereum,
+            tokens_ids_multicall = ethereum.multicall_2(
                 require_success=False,
                 calls=[
                     (
@@ -150,8 +148,7 @@ def uniswap_v3_lp_token_balances(
         ]
         try:
             # Get the user liquidity position using the token ID retrieved.
-            positions_multicall = multicall_2(
-                ethereum=ethereum,
+            positions_multicall = ethereum.multicall_2(
                 require_success=False,
                 calls=[
                     (
@@ -183,7 +180,7 @@ def uniswap_v3_lp_token_balances(
             for position in positions
         ]
         pool_contracts = [
-            EthereumContract(
+            EvmContract(
                 address=pool_address,
                 abi=UNISWAP_V3_POOL_ABI,
                 deployed_block=UNISWAP_V3_FACTORY.deployed_block,
@@ -193,8 +190,7 @@ def uniswap_v3_lp_token_balances(
         try:
             # Get the liquidity pool's state i.e `slot0` by iterating through
             # a pair of the LP address and its contract and reading the `slot0`
-            slots_0_multicall = multicall_2(
-                ethereum=ethereum,
+            slots_0_multicall = ethereum.multicall_2(
                 require_success=False,
                 calls=[
                     (entry[0], entry[1].encode('slot0'))
@@ -211,8 +207,10 @@ def uniswap_v3_lp_token_balances(
         tokens_a, tokens_b = [], []
         for position in positions:
             try:
-                tokens_a.append(ethereum.get_basic_contract_info(to_checksum_address(position[2])))
-                tokens_b.append(ethereum.get_basic_contract_info(to_checksum_address(position[3])))
+                token1_info = ethereum.get_erc20_contract_info(to_checksum_address(position[2]))
+                tokens_a.append(token1_info)
+                token2_info = ethereum.get_erc20_contract_info(to_checksum_address(position[3]))
+                tokens_b.append(token2_info)
             except (BadFunctionCallOutput, ValueError) as e:
                 log.error(
                     f'Error retrieving contract information for address: {position[2]} '
@@ -257,8 +255,7 @@ def uniswap_v3_lp_token_balances(
         # Use the value of the liquidity to get the total amount of tokens in LPs.
         total_tokens_in_pools = []
         try:
-            liquidity_in_pools_multicall = multicall_2(
-                ethereum=ethereum,
+            liquidity_in_pools_multicall = ethereum.multicall_2(
                 require_success=False,
                 calls=[
                     (entry[0], entry[1].encode('liquidity'))
@@ -319,8 +316,8 @@ def uniswap_v3_lp_token_balances(
                 balances.append(_decode_uniswap_v3_result(
                     userdb=userdb,
                     data=item,
-                    price_known_assets=price_known_assets,
-                    price_unknown_assets=price_unknown_assets,
+                    price_known_tokens=price_known_tokens,
+                    price_unknown_tokens=price_unknown_tokens,
                 ))
     return balances
 
@@ -329,7 +326,7 @@ def compute_pool_address(
         token0_address_raw: str,
         token1_address_raw: str,
         fee: int,
-) -> ChecksumEthAddress:
+) -> ChecksumEvmAddress:
     """
     Generate the pool address from the Uniswap Factory Address, pair of tokens
     and the fee using CREATE2 opcode.
@@ -465,8 +462,8 @@ def _decode_uniswap_v3_token(entry: Dict[str, Any]) -> TokenDetails:
 def _decode_uniswap_v3_result(
         userdb: 'DBHandler',
         data: Tuple,
-        price_known_assets: Set[EthereumToken],
-        price_unknown_assets: Set[EthereumToken],
+        price_known_tokens: Set[EvmToken],
+        price_unknown_tokens: Set[EvmToken],
 ) -> NFTLiquidityPool:
     """
     Takes the data aggregated from the Positions NFT contract & LP contract and converts it
@@ -492,10 +489,11 @@ def _decode_uniswap_v3_result(
         # Set the asset balance to ZERO if the asset raises `NotERC20Conformant` exception
         asset_balance = ZERO
         try:
-            asset = get_or_create_ethereum_token(
+            asset = get_or_create_evm_token(
                 userdb=userdb,
                 symbol=token.symbol,
-                ethereum_address=token.address,
+                evm_address=token.address,
+                chain=ChainID.ETHEREUM,
                 name=token.name,
                 decimals=token.decimals,
             )
@@ -507,11 +505,11 @@ def _decode_uniswap_v3_result(
             )
         # Classify the asset either as price known or unknown
         if asset.has_oracle():
-            price_known_assets.add(asset)
+            price_known_tokens.add(asset)
         else:
-            price_unknown_assets.add(asset)
+            price_unknown_tokens.add(asset)
         assets.append(LiquidityPoolAsset(
-            asset=asset,
+            token=asset,
             total_amount=total_amounts_of_tokens[token.address],
             user_balance=Balance(amount=asset_balance),
         ))
@@ -529,21 +527,21 @@ def _decode_uniswap_v3_result(
 
 def get_unknown_asset_price_chain(
         ethereum: 'EthereumManager',
-        unknown_assets: Set[EthereumToken],
+        unknown_tokens: Set[EvmToken],
 ) -> AssetToPrice:
     """Get token price using Uniswap V3 Oracle."""
     oracle = UniswapV3Oracle(eth_manager=ethereum)
     asset_price: AssetToPrice = {}
-    for from_asset in unknown_assets:
+    for from_token in unknown_tokens:
         try:
-            price = oracle.query_current_price(from_asset, A_USDC)
-            asset_price[from_asset.ethereum_address] = price
+            price, _ = oracle.query_current_price(from_token, A_USDC.resolve_to_asset_with_oracles(), False)  # noqa: E501
+            asset_price[from_token.evm_address] = price
         except (PriceQueryUnsupportedAsset, RemoteError) as e:
             log.error(
-                f'Failed to find price for {str(from_asset)}/{str(A_USDC) } LP using '
+                f'Failed to find price for {str(from_token)}/{str(A_USDC) } LP using '
                 f'Uniswap V3 oracle due to: {str(e)}.',
             )
-            asset_price[from_asset.ethereum_address] = Price(ZERO)
+            asset_price[from_token.evm_address] = Price(ZERO)
 
     return asset_price
 

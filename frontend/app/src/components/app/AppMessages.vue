@@ -13,46 +13,35 @@
       fatal
     />
     <mac-os-version-unsupported v-if="macosUnsupported" />
+    <win-version-unsupported v-if="winUnsupported" />
   </fragment>
 </template>
 
-<script lang="ts">
-import {
-  defineAsyncComponent,
-  defineComponent,
-  toRefs
-} from '@vue/composition-api';
+<script setup lang="ts">
 import Fragment from '@/components/helper/Fragment';
-import { useMainStore } from '@/store/main';
+import { useMessageStore } from '@/store/message';
 
-export default defineComponent({
-  name: 'AppMessages',
-  components: {
-    Fragment,
-    StartupErrorScreen: defineAsyncComponent(
-      () => import('@/components/error/StartupErrorScreen.vue')
-    ),
+const StartupErrorScreen = defineAsyncComponent(
+  () => import('@/components/error/StartupErrorScreen.vue')
+);
+const MessageDialog = defineAsyncComponent(
+  () => import('@/components/dialogs/MessageDialog.vue')
+);
+const MacOsVersionUnsupported = defineAsyncComponent(
+  () => import('@/components/error/MacOsVersionUnsupported.vue')
+);
+const WinVersionUnsupported = defineAsyncComponent(
+  () => import('@/components/error/WinVersionUnsupported.vue')
+);
 
-    MessageDialog: defineAsyncComponent(
-      () => import('@/components/dialogs/MessageDialog.vue')
-    ),
-    MacOsVersionUnsupported: defineAsyncComponent(
-      () => import('@/components/error/MacOsVersionUnsupported.vue')
-    )
-  },
-  props: {
-    startupError: { required: true, type: String },
-    macosUnsupported: { required: true, type: Boolean }
-  },
-  setup() {
-    const store = useMainStore();
-    const { message } = toRefs(store);
-    const { setMessage } = store;
-    const dismissMessage = () => setMessage();
-    return {
-      message,
-      dismissMessage
-    };
-  }
+defineProps({
+  startupError: { required: true, type: String },
+  macosUnsupported: { required: true, type: Boolean },
+  winUnsupported: { required: true, type: Boolean }
 });
+
+const store = useMessageStore();
+const { message } = toRefs(store);
+const { setMessage } = store;
+const dismissMessage = () => setMessage();
 </script>

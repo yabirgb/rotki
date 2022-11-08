@@ -2,27 +2,21 @@ import { createTestingPinia } from '@pinia/testing';
 import { mount, Wrapper } from '@vue/test-utils';
 import { set } from '@vueuse/core';
 import flushPromises from 'flush-promises/index';
-import { PiniaVuePlugin, setActivePinia, storeToRefs } from 'pinia';
-import Vue from 'vue';
+import { setActivePinia, storeToRefs } from 'pinia';
 import Vuetify from 'vuetify';
 import { VDialog } from 'vuetify/lib/components';
 import AccountManagement from '@/components/AccountManagement.vue';
+import { setupLiquidityPosition } from '@/composables/defi';
 import { interop, useInterop } from '@/electron-interop';
-import { Api } from '@/plugins/api';
-import { Interop } from '@/plugins/interop';
+import { useAggregatedBalancesStore } from '@/store/balances/aggregated';
 import { useMainStore } from '@/store/main';
 import { useSessionStore } from '@/store/session';
 import { usePremiumStore } from '@/store/session/premium';
-import store from '@/store/store';
-import '../i18n';
+import { bigNumberify } from '@/utils/bignumbers';
 
 vi.mock('@/electron-interop');
 vi.mock('@/services/rotkehlchen-api');
-
-Vue.use(Vuetify);
-Vue.use(Api);
-Vue.use(Interop);
-Vue.use(PiniaVuePlugin);
+vi.mock('@/composables/defi');
 
 // This is workaround used because stubs is somehow not working,
 // Eager prop will render the <slot /> immediately
@@ -44,14 +38,18 @@ describe('AccountManagement.vue', () => {
     setActivePinia(testingPinia);
 
     useMainStore(testingPinia).connected = true;
+    (setupLiquidityPosition as any).mockImplementation(() => ({
+      lpTotal: () => bigNumberify(0),
+      lpAggregatedBalances: () => []
+    }));
+
+    useAggregatedBalancesStore(testingPinia).balances = () => [];
+    useAggregatedBalancesStore(testingPinia).liabilities = () => [];
+
     sessionStore = useSessionStore();
 
     wrapper = mount(AccountManagement, {
-      store,
       pinia: testingPinia,
-      provide: {
-        'vuex-store': store
-      },
       vuetify,
       propsData: {
         logged: true
@@ -72,7 +70,9 @@ describe('AccountManagement.vue', () => {
 
       expect(wrapper.find('.premium-reminder').exists()).toBe(true);
 
-      wrapper.find('.premium-reminder__buttons__confirm').trigger('click');
+      await wrapper
+        .find('.premium-reminder__buttons__confirm')
+        .trigger('click');
 
       await wrapper.vm.$nextTick();
 

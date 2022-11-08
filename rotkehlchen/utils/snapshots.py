@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from rotkehlchen.accounting.structures.balance import BalanceType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.constants.assets import A_USD
 from rotkehlchen.constants.misc import ONE
 from rotkehlchen.db.dbhandler import DBHandler
@@ -30,7 +30,7 @@ def validate_import_data(
     # check if the headers match the type stored in the db
     has_invalid_headers = (
         tuple(balances_data[0].keys()) != ('timestamp', 'category', 'asset_identifier', 'amount', 'usd_value') or  # noqa: E501
-        tuple(location_data[0].keys()) != ('timestamp', 'location', 'usd_value')  # noqa: E501
+        tuple(location_data[0].keys()) != ('timestamp', 'location', 'usd_value')
     )
     if has_invalid_headers:
         return False, 'csv file has invalid headers'
@@ -83,7 +83,7 @@ def parse_import_snapshot_data(
                 DBAssetBalance(
                     category=BalanceType.deserialize(entry['category']),
                     time=Timestamp(int(entry['timestamp'])),
-                    asset=Asset(identifier=entry['asset_identifier']),
+                    asset=Asset(identifier=entry['asset_identifier']).check_existence(),
                     amount=deserialize_fval(
                         value=entry['amount'],
                         name='amount',
@@ -97,7 +97,7 @@ def parse_import_snapshot_data(
                 ),
             )
     except UnknownAsset as err:
-        error_msg = f'snapshot contains an unknown asset ({err.asset_name}). Try adding this asset manually.'  # noqa: 501
+        error_msg = f'snapshot contains an unknown asset ({err.identifier}). Try adding this asset manually.'  # noqa: 501
         return error_msg, [], []
     except DeserializationError as err:
         error_msg = f'Error occured while importing snapshot due to: {str(err)}'
@@ -135,7 +135,7 @@ def get_main_currency_price(
         db: DBHandler,
         timestamp: Timestamp,
         msg_aggregator: MessagesAggregator,
-) -> Tuple[Asset, Price]:
+) -> Tuple[AssetWithOracles, Price]:
     """Gets the main currency and its equivalent price at a particular timestamp."""
     main_currency = db.get_setting(cursor, name='main_currency')
     main_currency_price = None

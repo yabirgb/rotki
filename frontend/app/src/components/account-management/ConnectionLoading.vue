@@ -8,21 +8,18 @@
   >
     <v-col class="connection-loading__content grey-darken-1--text">
       <span class="connection-loading__content__text my-3 pb-6">
-        {{ $t('connection_loading.message') }}
+        {{ t('connection_loading.message') }}
       </span>
       <v-icon x-large> mdi-spin mdi-loading </v-icon>
     </v-col>
   </v-row>
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
-
-export default defineComponent({
-  name: 'ConnectionLoading',
-  props: {
-    connected: { required: true, type: Boolean }
-  }
+<script setup lang="ts">
+defineProps({
+  connected: { required: true, type: Boolean }
 });
+
+const { t } = useI18n();
 </script>
 <style scoped lang="scss">
 .connection-loading {

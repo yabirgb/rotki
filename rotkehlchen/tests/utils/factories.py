@@ -8,17 +8,18 @@ from eth_utils.address import to_checksum_address
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.assets.asset import Asset
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.constants import ONE
-from rotkehlchen.constants.assets import A_USD
 from rotkehlchen.fval import FVal
 from rotkehlchen.types import (
     AddressbookEntry,
     ApiKey,
     ApiSecret,
-    ChecksumEthAddress,
-    EthereumTransaction,
+    ChainID,
+    ChecksumEvmAddress,
+    EvmTokenKind,
+    EvmTransaction,
     Location,
     Timestamp,
     TimestampMS,
@@ -64,14 +65,14 @@ def make_api_secret() -> ApiSecret:
     return ApiSecret(base64.b64encode(make_random_b64bytes(128)))
 
 
-def make_ethereum_address() -> ChecksumEthAddress:
+def make_ethereum_address() -> ChecksumEvmAddress:
     return to_checksum_address('0x' + make_random_bytes(20).hex())
 
 
-def make_ethereum_transaction(tx_hash: Optional[bytes] = None) -> EthereumTransaction:
+def make_ethereum_transaction(tx_hash: Optional[bytes] = None) -> EvmTransaction:
     if tx_hash is None:
         tx_hash = make_random_bytes(42)
-    return EthereumTransaction(
+    return EvmTransaction(
         tx_hash=make_evm_tx_hash(tx_hash),
         timestamp=Timestamp(0),
         block_number=0,
@@ -86,10 +87,26 @@ def make_ethereum_transaction(tx_hash: Optional[bytes] = None) -> EthereumTransa
     )
 
 
+CUSTOM_USDT = EvmToken.initialize(
+    address=string_to_evm_address('0xdAC17F958D2ee523a2206206994597C13D831ec7'),
+    chain=ChainID.ETHEREUM,
+    token_kind=EvmTokenKind.ERC20,
+    name='Tether',
+    symbol='USDT',
+    started=Timestamp(1402358400),
+    forked=None,
+    swapped_for=None,
+    coingecko='tether',
+    cryptocompare=None,
+    decimals=6,
+    protocol=None,
+)
+
+
 def make_ethereum_event(
     index: int,
     tx_hash: Optional[bytes] = None,
-    asset: Asset = A_USD,
+    asset: CryptoAsset = CUSTOM_USDT,
     counterparty: Optional[str] = None,
 ) -> HistoryBaseEntry:
     if tx_hash is None:
@@ -109,7 +126,7 @@ def make_ethereum_event(
 
 
 def generate_tx_entries_response(
-    data: List[Tuple[EthereumTransaction, List[HistoryBaseEntry]]],
+    data: List[Tuple[EvmTransaction, List[HistoryBaseEntry]]],
 ) -> List:
     result = []
     for tx, events in data:
@@ -186,4 +203,4 @@ UNIT_BTC_ADDRESS1 = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'
 UNIT_BTC_ADDRESS2 = '1CounterpartyXXXXXXXXXXXXXXXUWLpVr'
 UNIT_BTC_ADDRESS3 = '18ddjB7HWTVxzvTbLp1nWvaBxU3U2oTZF2'
 
-ZERO_ETH_ADDRESS = string_to_ethereum_address('0x' + '0' * 40)
+ZERO_ETH_ADDRESS = string_to_evm_address('0x' + '0' * 40)

@@ -1,5 +1,4 @@
-import { BalanceState } from '@/store/balances/types';
-import { Section, Status } from '@/store/const';
+import { Section, Status } from '@/types/status';
 
 type ActionFailure = {
   readonly message: string;
@@ -21,10 +20,6 @@ export interface Version {
   readonly version: string;
   readonly latestVersion: string;
   readonly downloadUrl: string;
-}
-
-export interface RotkehlchenState {
-  balances?: BalanceState;
 }
 
 export type ActionDataEntry<T = string> = {

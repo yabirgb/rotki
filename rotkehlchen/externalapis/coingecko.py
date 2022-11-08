@@ -1,30 +1,28 @@
 import json
 import logging
-from typing import Any, Dict, List, Literal, NamedTuple, Optional, Union, overload
+from http import HTTPStatus
+from typing import Any, Dict, List, Literal, NamedTuple, Optional, Tuple, Union, overload
 from urllib.parse import urlencode
 
-import gevent
 import requests
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.constants import ZERO
 from rotkehlchen.constants.resolver import strethaddress_to_identifier
 from rotkehlchen.constants.timing import DAY_IN_SECONDS, DEFAULT_TIMEOUT_TUPLE
-from rotkehlchen.errors.asset import UnsupportedAsset
+from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset
 from rotkehlchen.errors.misc import RemoteError
-from rotkehlchen.errors.price import NoPriceForGivenTimestamp
+from rotkehlchen.errors.price import NoPriceForGivenTimestamp, PriceQueryUnsupportedAsset
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.types import HistoricalPrice, HistoricalPriceOracle
 from rotkehlchen.interfaces import HistoricalPriceOracleInterface
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import Price, Timestamp
-from rotkehlchen.utils.misc import create_timestamp, timestamp_to_date
+from rotkehlchen.utils.misc import create_timestamp, timestamp_to_date, ts_now
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
-
-COINGECKO_QUERY_RETRY_TIMES = 4
 
 
 class CoingeckoAssetData(NamedTuple):
@@ -266,6 +264,37 @@ DELISTED_ASSETS = [
     strethaddress_to_identifier('0xC76FB75950536d98FA62ea968E1D6B45ffea2A55'),
     'FAIR',
     'BUX',
+    strethaddress_to_identifier('0x03C780cD554598592B97b7256dDAad759945b125'),
+    strethaddress_to_identifier('0x04F2E7221fdb1B52A68169B25793E51478fF0329'),
+    strethaddress_to_identifier('0x17B26400621695c2D8C2D8869f6259E82D7544c4'),
+    strethaddress_to_identifier('0x613Fa2A6e6DAA70c659060E86bA1443D2679c9D7'),
+    strethaddress_to_identifier('0x4689a4e169eB39cC9078C0940e21ff1Aa8A39B9C'),
+    strethaddress_to_identifier('0x3d1BA9be9f66B8ee101911bC36D3fB562eaC2244'),
+    strethaddress_to_identifier('0x3d1BA9be9f66B8ee101911bC36D3fB562eaC2244'),
+    strethaddress_to_identifier('0xecd570bBf74761b960Fa04Cc10fe2c4e86FfDA36'),
+    strethaddress_to_identifier('0xf1a91C7d44768070F711c68f33A7CA25c8D30268'),
+    strethaddress_to_identifier('0xDCEcf0664C33321CECA2effcE701E710A2D28A3F'),
+    'BBR',
+    'CNL',
+    'DOPE',
+    'ECC',
+    'SDT',
+    'TEDDY',
+    'ICA',
+    'BAG',
+    'MCT',
+    'LOL',
+    'SDT',
+    strethaddress_to_identifier('0xE081b71Ed098FBe1108EA48e235b74F122272E68'),
+    'eip155:56/erc20:0xDCEcf0664C33321CECA2effcE701E710A2D28A3F',
+    strethaddress_to_identifier('0xDf6Ef343350780BF8C3410BF062e0C015B1DD671'),
+    strethaddress_to_identifier('0x24dDFf6D8B8a42d835af3b440De91f3386554Aa4'),
+    strethaddress_to_identifier('0xD29F0b5b3F50b07Fe9a9511F7d86F4f4bAc3f8c4'),
+    strethaddress_to_identifier('0xf05a9382A4C3F29E2784502754293D88b835109C'),
+    strethaddress_to_identifier('0xf3C092cA8CD6D3d4ca004Dc1d0f1fe8CcAB53599'),
+    strethaddress_to_identifier('0x43f11c02439e2736800433b4594994Bd43Cd066D'),
+    'TOR',
+    strethaddress_to_identifier('0x5c6D51ecBA4D8E4F20373e3ce96a62342B125D6d'),
 ]
 
 COINGECKO_SIMPLE_VS_CURRENCIES = [
@@ -337,6 +366,7 @@ class Coingecko(HistoricalPriceOracleInterface):
         self.session = requests.session()
         self.session.headers.update({'User-Agent': 'rotkehlchen'})
         self.all_coins_cache: Optional[Dict[str, Dict[str, Any]]] = None
+        self.last_rate_limit = 0
 
     @overload
     def _query(
@@ -374,38 +404,19 @@ class Coingecko(HistoricalPriceOracleInterface):
             url += subpath
 
         log.debug(f'Querying coingecko: {url}?{urlencode(options)}')
-        tries = COINGECKO_QUERY_RETRY_TIMES
-        while tries >= 0:
-            try:
-                response = self.session.get(
-                    f'{url}?{urlencode(options)}',
-                    timeout=DEFAULT_TIMEOUT_TUPLE,
-                )
-            except requests.exceptions.RequestException as e:
-                raise RemoteError(f'Coingecko API request failed due to {str(e)}') from e
+        try:
+            response = self.session.get(
+                f'{url}?{urlencode(options)}',
+                timeout=DEFAULT_TIMEOUT_TUPLE,
+            )
+        except requests.exceptions.RequestException as e:
+            raise RemoteError(f'Coingecko API request failed due to {str(e)}') from e
 
-            if response.status_code == 429:
-                # Coingecko allows only 100 calls per minute. If you get 429 it means you
-                # exceeded this and are throttled until the next minute window
-                # backoff and retry 4 times =  2.5 + 3.33 + 5 + 10 = at most 20.8 secs
-                if tries >= 1:
-                    backoff_seconds = 10 / tries
-                    log.debug(
-                        f'Got rate limited by coingecko. '
-                        f'Backing off for {backoff_seconds}',
-                    )
-                    gevent.sleep(backoff_seconds)
-                    tries -= 1
-                    continue
-
-                # else
-                log.debug(
-                    f'Got rate limited by coingecko and did not manage to get a '
-                    f'request through even after {COINGECKO_QUERY_RETRY_TIMES} '
-                    f'incremental backoff retries',
-                )
-
-            break
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            self.last_rate_limit = ts_now()
+            msg = f'Got rate limited by coingecko querying {url}'
+            log.warning(msg)
+            raise RemoteError(message=msg, error_code=HTTPStatus.TOO_MANY_REQUESTS)
 
         if response.status_code != 200:
             msg = (
@@ -422,9 +433,9 @@ class Coingecko(HistoricalPriceOracleInterface):
 
         return decoded_json
 
-    def asset_data(self, asset: Asset) -> CoingeckoAssetData:
+    def asset_data(self, asset_coingecko_id: str) -> CoingeckoAssetData:
         """
-
+        Query coingecko to retrieve the asset information related to the provided coingecko id
         May raise:
         - UnsupportedAsset() if the asset is not supported by coingecko
         - RemoteError if there is a problem querying coingecko
@@ -443,17 +454,16 @@ class Coingecko(HistoricalPriceOracleInterface):
             # Include sparkline 7 days data (eg. true, false) [default: false]
             'sparkline': 'false',
         }
-        gecko_id = asset.to_coingecko()
         data = self._query(
             module='coins',
-            subpath=f'{gecko_id}',
+            subpath=f'{asset_coingecko_id}',
             options=options,
         )
 
         # https://github.com/PyCQA/pylint/issues/4739
         try:
             parsed_data = CoingeckoAssetData(
-                identifier=gecko_id,
+                identifier=asset_coingecko_id,
                 symbol=data['symbol'],  # pylint: disable=unsubscriptable-object
                 name=data['name'],  # pylint: disable=unsubscriptable-object
                 description=data['description']['en'],  # pylint: disable=unsubscriptable-object
@@ -467,6 +477,11 @@ class Coingecko(HistoricalPriceOracleInterface):
         return parsed_data
 
     def all_coins(self) -> Dict[str, Dict[str, Any]]:
+        """Returns all coingecko assets
+
+        May raise:
+        - RemoteError if there is an error with reaching coingecko
+        """
         if self.all_coins_cache is None:
             response = self._query(module='coins/list')
             self.all_coins_cache = {}
@@ -484,7 +499,11 @@ class Coingecko(HistoricalPriceOracleInterface):
         return self.all_coins_cache
 
     @staticmethod
-    def check_vs_currencies(from_asset: Asset, to_asset: Asset, location: str) -> Optional[str]:
+    def check_vs_currencies(
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
+            location: str,
+    ) -> Optional[str]:
         vs_currency = to_asset.identifier.lower()
         if vs_currency not in COINGECKO_SIMPLE_VS_CURRENCIES:
             log.warning(
@@ -495,8 +514,14 @@ class Coingecko(HistoricalPriceOracleInterface):
 
         return vs_currency
 
-    def query_current_price(self, from_asset: Asset, to_asset: Asset) -> Price:
-        """Returns a simple price for from_asset to to_asset in coingecko
+    def query_current_price(
+            self,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> Tuple[Price, bool]:
+        """Returns a simple price for from_asset to to_asset in coingecko and `False` value
+        since it never tries to match main currency.
 
         Uses the simple/price endpoint of coingecko. If to_asset is not part of the
         coingecko simple vs currencies or if from_asset is not supported in coingecko
@@ -511,7 +536,7 @@ class Coingecko(HistoricalPriceOracleInterface):
             location='simple price',
         )
         if not vs_currency:
-            return Price(ZERO)
+            return Price(ZERO), False
 
         try:
             from_coingecko_id = from_asset.to_coingecko()
@@ -520,7 +545,7 @@ class Coingecko(HistoricalPriceOracleInterface):
                 f'Tried to query coingecko simple price from {from_asset.identifier} '
                 f'to {to_asset.identifier}. But from_asset is not supported in coingecko',
             )
-            return Price(ZERO)
+            return Price(ZERO), False
 
         result = self._query(
             module='simple/price',
@@ -531,14 +556,14 @@ class Coingecko(HistoricalPriceOracleInterface):
 
         # https://github.com/PyCQA/pylint/issues/4739
         try:
-            return Price(FVal(result[from_coingecko_id][vs_currency]))  # pylint: disable=unsubscriptable-object  # noqa: E501
+            return Price(FVal(result[from_coingecko_id][vs_currency])), False  # pylint: disable=unsubscriptable-object  # noqa: E501
         except KeyError as e:
             log.warning(
                 f'Queried coingecko simple price from {from_asset.identifier} '
                 f'to {to_asset.identifier}. But got key error for {str(e)} when '
                 f'processing the result.',
             )
-            return Price(ZERO)
+            return Price(ZERO), False
 
     def can_query_history(  # pylint: disable=no-self-use
             self,
@@ -549,11 +574,14 @@ class Coingecko(HistoricalPriceOracleInterface):
     ) -> bool:
         return True  # noop for coingecko
 
-    def rate_limited_in_last(  # pylint: disable=no-self-use
+    def rate_limited_in_last(
             self,
-            seconds: Optional[int] = None,  # pylint: disable=unused-argument
+            seconds: Optional[int] = None,
     ) -> bool:
-        return False  # noop for coingecko
+        if seconds is None:
+            return False
+
+        return ts_now() - self.last_rate_limit <= seconds
 
     def query_historical_price(
             self,
@@ -561,6 +589,15 @@ class Coingecko(HistoricalPriceOracleInterface):
             to_asset: Asset,
             timestamp: Timestamp,
     ) -> Price:
+        """
+        May raise:
+        - PriceQueryUnsupportedAsset if either from_asset or to_asset are not supported
+        """
+        try:
+            from_asset = from_asset.resolve_to_asset_with_oracles()
+            to_asset = to_asset.resolve_to_asset_with_oracles()
+        except UnknownAsset as e:
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
         vs_currency = Coingecko.check_vs_currencies(
             from_asset=from_asset,
             to_asset=to_asset,
@@ -604,7 +641,7 @@ class Coingecko(HistoricalPriceOracleInterface):
             subpath=f'{from_coingecko_id}/history',
             options={
                 'date': date,
-                'localizatioen': 'false',
+                'localization': 'false',
             },
         )
 
@@ -621,6 +658,7 @@ class Coingecko(HistoricalPriceOracleInterface):
                 from_asset=from_asset,
                 to_asset=to_asset,
                 time=timestamp,
+                rate_limited=False,
             ) from e
 
         # save result in the DB and return

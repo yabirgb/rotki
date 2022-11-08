@@ -24,8 +24,8 @@
       </template>
       <template #header.balance.usdValue>
         {{
-          $t('lending_asset_table.headers.usd_value', {
-            currency: currency.tickerSymbol
+          t('lending_asset_table.headers.usd_value', {
+            currency: currencySymbol
           })
         }}
       </template>
@@ -33,51 +33,38 @@
   </v-sheet>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent, PropType } from '@vue/composition-api';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import { DataTableHeader } from 'vuetify';
 import AmountDisplay from '@/components/display/AmountDisplay.vue';
 import PercentageDisplay from '@/components/display/PercentageDisplay.vue';
 import DataTable from '@/components/helper/DataTable.vue';
-import i18n from '@/i18n';
-import { DefiBalance } from '@/store/defi/types';
+import { BaseDefiBalance } from '@/store/defi/types';
 import { useGeneralSettingsStore } from '@/store/settings/general';
+
+defineProps({
+  assets: { required: true, type: Array as PropType<BaseDefiBalance[]> },
+  loading: { required: false, type: Boolean, default: false }
+});
+
+const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const { t, tc } = useI18n();
 
 const headers = computed<DataTableHeader[]>(() => [
   {
-    text: i18n.t('common.asset').toString(),
+    text: tc('common.asset'),
     value: 'asset'
   },
   {
-    text: i18n.t('common.amount').toString(),
+    text: tc('common.amount'),
     value: 'balance.amount',
     align: 'end'
   },
   { text: '', value: 'balance.usdValue', align: 'end' },
   {
-    text: i18n
-      .t('lending_asset_table.headers.effective_interest_rate')
-      .toString(),
+    text: tc('lending_asset_table.headers.effective_interest_rate'),
     value: 'effectiveInterestRate',
     align: 'end'
   }
 ]);
-
-export default defineComponent({
-  name: 'LendingAssetTable',
-  components: { DataTable, PercentageDisplay, AmountDisplay },
-  props: {
-    assets: { required: true, type: Array as PropType<DefiBalance[]> },
-    loading: { reuirqed: false, type: Boolean, default: false }
-  },
-  setup() {
-    const { currency } = storeToRefs(useGeneralSettingsStore());
-
-    return {
-      headers,
-      currency
-    };
-  }
-});
 </script>

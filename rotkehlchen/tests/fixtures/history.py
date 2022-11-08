@@ -2,6 +2,7 @@ import pytest
 
 from rotkehlchen.externalapis.coingecko import Coingecko
 from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+from rotkehlchen.externalapis.defillama import Defillama
 from rotkehlchen.history.events import EventsHistorian
 from rotkehlchen.history.price import PriceHistorian
 from rotkehlchen.history.types import DEFAULT_HISTORICAL_PRICE_ORACLES_ORDER
@@ -13,14 +14,14 @@ def fixture_cryptocompare(data_dir, database):
     return Cryptocompare(data_directory=data_dir, database=database)
 
 
-@pytest.fixture(scope='session', name='session_cryptocompare')
-def fixture_session_cryptocompare(session_data_dir, session_database):
-    return Cryptocompare(data_directory=session_data_dir, database=session_database)
-
-
 @pytest.fixture(scope='session', name='session_coingecko')
 def fixture_session_coingecko():
     return Coingecko()
+
+
+@pytest.fixture(scope='session', name='session_defillama')
+def fixture_defillama():
+    return Defillama()
 
 
 @pytest.fixture(name='historical_price_oracles_order')
@@ -46,6 +47,7 @@ def price_historian(
         mocked_price_queries,
         cryptocompare,
         session_coingecko,
+        session_defillama,
         default_mock_price_value,
         historical_price_oracles_order,
         dont_mock_price_for,
@@ -58,6 +60,7 @@ def price_historian(
         data_directory=data_dir,
         cryptocompare=cryptocompare,
         coingecko=session_coingecko,
+        defillama=session_defillama,
     )
     historian.set_oracles_order(historical_price_oracles_order)
     maybe_mock_historical_price_queries(
@@ -80,15 +83,13 @@ def events_historian(
         blockchain,
         evm_transaction_decoder,
         exchange_manager,
-        eth_transactions,
 ):
     historian = EventsHistorian(
         user_directory=data_dir,
         db=database,
         msg_aggregator=function_scope_messages_aggregator,
         exchange_manager=exchange_manager,
-        chain_manager=blockchain,
-        evm_tx_decoder=evm_transaction_decoder,
-        eth_transactions=eth_transactions,
+        chains_aggregator=blockchain,
+        eth_tx_decoder=evm_transaction_decoder,
     )
     return historian

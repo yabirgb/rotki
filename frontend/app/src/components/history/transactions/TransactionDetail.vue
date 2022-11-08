@@ -1,12 +1,12 @@
 <template>
   <card>
     <template #title>
-      {{ $t('transactions.details.title') }}
+      {{ t('transactions.details.title') }}
     </template>
     <div class="pt-4">
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.gas_fee') }}
+          {{ t('transactions.details.gas_fee') }}
         </v-col>
         <v-col cols="10">
           <amount-display :value="gasFee" asset="ETH" />
@@ -15,7 +15,7 @@
       <v-divider class="pb-2" />
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.gas_limit') }}
+          {{ t('transactions.details.gas_limit') }}
         </v-col>
         <v-col cols="10">
           <amount-display :value="transaction.gas" integer />
@@ -24,7 +24,7 @@
       <v-divider class="pb-2" />
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.gas_used') }}
+          {{ t('transactions.details.gas_used') }}
         </v-col>
         <v-col cols="10">
           <amount-display :value="transaction.gasUsed" integer />
@@ -33,23 +33,26 @@
       <v-divider class="pb-2" />
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.gas_price') }}
+          {{ t('transactions.details.gas_price') }}
         </v-col>
-        <v-col cols="10">
-          <amount-display :value="toGwei(transaction.gasPrice)" asset="Gwei" />
+        <v-col cols="10" class="d-flex">
+          <amount-display :value="toGwei(transaction.gasPrice)" />
+          <div class="ml-1">
+            {{ gwei }}
+          </div>
         </v-col>
       </v-row>
       <v-divider class="pb-2" />
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.nonce') }}
+          {{ t('transactions.details.nonce') }}
         </v-col>
         <v-col cols="10">{{ transaction.nonce }}</v-col>
       </v-row>
       <v-divider class="pb-2" />
       <v-row class="pb-2">
         <v-col cols="2" class="font-weight-medium">
-          {{ $t('transactions.details.input_data') }}
+          {{ t('transactions.details.input_data') }}
         </v-col>
         <v-col cols="10">
           <textarea
@@ -65,55 +68,43 @@
     <template #buttons>
       <v-spacer />
       <v-btn color="primary" class="px-6" @click="close">
-        {{ $t('common.actions.close') }}
+        {{ t('common.actions.close') }}
       </v-btn>
     </template>
   </card>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+import { PropType } from 'vue';
 import { EthTransactionEntry } from '@/store/history/types';
 import { toUnit, Unit } from '@/utils/calculation';
 
-export default defineComponent({
-  name: 'TransactionDetail',
-  props: {
-    transaction: {
-      required: true,
-      type: Object as PropType<EthTransactionEntry>
-    }
-  },
-  emits: ['close'],
-  setup(props, { emit }) {
-    const { transaction } = toRefs(props);
-
-    const toGwei = (value: BigNumber) => {
-      return toUnit(value, Unit.GWEI);
-    };
-
-    const gasFee = computed<BigNumber>(() => {
-      const tx = get(transaction);
-      return toUnit(tx.gasPrice.multipliedBy(tx.gasUsed), Unit.ETH);
-    });
-
-    const close = () => {
-      emit('close');
-    };
-
-    return {
-      toGwei,
-      gasFee,
-      close
-    };
+const props = defineProps({
+  transaction: {
+    required: true,
+    type: Object as PropType<EthTransactionEntry>
   }
 });
+
+const emit = defineEmits(['close']);
+
+const { t } = useI18n();
+const { transaction } = toRefs(props);
+
+const toGwei = (value: BigNumber) => {
+  return toUnit(value, Unit.GWEI);
+};
+
+const gwei: string = 'Gwei';
+
+const gasFee = computed<BigNumber>(() => {
+  const tx = get(transaction);
+  return toUnit(tx.gasPrice.multipliedBy(tx.gasUsed), Unit.ETH);
+});
+
+const close = () => {
+  emit('close');
+};
 </script>
 <style module lang="scss">
 .input-data {

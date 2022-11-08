@@ -5,21 +5,22 @@ from unittest.mock import patch
 from web3 import Web3
 from web3._utils.abi import get_abi_input_types, get_abi_output_types
 
-from rotkehlchen.assets.asset import EthereumToken
+from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.ethereum.defi.zerionsdk import ZERION_ADAPTER_ADDRESS
 from rotkehlchen.constants.assets import A_BTC
 from rotkehlchen.constants.ethereum import ETH_MULTICALL, ETH_SCAN, ZERION_ABI
 from rotkehlchen.constants.misc import ZERO
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.constants.resolver import strethaddress_to_identifier
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.externalapis.beaconchain import BeaconChain
 from rotkehlchen.externalapis.etherscan import Etherscan
 from rotkehlchen.fval import FVal
 from rotkehlchen.rotkehlchen import Rotkehlchen
-from rotkehlchen.serialization.deserialize import deserialize_ethereum_address
+from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.tests.utils.eth_tokens import CONTRACT_ADDRESS_TO_TOKEN
 from rotkehlchen.tests.utils.mock import MockResponse
-from rotkehlchen.types import BTCAddress, ChecksumEthAddress
+from rotkehlchen.types import BTCAddress, ChainID, ChecksumEvmAddress
 from rotkehlchen.utils.misc import from_wei, satoshis_to_btc
 
 
@@ -72,9 +73,9 @@ def assert_eth_balances_result(
         result: Dict[str, Any],
         eth_accounts: List[str],
         eth_balances: List[str],
-        token_balances: Dict[EthereumToken, List[str]],
+        token_balances: Dict[EvmToken, List[str]],
         also_btc: bool,
-        expected_liabilities: Dict[EthereumToken, List[str]] = None,
+        expected_liabilities: Dict[EvmToken, List[str]] = None,
         totals_only: bool = False,
 ) -> None:
     """Asserts for correct ETH blockchain balances when mocked in tests
@@ -128,7 +129,7 @@ def assert_eth_balances_result(
             assert FVal(result['totals']['liabilities'][token.identifier]['amount']) == total_amount  # noqa: E501
 
     # Check our owned eth tokens here since the test may have changed their number
-    owned_assets = set(rotki.chain_manager.totals.assets.keys())
+    owned_assets = set(rotki.chains_aggregator.totals.assets.keys())
     if not also_btc:
         owned_assets.discard(A_BTC)
     assert len(totals) == len(owned_assets)
@@ -152,17 +153,23 @@ def assert_eth_balances_result(
             assert FVal(totals[symbol]['usd_value']) > ZERO
 
 
-def _get_token(value: Any) -> Optional[EthereumToken]:
+def _get_token(value: Any) -> Optional[EvmToken]:
     """Interprets the given value as token if possible"""
     if isinstance(value, str):
         try:
-            token = EthereumToken(value)
+            identifier = strethaddress_to_identifier(value)
+            token = EvmToken(identifier)
         except (UnknownAsset, DeserializationError):
             # not a token
             return None
         return token
-    if isinstance(value, EthereumToken):
+    if isinstance(value, EvmToken):
         return value
+    if isinstance(value, Asset):
+        try:
+            return value.resolve_to_evm_token()
+        except (WrongAssetType, UnknownAsset):
+            return None
     # else
     return None
 
@@ -188,7 +195,7 @@ def mock_beaconchain(
 
 
 def mock_etherscan_query(
-        eth_map: Dict[ChecksumEthAddress, Dict[Union[str, EthereumToken], Any]],
+        eth_map: Dict[ChecksumEvmAddress, Dict[Union[str, EvmToken], Any]],
         etherscan: Etherscan,
         original_queries: Optional[List[str]],
         extra_flags: Optional[List[str]],
@@ -355,8 +362,9 @@ def mock_etherscan_query(
                 decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
 
                 if multicall_purpose == 'multibalance_query':
+                    contract = ETH_SCAN[ChainID.ETHEREUM]
                     # Get the ethscan multibalance subcalls
-                    ethscan_contract = web3.eth.contract(address=ETH_SCAN.address, abi=ETH_SCAN.abi)  # noqa: E501
+                    ethscan_contract = web3.eth.contract(address=contract.address, abi=contract.abi)  # noqa: E501
                     # not really the given args, but we just want the fn abi
                     args = [list(eth_map.keys())[0], list(eth_map.keys())]
                     scan_fn_abi = ethscan_contract._find_matching_fn_abi(
@@ -367,14 +375,14 @@ def mock_etherscan_query(
                     scan_output_types = get_abi_output_types(scan_fn_abi)
                     result_bytes = []
                     for call_entry in decoded_input[0]:  # pylint: disable=unsubscriptable-object
-                        call_contract_address = deserialize_ethereum_address(call_entry[0])
-                        assert call_contract_address == ETH_SCAN.address, 'balances multicall should only contain calls to scan contract'  # noqa: E501
+                        call_contract_address = deserialize_evm_address(call_entry[0])
+                        assert call_contract_address == contract.address, 'balances multicall should only contain calls to scan contract'  # noqa: E501
                         call_data = call_entry[1]
                         scan_decoded_input = web3.codec.decode_abi(scan_input_types, call_data[4:])
-                        account_address = deserialize_ethereum_address(scan_decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
+                        account_address = deserialize_evm_address(scan_decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
                         token_values = []
                         for token_addy_str in scan_decoded_input[1]:  # pylint: disable=unsubscriptable-object # noqa: E501
-                            token_address = deserialize_ethereum_address(token_addy_str)
+                            token_address = deserialize_evm_address(token_addy_str)
                             token = _get_token(token_address)
                             if token is None:
                                 value = 0  # if token is missing from mapping return 0 value
@@ -399,18 +407,19 @@ def mock_etherscan_query(
             else:
                 raise AssertionError('Unexpected etherscan multicall during tests: {url}')
 
-        elif f'api.etherscan.io/api?module=proxy&action=eth_call&to={ETH_SCAN.address}' in url:
+        elif f'api.etherscan.io/api?module=proxy&action=eth_call&to={ETH_SCAN[ChainID.ETHEREUM].address}' in url:  # noqa: E501
             if 'ethscan' in original_queries:
                 return original_requests_get(url, *args, **kwargs)
 
             web3 = Web3()
-            contract = web3.eth.contract(address=ETH_SCAN.address, abi=ETH_SCAN.abi)
+            contract = ETH_SCAN[ChainID.ETHEREUM]
+            ethscan_contract = web3.eth.contract(address=contract.address, abi=contract.abi)
             if 'data=0xdbdbb51b' in url:  # Eth balance query
                 data = url.split('data=')[1]
                 if '&apikey' in data:
                     data = data.split('&apikey')[0]
 
-                fn_abi = contract._find_matching_fn_abi(
+                fn_abi = ethscan_contract._find_matching_fn_abi(
                     fn_identifier='etherBalances',
                     args=[list(eth_map.keys())],
                 )
@@ -419,7 +428,7 @@ def mock_etherscan_query(
                 decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
                 args = []
                 for account_address in decoded_input[0]:  # pylint: disable=unsubscriptable-object  # noqa: E501
-                    account_address = deserialize_ethereum_address(account_address)
+                    account_address = deserialize_evm_address(account_address)
                     args.append(int(eth_map[account_address]['ETH']))
                 result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
@@ -429,7 +438,7 @@ def mock_etherscan_query(
                     data = data.split('&apikey')[0]
                 # not really the given args, but we just want the fn abi
                 args = [list(eth_map.keys()), list(eth_map.keys())]
-                fn_abi = contract._find_matching_fn_abi(
+                fn_abi = ethscan_contract._find_matching_fn_abi(
                     fn_identifier='tokensBalances',
                     args=args,
                 )
@@ -438,17 +447,17 @@ def mock_etherscan_query(
                 decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
                 args = []
                 for account_address in decoded_input[0]:  # pylint: disable=unsubscriptable-object  # noqa: E501
-                    account_address = deserialize_ethereum_address(account_address)
+                    account_address = deserialize_evm_address(account_address)
                     x = []
                     for token_address in decoded_input[1]:  # pylint: disable=unsubscriptable-object  # noqa: E501
-                        token_address = deserialize_ethereum_address(token_address)
+                        token_address = deserialize_evm_address(token_address)
                         value_to_add = 0
                         for given_asset, value in eth_map[account_address].items():
                             given_asset = _get_token(given_asset)
                             if given_asset is None:
                                 # not a token
                                 continue
-                            if token_address != given_asset.ethereum_address:
+                            if token_address != given_asset.evm_address:
                                 continue
                             value_to_add = int(value)
                             break
@@ -464,7 +473,7 @@ def mock_etherscan_query(
                     data = data.split('&apikey')[0]
                 # not really the given args, but we just want the fn abi
                 args = ['str', list(eth_map.keys())]
-                fn_abi = contract._find_matching_fn_abi(
+                fn_abi = ethscan_contract._find_matching_fn_abi(
                     fn_identifier='tokensBalance',
                     args=args,
                 )
@@ -472,10 +481,10 @@ def mock_etherscan_query(
                 output_types = get_abi_output_types(fn_abi)
                 decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
                 args = []
-                account_address = deserialize_ethereum_address(decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
+                account_address = deserialize_evm_address(decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
                 x = []
                 for token_address in decoded_input[1]:  # pylint: disable=unsubscriptable-object  # noqa: E501
-                    token_address = deserialize_ethereum_address(token_address)
+                    token_address = deserialize_evm_address(token_address)
                     value_to_add = 0
                     for given_asset, value in eth_map[account_address].items():
                         given_asset = _get_token(given_asset)
@@ -483,7 +492,7 @@ def mock_etherscan_query(
                             # not a token
                             continue
 
-                        if token_address != given_asset.ethereum_address:
+                        if token_address != given_asset.evm_address:
                             continue
                         value_to_add = int(value)
                         break

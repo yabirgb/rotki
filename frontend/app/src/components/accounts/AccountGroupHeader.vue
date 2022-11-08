@@ -1,6 +1,6 @@
 <template>
   <td v-if="!group" class="font-weight-medium" colspan="5" :class="mobileClass">
-    {{ $t('account_group_header.standalone') }}
+    {{ tc('account_group_header.standalone') }}
   </td>
   <fragment v-else>
     <td
@@ -25,7 +25,7 @@
         </v-btn>
         <v-btn v-else small icon disabled />
         <span class="font-weight-medium">
-          {{ $t('account_group_header.xpub') }}
+          {{ tc('account_group_header.xpub') }}
         </span>
         <span :class="{ 'blur-content': !shouldShowAmount }">
           <v-tooltip top open-delay="400">
@@ -37,14 +37,14 @@
         </span>
         <copy-button
           :value="xpub.xpub"
-          :tooltip="$t('account_group_header.copy_tooltip')"
+          :tooltip="tc('account_group_header.copy_tooltip')"
         />
         <span
           v-if="xpub.derivationPath"
           :class="{ 'blur-content': !shouldShowAmount }"
         >
           <span class="font-weight-medium">
-            {{ $t('account_group_header.derivation_path') }}
+            {{ tc('account_group_header.derivation_path') }}
           </span>
           {{ xpub.derivationPath }}
         </span>
@@ -85,7 +85,7 @@
               <v-icon small> mdi-pencil-outline </v-icon>
             </v-btn>
           </template>
-          <span>{{ $t('account_group_header.edit_tooltip') }}</span>
+          <span>{{ tc('account_group_header.edit_tooltip') }}</span>
         </v-tooltip>
         <v-tooltip top open-delay="400">
           <template #activator="{ on }">
@@ -93,22 +93,15 @@
               <v-icon small>mdi-delete-outline</v-icon>
             </v-btn>
           </template>
-          <span> {{ $t('account_group_header.delete_tooltip') }} </span>
+          <span> {{ tc('account_group_header.delete_tooltip') }} </span>
         </v-tooltip>
       </div>
     </td>
   </fragment>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { Balance, BigNumber } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+import { PropType } from 'vue';
 import CopyButton from '@/components/helper/CopyButton.vue';
 import Fragment from '@/components/helper/Fragment';
 import TagDisplay from '@/components/tags/TagDisplay.vue';
@@ -118,89 +111,71 @@ import { XpubAccountWithBalance } from '@/store/balances/types';
 import { balanceUsdValueSum } from '@/store/defi/utils';
 import { useSessionSettingsStore } from '@/store/settings/session';
 
-export default defineComponent({
-  name: 'AccountGroupHeader',
-  components: { TagDisplay, CopyButton, Fragment },
-  props: {
-    group: { required: true, type: String },
-    items: {
-      required: true,
-      type: Array as PropType<XpubAccountWithBalance[]>
-    },
-    expanded: { required: true, type: Boolean },
-    loading: { required: false, type: Boolean, default: false }
+const props = defineProps({
+  group: { required: true, type: String },
+  items: {
+    required: true,
+    type: Array as PropType<XpubAccountWithBalance[]>
   },
-  emits: ['delete-clicked', 'expand-clicked', 'edit-clicked'],
-  setup(props, { emit }) {
-    const { items } = toRefs(props);
-    const { breakpoint, currentBreakpoint } = useTheme();
-    const xsOnly = computed(() => get(currentBreakpoint).xsOnly);
-    const { shouldShowAmount } = storeToRefs(useSessionSettingsStore());
-
-    const mobileClass = computed<string | null>(() => {
-      return get(xsOnly) ? 'v-data-table__mobile-row' : null;
-    });
-
-    const xpub = computed<XpubAccountWithBalance>(() => {
-      return get(items).filter(item => !item.address)[0];
-    });
-
-    const label = computed<string>(() => {
-      return get(xpub).label;
-    });
-
-    const xpubTags = computed<string[]>(() => {
-      return get(xpub).tags;
-    });
-
-    const displayXpub = computed<string>(() => {
-      return truncateAddress(
-        get(xpub).xpub,
-        truncationPoints[get(breakpoint)] ?? 4
-      );
-    });
-
-    const sum = computed<BigNumber>(() => {
-      return bigNumberSum(get(items).map(({ balance: { amount } }) => amount));
-    });
-
-    const usdSum = computed<BigNumber>(() => {
-      return balanceUsdValueSum(get(items));
-    });
-
-    const balance = computed<Balance>(() => {
-      return {
-        amount: get(sum),
-        usdValue: get(usdSum)
-      };
-    });
-
-    const deleteClicked = (_payload: XpubAccountWithBalance) =>
-      emit('delete-clicked', _payload);
-
-    const expandClicked = (_payload: XpubAccountWithBalance) =>
-      emit('expand-clicked', _payload);
-
-    const editClicked = (_payload: XpubAccountWithBalance) =>
-      emit('edit-clicked', _payload);
-
-    return {
-      mobileClass,
-      xsOnly,
-      label,
-      xpub,
-      xpubTags,
-      balance,
-      displayXpub,
-      sum,
-      usdSum,
-      deleteClicked,
-      expandClicked,
-      editClicked,
-      shouldShowAmount
-    };
-  }
+  expanded: { required: true, type: Boolean },
+  loading: { required: false, type: Boolean, default: false }
 });
+
+const emit = defineEmits(['delete-clicked', 'expand-clicked', 'edit-clicked']);
+
+const { items } = toRefs(props);
+const { breakpoint, currentBreakpoint } = useTheme();
+const xsOnly = computed(() => get(currentBreakpoint).xsOnly);
+const { shouldShowAmount } = storeToRefs(useSessionSettingsStore());
+
+const mobileClass = computed<string | null>(() => {
+  return get(xsOnly) ? 'v-data-table__mobile-row' : null;
+});
+
+const xpub = computed<XpubAccountWithBalance>(() => {
+  return get(items).filter(item => !item.address)[0];
+});
+
+const label = computed<string>(() => {
+  return get(xpub).label;
+});
+
+const xpubTags = computed<string[]>(() => {
+  return get(xpub).tags;
+});
+
+const displayXpub = computed<string>(() => {
+  return truncateAddress(
+    get(xpub).xpub,
+    truncationPoints[get(breakpoint)] ?? 4
+  );
+});
+
+const sum = computed<BigNumber>(() => {
+  return bigNumberSum(get(items).map(({ balance: { amount } }) => amount));
+});
+
+const usdSum = computed<BigNumber>(() => {
+  return balanceUsdValueSum(get(items));
+});
+
+const balance = computed<Balance>(() => {
+  return {
+    amount: get(sum),
+    usdValue: get(usdSum)
+  };
+});
+
+const deleteClicked = (_payload: XpubAccountWithBalance) =>
+  emit('delete-clicked', _payload);
+
+const expandClicked = (_payload: XpubAccountWithBalance) =>
+  emit('expand-clicked', _payload);
+
+const editClicked = (_payload: XpubAccountWithBalance) =>
+  emit('edit-clicked', _payload);
+
+const { tc } = useI18n();
 </script>
 <style scoped lang="scss">
 .blur-content {

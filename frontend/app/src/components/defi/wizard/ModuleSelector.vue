@@ -14,7 +14,7 @@
     :disabled="loading"
     :loading="loading"
     :open-on-clear="false"
-    :label="$t('module_selector.label')"
+    :label="t('module_selector.label')"
     item-text="name"
     item-value="identifier"
     class="module-selector"
@@ -60,17 +60,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
-import { SUPPORTED_MODULES } from '@/components/defi/wizard/consts';
+import { Ref } from 'vue';
 import AdaptiveWrapper from '@/components/display/AdaptiveWrapper.vue';
-import { BalanceActions } from '@/store/balances/action-types';
-import { BalanceMutations } from '@/store/balances/mutation-types';
+import { useNonFungibleBalancesStore } from '@/store/balances/non-fungible';
 import { useSettingsStore } from '@/store/settings';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { useStore } from '@/store/utils';
-import { Module } from '@/types/modules';
+import { Module, SUPPORTED_MODULES } from '@/types/modules';
 
 const wasActivated = (
   active: Module[],
@@ -92,23 +87,24 @@ const autocomplete = ref();
 
 const { activeModules } = storeToRefs(useGeneralSettingsStore());
 const { update: updateSettings } = useSettingsStore();
-const { dispatch, commit } = useStore();
 
-const fetchNfBalances = () => {
-  const callback = () =>
-    dispatch(`balances/${BalanceActions.FETCH_NF_BALANCES}`).then();
+const balancesStore = useNonFungibleBalancesStore();
+const { balances } = storeToRefs(balancesStore);
+const { fetchNonFungibleBalances } = balancesStore;
+
+const fetch = () => {
+  const callback = () => fetchNonFungibleBalances({ ignoreCache: false });
   setTimeout(callback, 800);
 };
 
 const clearNfBalances = () => {
-  const callback = () =>
-    commit(`balances/${BalanceMutations.UPDATE_NF_BALANCES}`, {});
+  const callback = () => set(balances, {});
   setTimeout(callback, 800);
 };
 
 const onModuleActivation = (active: Module[]) => {
   if (wasActivated(active, get(selectedModules), Module.NFTS)) {
-    fetchNfBalances();
+    fetch();
   }
 };
 
@@ -130,7 +126,7 @@ const update = async (activeModules: Module[], clearSearch: boolean = true) => {
   set(loading, false);
 };
 
-const unselect = (identifier: Module) => {
+const unselect = async (identifier: Module) => {
   const selected = get(selectedModules);
   const previouslyActive = [...selected];
   const selectionIndex = selected.indexOf(identifier);
@@ -138,7 +134,7 @@ const unselect = (identifier: Module) => {
     return;
   }
   selected.splice(selectionIndex, 1);
-  update(selected, false);
+  await update(selected, false);
 
   if (wasDeactivated(selected, previouslyActive, Module.NFTS)) {
     clearNfBalances();
@@ -148,4 +144,6 @@ const unselect = (identifier: Module) => {
 onMounted(() => {
   set(selectedModules, get(activeModules));
 });
+
+const { t } = useI18n();
 </script>

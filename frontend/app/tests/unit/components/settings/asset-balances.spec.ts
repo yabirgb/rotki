@@ -1,28 +1,19 @@
 import { mount, Wrapper } from '@vue/test-utils';
-import { createPinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
 import AssetBalances from '@/components/AssetBalances.vue';
 import { useSessionStore } from '@/store/session';
-import store from '@/store/store';
-import '../../i18n';
-
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
+import createCustomPinia from '../../utils/create-pinia';
 
 describe('AssetBalances.vue', () => {
   let wrapper: Wrapper<any>;
   beforeEach(() => {
     const vuetify = new Vuetify();
-    const pinia = createPinia();
+    const pinia = createCustomPinia();
     setActivePinia(pinia);
     wrapper = mount(AssetBalances, {
       vuetify,
-      store,
       pinia,
-      provide: {
-        'vuex-store': store
-      },
       propsData: {
         balances: []
       }
@@ -30,7 +21,7 @@ describe('AssetBalances.vue', () => {
   });
 
   afterEach(() => {
-    useSessionStore().reset();
+    useSessionStore().$reset();
   });
 
   test('table enters into loading state when balances load', async () => {

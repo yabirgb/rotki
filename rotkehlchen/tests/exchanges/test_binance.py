@@ -10,8 +10,9 @@ from urllib.parse import urlencode
 import pytest
 import requests
 
-from rotkehlchen.assets.asset import WORLD_TO_BINANCE, Asset
+from rotkehlchen.assets.asset import Asset
 from rotkehlchen.assets.converters import UNSUPPORTED_BINANCE_ASSETS, asset_from_binance
+from rotkehlchen.assets.exchanges_mappings.binance import WORLD_TO_BINANCE
 from rotkehlchen.constants.assets import A_ADA, A_BNB, A_BTC, A_DOT, A_ETH, A_EUR, A_USDT, A_WBTC
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
 from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset
@@ -158,21 +159,6 @@ def test_trade_from_binance(function_scope_binance):
         assert isinstance(our_trade.fee_currency, Asset)
 
 
-exchange_info_mock_text = '''{
-  "timezone": "UTC",
-  "serverTime": 1508631584636,
-  "symbols": [{
-    "symbol": "ETHBTC",
-    "status": "TRADING",
-    "baseAsset": "ETH",
-    "baseAssetPrecision": 8,
-    "quoteAsset": "BTC",
-    "quotePrecision": 8,
-    "icebergAllowed": false
-    }]
-}'''
-
-
 def test_binance_assets_are_known(inquirer):  # pylint: disable=unused-argument
     unsupported_assets = set(UNSUPPORTED_BINANCE_ASSETS)
     common_items = unsupported_assets.intersection(set(WORLD_TO_BINANCE.values()))
@@ -192,7 +178,7 @@ def test_binance_assets_are_known(inquirer):  # pylint: disable=unused-argument
             assert binance_asset in UNSUPPORTED_BINANCE_ASSETS
         except UnknownAsset as e:
             test_warnings.warn(UserWarning(
-                f'Found unknown asset {e.asset_name} in binance. '
+                f'Found unknown asset {e.identifier} in binance. '
                 f'Support for it has to be added',
             ))
 

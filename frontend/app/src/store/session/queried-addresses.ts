@@ -1,32 +1,30 @@
-import { ref } from '@vue/composition-api';
-import { set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import i18n from '@/i18n';
 import { useQueriedAddressApi } from '@/services/session/queried-addresses-api';
 import {
   QueriedAddresses,
   QueriedAddressPayload
 } from '@/services/session/types';
-import { useMainStore } from '@/store/main';
+import { useMessageStore } from '@/store/message';
 
 export const useQueriedAddressesStore = defineStore(
   'session/queriedAddresses',
   () => {
     const queriedAddresses = ref<QueriedAddresses>({});
 
-    const { setMessage } = useMainStore();
+    const { setMessage } = useMessageStore();
     const api = useQueriedAddressApi();
+    const { t } = useI18n();
 
     async function addQueriedAddress(payload: QueriedAddressPayload) {
       try {
         set(queriedAddresses, await api.addQueriedAddress(payload));
       } catch (e: any) {
         setMessage({
-          description: i18n
-            .t('actions.session.add_queriable_address.error.message', {
+          description: t(
+            'actions.session.add_queriable_address.error.message',
+            {
               message: e.message
-            })
-            .toString()
+            }
+          ).toString()
         });
       }
     }
@@ -36,11 +34,12 @@ export const useQueriedAddressesStore = defineStore(
         set(queriedAddresses, await api.deleteQueriedAddress(payload));
       } catch (e: any) {
         setMessage({
-          description: i18n
-            .t('actions.session.delete_queriable_address.error.message', {
+          description: t(
+            'actions.session.delete_queriable_address.error.message',
+            {
               message: e.message
-            })
-            .toString()
+            }
+          ).toString()
         });
       }
     }
@@ -50,25 +49,21 @@ export const useQueriedAddressesStore = defineStore(
         set(queriedAddresses, await api.queriedAddresses());
       } catch (e: any) {
         setMessage({
-          description: i18n
-            .t('actions.session.fetch_queriable_address.error.message', {
+          description: t(
+            'actions.session.fetch_queriable_address.error.message',
+            {
               message: e.message
-            })
-            .toString()
+            }
+          ).toString()
         });
       }
     }
-
-    const reset = () => {
-      set(queriedAddresses, {});
-    };
 
     return {
       queriedAddresses,
       addQueriedAddress,
       deleteQueriedAddress,
-      fetchQueriedAddresses,
-      reset
+      fetchQueriedAddresses
     };
   }
 );

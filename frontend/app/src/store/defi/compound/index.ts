@@ -1,25 +1,17 @@
-import { computed, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import { getPremium, useModules } from '@/composables/session';
-import i18n from '@/i18n';
+import { Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
+import { useModules } from '@/composables/session/modules';
+import { useStatusUpdater } from '@/composables/status';
 import { balanceKeys } from '@/services/consts';
-import {
-  CompoundBalances,
-  CompoundHistory
-} from '@/services/defi/types/compound';
 import { api } from '@/services/rotkehlchen-api';
-import { Section, Status } from '@/store/const';
 import { toProfitLossModel } from '@/store/defi/utils';
 import { useNotifications } from '@/store/notifications';
+import { getStatus, setStatus } from '@/store/status';
 import { useTasks } from '@/store/tasks';
-import {
-  getStatus,
-  getStatusUpdater,
-  isLoading,
-  setStatus
-} from '@/store/utils';
+import { isLoading } from '@/store/utils';
+import { CompoundBalances, CompoundHistory } from '@/types/defi/compound';
 import { Module } from '@/types/modules';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 
@@ -37,11 +29,12 @@ export const useCompoundStore = defineStore('defi/compound', () => {
     defaultCompoundHistory()
   ) as Ref<CompoundHistory>;
 
-  const { resetStatus } = getStatusUpdater(Section.DEFI_COMPOUND_BALANCES);
+  const { resetStatus } = useStatusUpdater(Section.DEFI_COMPOUND_BALANCES);
   const { awaitTask } = useTasks();
   const { notify } = useNotifications();
   const { activeModules } = useModules();
-  const premium = getPremium();
+  const premium = usePremium();
+  const { tc } = useI18n();
 
   const rewards = computed(() => toProfitLossModel(get(history).rewards));
   const interestProfit = computed(() =>
@@ -77,15 +70,15 @@ export const useCompoundStore = defineStore('defi/compound', () => {
         taskId,
         taskType,
         {
-          title: i18n.tc('actions.defi.compound.task.title'),
+          title: tc('actions.defi.compound.task.title'),
           numericKeys: balanceKeys
         }
       );
       set(balances, result);
     } catch (e: any) {
       notify({
-        title: i18n.tc('actions.defi.compound.error.title'),
-        message: i18n.tc('actions.defi.compound.error.description', undefined, {
+        title: tc('actions.defi.compound.error.title'),
+        message: tc('actions.defi.compound.error.description', undefined, {
           error: e.message
         }),
         display: true
@@ -119,7 +112,7 @@ export const useCompoundStore = defineStore('defi/compound', () => {
         taskId,
         taskType,
         {
-          title: i18n.tc('actions.defi.compound_history.task.title'),
+          title: tc('actions.defi.compound_history.task.title'),
           numericKeys: balanceKeys
         }
       );
@@ -127,8 +120,8 @@ export const useCompoundStore = defineStore('defi/compound', () => {
       set(history, result);
     } catch (e: any) {
       notify({
-        title: i18n.tc('actions.defi.compound_history.error.title'),
-        message: i18n.tc(
+        title: tc('actions.defi.compound_history.error.title'),
+        message: tc(
           'actions.defi.compound_history.error.description',
           undefined,
           {

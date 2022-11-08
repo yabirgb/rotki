@@ -16,6 +16,7 @@ export function getPools(
 ): XswapPool[] {
   const pools: XswapPool[] = [];
   const known: { [address: string]: boolean } = {};
+
   for (const account in balances) {
     const accountBalances = balances[account];
     if (!accountBalances || accountBalances.length === 0) {
@@ -142,10 +143,6 @@ export function getBalances(
       if (balance) {
         const oldBalance = balance.userBalance;
         balance.userBalance = balanceSum(oldBalance, userBalance);
-
-        if (balance.totalSupply !== null && totalSupply !== null) {
-          balance.totalSupply = balance.totalSupply.plus(totalSupply);
-        }
 
         assets.forEach(asset => {
           const index = balance.assets.findIndex(

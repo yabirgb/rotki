@@ -58,7 +58,6 @@ from rotkehlchen.chain.ethereum.modules.yearn.vaults import (
     YearnVaultEvent,
     YearnVaultHistory,
 )
-from rotkehlchen.chain.ethereum.trades import AMMTrade
 from rotkehlchen.chain.ethereum.types import NodeName, WeightedNode
 from rotkehlchen.db.settings import DBSettings
 from rotkehlchen.db.utils import DBAssetBalance, LocationData, SingleDBAssetBalance
@@ -70,8 +69,10 @@ from rotkehlchen.inquirer import CurrentPriceOracle
 from rotkehlchen.types import (
     AssetMovementCategory,
     BlockchainAccountData,
+    ChainID,
     CostBasisMethod,
-    EthereumTransaction,
+    EvmTokenKind,
+    EvmTransaction,
     ExchangeLocationID,
     Location,
     TradeType,
@@ -124,11 +125,13 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             Eth2Deposit,
             StakingEvent,
             NodeName,
+            NodeName,
+            ChainID,
     )):
         return entry.serialize()
     if isinstance(entry, (
             Trade,
-            EthereumTransaction,
+            EvmTransaction,
             MakerdaoVault,
             DSRAccountReport,
             Balance,
@@ -140,7 +143,6 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             AaveEvent,
             UniswapPool,
             UniswapPoolAsset,
-            AMMTrade,
             UniswapPoolEventsBalance,
             ADXStakingHistory,
             BalancerBPTEventPoolToken,
@@ -195,7 +197,7 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             LiquityStakeEventType,
             BalanceType,
             CostBasisMethod,
-            NodeName,
+            EvmTokenKind,
     )):
         return str(entry)
 

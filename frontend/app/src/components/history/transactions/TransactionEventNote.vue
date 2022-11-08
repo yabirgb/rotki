@@ -15,7 +15,7 @@
       <span v-else-if="note.type === 'amount'" :key="index">
         <amount-display :asset="note.asset" :value="note.amount" />
       </span>
-      <span v-else-if="note.type === 'url'" :key="index">
+      <span v-else-if="note.type === 'url' && note.url" :key="index">
         <external-link :url="note.url">{{ note.word }}</external-link>
       </span>
       <span v-else :key="index">
@@ -24,143 +24,127 @@
     </template>
   </div>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import { defineComponent } from '@vue/composition-api';
-import { get } from '@vueuse/core';
 import ExternalLink from '@/components/helper/ExternalLink.vue';
-import { useAssetInfoRetrieval } from '@/store/assets';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
 import { bigNumberify } from '@/utils/bignumbers';
-import { isValidEthAddress } from '@/utils/text';
+import { isValidEthAddress, isValidTxHash } from '@/utils/text';
 
-export default defineComponent({
-  name: 'TransactionEventNote',
-  components: { ExternalLink },
-  props: {
-    notes: { required: false, type: String, default: '' },
-    amount: {
-      required: false,
-      type: BigNumber,
-      default: null
-    },
-    asset: { required: false, type: String, default: '' }
+defineProps({
+  notes: { required: false, type: String, default: '' },
+  amount: {
+    required: false,
+    type: BigNumber,
+    default: null
   },
+  asset: { required: false, type: String, default: '' }
+});
 
-  setup() {
-    enum NoteType {
-      ADDRESS = 'address',
-      TX = 'tx',
-      AMOUNT = 'amount',
-      WORD = 'word',
-      URL = 'url'
+enum NoteType {
+  ADDRESS = 'address',
+  TX = 'tx',
+  AMOUNT = 'amount',
+  WORD = 'word',
+  URL = 'url'
+}
+
+type NoteFormat = {
+  type: NoteType;
+  word?: string;
+  address?: string;
+  amount?: BigNumber;
+  asset?: string;
+  url?: string;
+};
+
+const formatNotes = (
+  notes: string,
+  amount: BigNumber,
+  assetId: string
+): NoteFormat[] => {
+  const { assetSymbol } = useAssetInfoRetrieval();
+
+  const asset = get(assetSymbol(assetId));
+
+  if (!notes) return [];
+
+  const formats: NoteFormat[] = [];
+  let skip = false;
+
+  // label each word from notes whether it is an address or not
+  const words = notes.split(/\s/);
+
+  words.forEach((word, index) => {
+    if (skip) {
+      skip = false;
+      return;
     }
 
-    type NoteFormat = {
-      type: NoteType;
-      word?: string;
-      address?: string;
-      amount?: BigNumber;
-      asset?: string;
-      url?: string;
-    };
+    // Check if the word is ETH address
+    if (isValidEthAddress(word)) {
+      formats.push({ type: NoteType.ADDRESS, address: word });
+      return;
+    }
 
-    const formatNotes = (
-      notes: string,
-      amount: BigNumber,
-      assetId: string
-    ): NoteFormat[] => {
-      const { assetSymbol } = useAssetInfoRetrieval();
+    // Check if the word is Tx Hash
+    if (isValidTxHash(word)) {
+      formats.push({ type: NoteType.TX, address: word });
+      return;
+    }
 
-      const asset = get(assetSymbol(assetId));
+    const isAmount =
+      !isNaN(parseFloat(word)) &&
+      bigNumberify(word).eq(amount) &&
+      amount.gt(0) &&
+      index < words.length - 1 &&
+      words[index + 1] === asset;
 
-      if (!notes) return [];
+    if (isAmount) {
+      formats.push({ type: NoteType.AMOUNT, amount, asset: assetId });
+      skip = true;
+      return;
+    }
 
-      const formats: NoteFormat[] = [];
-      let skip = false;
+    // Check if the word is Markdown link format
+    const markdownLinkRegex = /^\[(.+)]\((<?https?:\/\/.+>?)\)$/;
+    const markdownLinkMatch = word.match(markdownLinkRegex);
 
-      // label each word from notes whether it is an address or not
-      const words = notes.split(/\s/);
+    if (markdownLinkMatch) {
+      const text = markdownLinkMatch[1];
+      let url = markdownLinkMatch[2];
 
-      words.forEach((word, index) => {
-        if (skip) {
-          skip = false;
-          return;
-        }
+      if (text && url) {
+        url = url.replace(/^<+/, '').replace(/>+$/, '');
 
-        // Check if the word is ETH address
-        const isAddress = isValidEthAddress(word);
+        formats.push({
+          type: NoteType.URL,
+          word: text,
+          url
+        });
 
-        // Check if the word is Tx Hash
-        const isTransaction =
-          isAddress && index !== 0 && words[index - 1] === 'transaction';
+        return;
+      }
+    }
 
-        if (isAddress) {
-          if (isTransaction) {
-            formats.push({ type: NoteType.TX, address: word });
-          } else {
-            formats.push({ type: NoteType.ADDRESS, address: word });
-          }
-          return;
-        }
+    // Check if the word is URL
+    const urlRegex = /^(https?:\/\/.+)$/;
 
-        const isAmount =
-          !isNaN(parseFloat(word)) &&
-          bigNumberify(word).eq(amount) &&
-          amount.gt(0) &&
-          index < words.length - 1 &&
-          words[index + 1] === asset;
-
-        if (isAmount) {
-          formats.push({ type: NoteType.AMOUNT, amount, asset: assetId });
-          skip = true;
-          return;
-        }
-
-        // Check if the word is Markdown link format
-        const markdownLinkRegex = /^\[(.+)]\((<?https?:\/\/.+>?)\)$/;
-        const markdownLinkMatch = word.match(markdownLinkRegex);
-
-        if (markdownLinkMatch) {
-          const text = markdownLinkMatch[1];
-          let url = markdownLinkMatch[2];
-
-          if (text && url) {
-            url = url.replace(/^<+/, '').replace(/>+$/, '');
-
-            formats.push({
-              type: NoteType.URL,
-              word: text,
-              url
-            });
-
-            return;
-          }
-        }
-
-        // Check if the word is URL
-        const urlRegex = /^(https?:\/\/.+)$/;
-
-        if (urlRegex.test(word)) {
-          formats.push({
-            type: NoteType.URL,
-            word,
-            url: word
-          });
-
-          return;
-        }
-
-        formats.push({ type: NoteType.WORD, word });
+    if (urlRegex.test(word)) {
+      formats.push({
+        type: NoteType.URL,
+        word,
+        url: word
       });
 
-      return formats;
-    };
+      return;
+    }
 
-    return {
-      formatNotes
-    };
-  }
-});
+    formats.push({ type: NoteType.WORD, word });
+  });
+
+  return formats;
+};
 </script>
 <style lang="scss" module>
 .address {

@@ -1,25 +1,23 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock
 
 import pytest
 from flaky import flaky
 
-from rotkehlchen.chain.ethereum.manager import EthereumManager
-from rotkehlchen.chain.ethereum.tokens import EthTokens, generate_multicall_chunks
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
-from rotkehlchen.chain.ethereum.utils import multicall
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
+from rotkehlchen.chain.evm.tokens import EvmTokens, generate_multicall_chunks
 from rotkehlchen.constants.assets import A_OMG
 from rotkehlchen.fval import FVal
 from rotkehlchen.tests.utils.constants import A_LPT
 
 
-@pytest.fixture(name='ethtokens')
-def fixture_ethtokens(ethereum_manager, database, inquirer):  # pylint: disable=unused-argument
-    return EthTokens(database, ethereum_manager)
+@pytest.fixture(name='evmtokens')
+def fixture_evmtokens(ethereum_manager, database, inquirer):  # pylint: disable=unused-argument
+    return EvmTokens(database, ethereum_manager)
 
 
 @flaky(max_runs=3, min_passes=1)  # failed in a flaky way sometimes in the CI due to etherscan
 @pytest.mark.parametrize('ignored_assets', [[A_LPT]])
-def test_detect_tokens_for_addresses(ethtokens):
+def test_detect_tokens_for_addresses(evmtokens):
     """
     Detect tokens, query balances and check that ignored assets are not queried.
 
@@ -30,27 +28,16 @@ def test_detect_tokens_for_addresses(ethtokens):
     USD price queries are mocked so we don't care about the result.
     Just check that all prices are included
     """
-    addr1 = string_to_ethereum_address('0x8d89170b92b2Be2C08d57C48a7b190a2f146720f')
-    addr2 = string_to_ethereum_address('0xB756AD52f3Bf74a7d24C67471E0887436936504C')
+    addr1 = string_to_evm_address('0x8d89170b92b2Be2C08d57C48a7b190a2f146720f')
+    addr2 = string_to_evm_address('0xB756AD52f3Bf74a7d24C67471E0887436936504C')
 
-    ethtokens.ethereum.multicall_used = False
+    evmtokens.manager.multicall = MagicMock(side_effect=evmtokens.manager.multicall)
 
-    multicall_uses = 0
+    evmtokens.detect_tokens(False, [addr1, addr2])
+    assert evmtokens.manager.multicall.call_count == 0  # don't use multicall for detection
+    result, token_usd_prices = evmtokens.query_tokens_for_addresses([addr1, addr2])
+    assert evmtokens.manager.multicall.call_count == 1  # do use multicall one time for balances query  # noqa: E501
 
-    def mock_multicall(ethereum: EthereumManager, **kwargs):
-        nonlocal multicall_uses
-        multicall_uses += 1
-        return multicall(ethereum=ethereum, **kwargs)
-
-    multicall_patch = patch(
-        target='rotkehlchen.chain.ethereum.tokens.multicall',
-        new=mock_multicall,
-    )
-    with multicall_patch:
-        ethtokens.detect_tokens(False, [addr1, addr2])
-        assert multicall_uses == 0  # don't use multicall for detection
-        result, token_usd_prices = ethtokens.query_tokens_for_addresses([addr1, addr2])
-        assert multicall_uses == 1  # do use multicall one time for balances query
     assert len(result[addr1]) == 2
     balance = result[addr1][A_OMG]
     assert isinstance(balance, FVal)

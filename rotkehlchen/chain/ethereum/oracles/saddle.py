@@ -1,9 +1,9 @@
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Tuple
 
 from web3.types import BlockIdentifier
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.constants.assets import A_ALETH, A_ETH, A_WETH
 from rotkehlchen.constants.ethereum import SADDLE_ALETH_POOL
 from rotkehlchen.constants.misc import EXP18
@@ -37,8 +37,8 @@ class SaddleOracle(CurrentPriceOracleInterface):
 
     def get_price(
         self,
-        from_asset: Asset,
-        to_asset: Asset,
+        from_asset: AssetWithOracles,
+        to_asset: AssetWithOracles,
         block_identifier: BlockIdentifier,
     ) -> Price:
         """
@@ -56,7 +56,7 @@ class SaddleOracle(CurrentPriceOracleInterface):
             )
 
         aleth_eth_price = SADDLE_ALETH_POOL.call(
-            ethereum=self.eth_manager,
+            manager=self.eth_manager,
             method_name='calculateSwap',
             arguments=[1, 0, 1000000000000000000],
             block_identifier=block_identifier,
@@ -68,12 +68,24 @@ class SaddleOracle(CurrentPriceOracleInterface):
 
         return aleth_eth_price
 
-    def query_current_price(self, from_asset: Asset, to_asset: Asset) -> Price:
+    def query_current_price(
+            self,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> Tuple[Price, bool]:
         """At the moment until more pools get implemented this function is limited to ALETH
         Refer to the docstring of `get_price`.
+        May raise:
+        - PriceQueryUnsupportedAsset: If an asset not supported by saddle is used in the oracle
+        Returns:
+        1. The price of from_asset at the current timestamp
+        for the current oracle
+        2. False value, since it never tries to match main currency
         """
-        return self.get_price(
+        price = self.get_price(
             from_asset=from_asset,
             to_asset=to_asset,
             block_identifier='latest',
         )
+        return price, False

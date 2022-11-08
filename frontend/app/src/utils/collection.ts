@@ -1,6 +1,5 @@
-import { computed, Ref } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { getPremium } from '@/composables/session';
+import { Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
 import { Collection, CollectionResponse } from '@/types/collection';
 
 export const mapCollectionResponse = <T>(
@@ -42,7 +41,7 @@ export const setupEntryLimit = (
   found: Ref<number>,
   total: Ref<number>
 ) => {
-  const premium = getPremium();
+  const premium = usePremium();
 
   const itemLength = computed(() => {
     const isPremium = get(premium);

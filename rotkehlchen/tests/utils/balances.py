@@ -11,14 +11,18 @@ def get_asset_balance_total(asset: Asset, setup: BalancesTestSetup) -> FVal:
     total = ZERO
 
     if asset in (A_ETH, A_BTC):
-        asset_balances = getattr(setup, f'{asset.symbol.lower()}_balances')
+        asset_balances = getattr(
+            setup,
+            f'{asset.resolve_to_asset_with_symbol().symbol.lower()}_balances',
+        )
         total += sum(conversion_function(FVal(b)) for b in asset_balances)
-    elif asset.is_eth_token():
-        asset_balances = setup.token_balances[asset]  # type: ignore
+    elif asset.is_evm_token():
+        asset_balances = setup.token_balances[asset.resolve_to_evm_token()]
         total += sum(conversion_function(FVal(b)) for b in asset_balances)
 
-    total += setup.binance_balances.get(asset, ZERO)
-    total += setup.poloniex_balances.get(asset, ZERO)
+    if asset.is_asset_with_oracles():
+        total += setup.binance_balances.get(asset.resolve_to_asset_with_oracles(), ZERO)
+        total += setup.poloniex_balances.get(asset.resolve_to_asset_with_oracles(), ZERO)
 
     if setup.manually_tracked_balances:
         for entry in setup.manually_tracked_balances:

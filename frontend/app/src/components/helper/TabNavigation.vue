@@ -21,7 +21,7 @@
       </v-tab>
       <v-tab-item
         v-for="tab of tabContents"
-        :key="tab.id"
+        :key="tab.route"
         :value="tab.route"
         :class="
           !noContentMargin
@@ -31,11 +31,11 @@
         class="tab-navigation__tabs__tab-item"
       >
         <div v-if="isDev">
-          <router-view v-if="isRouterVisible($route.path, tab)" />
+          <router-view v-if="isRouterVisible(route.path, tab)" />
         </div>
         <keep-alive v-else>
           <div>
-            <router-view v-if="isRouterVisible($route.path, tab)" />
+            <router-view v-if="isRouterVisible(route.path, tab)" />
           </div>
         </keep-alive>
       </v-tab-item>
@@ -43,56 +43,33 @@
   </v-container>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  ref,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType } from 'vue';
+import { useTheme } from '@/composables/common';
+import { TabContent, getClass } from '@/types/tabs';
+import { checkIfDevelopment } from '@/utils/env-utils';
 
-export interface TabContent {
-  readonly text: string;
-  readonly route: string;
-  readonly hidden?: boolean;
-  readonly hideHeader?: boolean;
-}
-
-export default defineComponent({
-  name: 'TabNavigation',
-  props: {
-    tabContents: { required: true, type: Array as PropType<TabContent[]> },
-    noContentMargin: { required: false, type: Boolean, default: false }
-  },
-  setup(props) {
-    const { tabContents } = toRefs(props);
-    const visibleTabs = computed(() => {
-      return get(tabContents).filter(({ hidden }) => !hidden);
-    });
-    const getClass = (route: string) => {
-      return route.toLowerCase().replace('/', '').replace(/\//g, '__');
-    };
-    const selectedTab = ref('');
-    const isRouterVisible = (route: string, tab: TabContent) => {
-      return route.indexOf(tab.route) >= 0 && tab.route === get(selectedTab);
-    };
-
-    return {
-      isDev: process.env.NODE_ENV === 'development',
-      visibleTabs,
-      selectedTab,
-      getClass,
-      isRouterVisible
-    };
-  },
-  computed: {
-    xsOnly(): boolean {
-      return this.$vuetify.breakpoint.xsOnly;
-    }
-  }
+const props = defineProps({
+  tabContents: { required: true, type: Array as PropType<TabContent[]> },
+  noContentMargin: { required: false, type: Boolean, default: false }
 });
+
+const { tabContents } = toRefs(props);
+const selectedTab = ref('');
+
+const route = useRoute();
+const { currentBreakpoint } = useTheme();
+const isDev = checkIfDevelopment();
+
+const visibleTabs = computed(() => {
+  return get(tabContents).filter(({ hidden }) => !hidden);
+});
+
+const xsOnly = computed(() => get(currentBreakpoint).xsOnly);
+
+const isRouterVisible = (route: string, tab: TabContent) => {
+  return route.indexOf(tab.route) >= 0 && tab.route === get(selectedTab);
+};
 </script>
 
 <style scoped lang="scss">
@@ -108,7 +85,7 @@ export default defineComponent({
 
 .tab-navigation {
   &__tabs {
-    ::v-deep {
+    :deep() {
       .v-tabs-bar {
         background-color: var(--v-rotki-light-grey-base) !important;
       }

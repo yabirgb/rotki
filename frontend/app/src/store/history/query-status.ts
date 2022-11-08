@@ -1,10 +1,7 @@
-import { ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
 import {
   EthereumTransactionQueryData,
   EthereumTransactionsQueryStatus
-} from '@/services/websocket/messages';
+} from '@/types/websocket-messages';
 
 export const useTxQueryStatus = defineStore(
   'history/transactionsQueryStatus',
@@ -40,15 +37,10 @@ export const useTxQueryStatus = defineStore(
       set(queryStatus, {});
     };
 
-    const reset = () => {
-      resetQueryStatus();
-    };
-
     return {
       queryStatus,
       setQueryStatus,
-      resetQueryStatus,
-      reset
+      resetQueryStatus
     };
   }
 );

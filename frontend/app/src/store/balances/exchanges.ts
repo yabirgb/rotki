@@ -1,35 +1,39 @@
-import { AssetBalanceWithPrice, Balance } from '@rotki/common';
-import { computed, ComputedRef, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { forEach } from 'lodash';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import i18n from '@/i18n';
-import { balanceKeys } from '@/services/consts';
-import { api } from '@/services/rotkehlchen-api';
-import { useAssetInfoRetrieval, useIgnoredAssetsStore } from '@/store/assets';
-import {
-  AssetBalances,
-  EditExchange,
-  ExchangeBalancePayload,
-  ExchangeSetupPayload
-} from '@/store/balances/types';
-import { Section, Status } from '@/store/const';
-import { useHistory } from '@/store/history';
+import { AssetBalanceWithPrice, BigNumber } from '@rotki/common';
+import { MaybeRef } from '@vueuse/core';
+import { ComputedRef, Ref } from 'vue';
+import { useStatusUpdater } from '@/composables/status';
+import { useExchangeApi } from '@/services/balances/exchanges';
+import { useIgnoredAssetsStore } from '@/store/assets/ignored';
+import { useAssetInfoRetrieval } from '@/store/assets/retrieval';
+import { useBalancePricesStore } from '@/store/balances/prices';
+import { AssetBreakdown, ExchangeBalancePayload } from '@/store/balances/types';
+import { usePurgeStore } from '@/store/history/purge';
+import { useMessageStore } from '@/store/message';
 import { useNotifications } from '@/store/notifications';
-import store from '@/store/store';
 import { useTasks } from '@/store/tasks';
-import { getStatus, setStatus, showError } from '@/store/utils';
+import { AssetBalances } from '@/types/balances';
 import {
+  EditExchange,
   Exchange,
   ExchangeData,
   ExchangeInfo,
+  ExchangeSetupPayload,
   SupportedExchange
 } from '@/types/exchanges';
+import { AssetPrices } from '@/types/prices';
+import { Section, Status } from '@/types/status';
 import { ExchangeMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { assert } from '@/utils/assertions';
-import { NoPrice, sortDesc } from '@/utils/bignumbers';
-import { assetSum, balanceSum } from '@/utils/calculation';
+import {
+  appendAssetBalance,
+  mergeAssociatedAssets,
+  sumAssetBalances,
+  toStoredAssetBalanceWithPrice
+} from '@/utils/balances';
+import { sortDesc } from '@/utils/bignumbers';
+import { assetSum } from '@/utils/calculation';
+import { updateBalancesPrices } from '@/utils/prices';
 
 export const useExchangeBalancesStore = defineStore(
   'balances/exchanges',
@@ -37,11 +41,17 @@ export const useExchangeBalancesStore = defineStore(
     const connectedExchanges: Ref<Exchange[]> = ref([]);
     const exchangeBalances: Ref<ExchangeData> = ref({});
 
+    const { t, tc } = useI18n();
+
     const { awaitTask, isTaskRunning, metadata } = useTasks();
     const { notify } = useNotifications();
-    const { purgeHistoryLocation } = useHistory();
+    const { setMessage } = useMessageStore();
+    const { purgeHistoryLocation } = usePurgeStore();
     const { getAssociatedAssetIdentifier } = useAssetInfoRetrieval();
     const { isAssetIgnored } = useIgnoredAssetsStore();
+    const { assetPrice } = useBalancePricesStore();
+    const { queryRemoveExchange, queryExchangeBalances, querySetupExchange } =
+      useExchangeApi();
 
     const exchanges: ComputedRef<ExchangeInfo[]> = computed(() => {
       const balances = get(exchangeBalances);
@@ -54,7 +64,65 @@ export const useExchangeBalancesStore = defineStore(
         .sort((a, b) => sortDesc(a.total, b.total));
     });
 
-    const getExchangeNonce = (exchange: SupportedExchange) =>
+    const balances: ComputedRef<AssetBalances> = computed(() => {
+      return sumAssetBalances(
+        Object.values(get(exchangeBalances)),
+        getAssociatedAssetIdentifier
+      );
+    });
+
+    const getBreakdown = (asset: string): ComputedRef<AssetBreakdown[]> =>
+      computed(() => {
+        const breakdown: AssetBreakdown[] = [];
+        const cexBalances = get(exchangeBalances);
+        for (const exchange in cexBalances) {
+          const exchangeData = cexBalances[exchange];
+          if (!exchangeData[asset]) {
+            continue;
+          }
+
+          breakdown.push({
+            address: '',
+            location: exchange,
+            balance: exchangeData[asset],
+            tags: []
+          });
+        }
+        return breakdown;
+      });
+
+    const getLocationBreakdown = (id: string): ComputedRef<AssetBalances> =>
+      computed(() => {
+        const assets: AssetBalances = {};
+        const exchange = get(connectedExchanges).find(
+          ({ location }) => id === location
+        );
+
+        if (exchange) {
+          const balances = get(getBalances(exchange.location));
+          for (const balance of balances) {
+            appendAssetBalance(balance, assets, getAssociatedAssetIdentifier);
+          }
+        }
+        return assets;
+      });
+
+    const getByLocationBalances = (
+      convert: (bn: MaybeRef<BigNumber>) => MaybeRef<BigNumber>
+    ): ComputedRef<Record<string, BigNumber>> =>
+      computed(() => {
+        const balances: Record<string, BigNumber> = {};
+        for (const { location, total } of get(exchanges)) {
+          const balance = balances[location];
+          const value = get(convert(total));
+          balances[location] = !balance ? value : value.plus(balance);
+        }
+        return balances;
+      });
+
+    const getExchangeNonce = (
+      exchange: SupportedExchange
+    ): ComputedRef<number> =>
       computed(() => {
         return (
           get(connectedExchanges).filter(
@@ -64,47 +132,36 @@ export const useExchangeBalancesStore = defineStore(
       });
 
     const getBalances = (
-      exchange: SupportedExchange
+      exchange: SupportedExchange,
+      hideIgnored: boolean = true
     ): ComputedRef<AssetBalanceWithPrice[]> =>
       computed(() => {
-        const ownedAssets: Record<string, Balance> = {};
         const balances = get(exchangeBalances);
 
-        forEach(balances[exchange], (value: Balance, asset: string) => {
-          const associatedAsset: string = get(
-            getAssociatedAssetIdentifier(asset)
+        if (balances && balances[exchange]) {
+          return toStoredAssetBalanceWithPrice(
+            get(
+              mergeAssociatedAssets(
+                balances[exchange],
+                getAssociatedAssetIdentifier
+              )
+            ),
+            asset => hideIgnored && get(isAssetIgnored(asset)),
+            assetPrice
           );
+        }
 
-          const ownedAsset = ownedAssets[associatedAsset];
-
-          ownedAssets[associatedAsset] = !ownedAsset
-            ? {
-                ...value
-              }
-            : {
-                ...balanceSum(ownedAsset, value)
-              };
-        });
-
-        const prices = store.state.balances!.prices;
-        return Object.keys(ownedAssets)
-          .filter(asset => !get(isAssetIgnored(asset)))
-          .map(asset => ({
-            asset,
-            amount: ownedAssets[asset].amount,
-            usdValue: ownedAssets[asset].usdValue,
-            usdPrice: prices[asset] ?? NoPrice
-          }));
+        return [];
       });
 
-    const addExchange = (exchange: Exchange) => {
+    const addExchange = (exchange: Exchange): void => {
       set(connectedExchanges, [...get(connectedExchanges), exchange]);
     };
 
     const editExchange = ({
       exchange: { location, name: oldName, krakenAccountType, ftxSubaccount },
       newName
-    }: EditExchange) => {
+    }: EditExchange): void => {
       const exchanges = [...get(connectedExchanges)];
       const name = newName ?? oldName;
       const index = exchanges.findIndex(
@@ -122,7 +179,7 @@ export const useExchangeBalancesStore = defineStore(
 
     const removeExchange = async (exchange: Exchange): Promise<boolean> => {
       try {
-        const success = await api.removeExchange(exchange);
+        const success = await queryRemoveExchange(exchange);
         const connected = get(connectedExchanges);
         if (success) {
           const exchangeIndex = connected.findIndex(
@@ -160,20 +217,19 @@ export const useExchangeBalancesStore = defineStore(
 
         return success;
       } catch (e: any) {
-        showError(
-          i18n.tc('actions.balances.exchange_removal.description', 0, {
+        setMessage({
+          title: tc('actions.balances.exchange_removal.title'),
+          description: tc('actions.balances.exchange_removal.description', 0, {
             exchange,
             error: e.message
-          }),
-          i18n.tc('actions.balances.exchange_removal.title')
-        );
+          })
+        });
         return false;
       }
     };
 
-    const setExchanges = async (exchanges: Exchange[]): Promise<void> => {
+    const setExchanges = (exchanges: Exchange[]): void => {
       set(connectedExchanges, exchanges);
-      await fetchConnectedExchangeBalances(false);
     };
 
     const fetchExchangeBalances = async (
@@ -187,25 +243,21 @@ export const useExchangeBalancesStore = defineStore(
         return;
       }
 
-      const currentStatus: Status = getStatus(Section.EXCHANGES);
-      const section = Section.EXCHANGES;
-      const newStatus =
-        currentStatus === Status.LOADED ? Status.REFRESHING : Status.LOADING;
-      setStatus(newStatus, section);
+      const { setStatus, resetStatus, isFirstLoad } = useStatusUpdater(
+        Section.EXCHANGES
+      );
+
+      const newStatus = isFirstLoad() ? Status.LOADING : Status.REFRESHING;
+      setStatus(newStatus);
 
       try {
-        const { taskId } = await api.queryExchangeBalances(
-          location,
-          ignoreCache
-        );
+        const { taskId } = await queryExchangeBalances(location, ignoreCache);
         const meta: ExchangeMeta = {
           location,
-          title: i18n
-            .t('actions.balances.exchange_balances.task.title', {
-              location
-            })
-            .toString(),
-          numericKeys: balanceKeys
+          title: t('actions.balances.exchange_balances.task.title', {
+            location
+          }).toString(),
+          numericKeys: []
         };
 
         const { result } = await awaitTask<AssetBalances, ExchangeMeta>(
@@ -217,28 +269,24 @@ export const useExchangeBalancesStore = defineStore(
 
         set(exchangeBalances, {
           ...get(exchangeBalances),
-          [location]: result
+          [location]: AssetBalances.parse(result)
         });
+        setStatus(Status.LOADED);
       } catch (e: any) {
-        const message = i18n
-          .t('actions.balances.exchange_balances.error.message', {
-            location,
-            error: e.message
-          })
-          .toString();
-        const title = i18n
-          .t('actions.balances.exchange_balances.error.title', {
-            location
-          })
-          .toString();
+        const message = t('actions.balances.exchange_balances.error.message', {
+          location,
+          error: e.message
+        }).toString();
+        const title = t('actions.balances.exchange_balances.error.title', {
+          location
+        }).toString();
 
         notify({
           title,
           message,
           display: true
         });
-      } finally {
-        setStatus(Status.LOADED, section);
+        resetStatus();
       }
     };
 
@@ -259,7 +307,7 @@ export const useExchangeBalancesStore = defineStore(
       edit
     }: ExchangeSetupPayload): Promise<boolean> => {
       try {
-        const success = await api.setupExchange(exchange, edit);
+        const success = await querySetupExchange(exchange, edit);
         const exchangeEntry: Exchange = {
           name: exchange.name,
           location: exchange.location,
@@ -276,39 +324,41 @@ export const useExchangeBalancesStore = defineStore(
           });
         }
 
-        fetchExchangeBalances({
+        await fetchExchangeBalances({
           location: exchange.location,
           ignoreCache: false
-        }).then(() =>
-          store.dispatch('balances/refreshPrices', { ignoreCache: false })
-        );
+        });
+        //await refreshPrices({ ignoreCache: false });
 
-        purgeHistoryLocation(exchange.location);
+        await purgeHistoryLocation(exchange.location);
 
         return success;
       } catch (e: any) {
-        showError(
-          i18n
-            .t('actions.balances.exchange_setup.description', {
-              exchange: exchange.location,
-              error: e.message
-            })
-            .toString(),
-          i18n.t('actions.balances.exchange_setup.title').toString()
-        );
+        setMessage({
+          title: t('actions.balances.exchange_setup.title').toString(),
+          description: t('actions.balances.exchange_setup.description', {
+            exchange: exchange.location,
+            error: e.message
+          }).toString()
+        });
         return false;
       }
     };
 
-    const reset = () => {
-      set(connectedExchanges, []);
-      set(exchangeBalances, {});
+    const updatePrices = (prices: MaybeRef<AssetPrices>) => {
+      const exchanges = { ...(get(exchangeBalances) as ExchangeData) };
+      for (const exchange in exchanges) {
+        exchanges[exchange] = updateBalancesPrices(exchanges[exchange], prices);
+      }
+
+      set(exchangeBalances, exchanges);
     };
 
     return {
       exchanges,
       connectedExchanges,
       exchangeBalances,
+      balances,
       setExchanges,
       setupExchange,
       addExchange,
@@ -318,7 +368,10 @@ export const useExchangeBalancesStore = defineStore(
       getExchangeNonce,
       fetchExchangeBalances,
       fetchConnectedExchangeBalances,
-      reset
+      getBreakdown,
+      getLocationBreakdown,
+      getByLocationBalances,
+      updatePrices
     };
   }
 );

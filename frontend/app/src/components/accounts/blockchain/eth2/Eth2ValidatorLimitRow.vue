@@ -3,37 +3,25 @@
     v-if="visible"
     :limit="limit"
     :total="total"
-    :label="$t('eth2_validator_limit_row.label')"
+    :label="tc('eth2_validator_limit_row.label')"
     :colspan="colspan"
   />
 </template>
 
-<script lang="ts">
-import { computed, defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
 import UpgradeRow from '@/components/history/UpgradeRow.vue';
-import { useStore } from '@/store/utils';
-import { assert } from '@/utils/assertions';
+import { useEthAccountsStore } from '@/store/blockchain/accounts/eth';
 
-export default defineComponent({
-  name: 'Eth2ValidatorLimitRow',
-  components: { UpgradeRow },
-  props: {
-    colspan: {
-      required: true,
-      type: Number
-    }
-  },
-  setup() {
-    const store = useStore();
-
-    const balances = store.state.balances;
-    assert(balances);
-    const limit = computed(() => balances.eth2Validators.entriesLimit);
-    const total = computed(() => balances.eth2Validators.entriesFound);
-    const visible = computed(
-      () => limit.value > 0 && limit.value <= total.value
-    );
-    return { limit, total, visible };
+defineProps({
+  colspan: {
+    required: true,
+    type: Number
   }
 });
+
+const { eth2Validators } = storeToRefs(useEthAccountsStore());
+const limit = computed(() => get(eth2Validators).entriesLimit);
+const total = computed(() => get(eth2Validators).entriesFound);
+const visible = computed(() => limit.value > 0 && limit.value <= total.value);
+const { tc } = useI18n();
 </script>

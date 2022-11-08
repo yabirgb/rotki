@@ -18,7 +18,7 @@ from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.types import (
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     EVMTxHash,
     Price,
     Timestamp,
@@ -40,7 +40,7 @@ log = RotkehlchenLogsAdapter(logger)
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
 class DSRMovement:
     movement_type: Literal['deposit', 'withdrawal']
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     # normalized balance in DSR DAI (RAD precision 10**45)
     normalized_balance: int
     # gain so far in DSR DAI (RAD precision 10**45)
@@ -59,7 +59,7 @@ class DSRMovement:
 
 
 class DSRCurrentBalances(NamedTuple):
-    balances: Dict[ChecksumEthAddress, Balance]
+    balances: Dict[ChecksumEvmAddress, Balance]
     # The percentage of the current DSR. e.g. 8% would be 8.00
     current_dsr: FVal
 
@@ -118,8 +118,9 @@ class MakerdaoDsr(HasDSProxy):
             msg_aggregator=msg_aggregator,
         )
         self.reset_last_query_ts()
-        self.historical_dsr_reports: Dict[ChecksumEthAddress, DSRAccountReport] = {}
+        self.historical_dsr_reports: Dict[ChecksumEvmAddress, DSRAccountReport] = {}
         self.lock = Semaphore()
+        self.dai = A_DAI.resolve_to_evm_token()
 
     def reset_last_query_ts(self) -> None:
         """Reset the last query timestamps, effectively cleaning the caches"""
@@ -166,7 +167,7 @@ class MakerdaoDsr(HasDSProxy):
     def _get_vat_join_exit_at_transaction(
             self,
             movement_type: Literal['join', 'exit'],
-            proxy_address: ChecksumEthAddress,
+            proxy_address: ChecksumEvmAddress,
             block_number: int,
             transaction_index: int,
     ) -> Optional[int]:
@@ -213,8 +214,8 @@ class MakerdaoDsr(HasDSProxy):
 
     def _historical_dsr_for_account(
             self,
-            account: ChecksumEthAddress,
-            proxy: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
+            proxy: ChecksumEvmAddress,
     ) -> DSRAccountReport:
         """Creates a historical DSR report for a single account
 
@@ -397,7 +398,7 @@ class MakerdaoDsr(HasDSProxy):
             gain_so_far_usd_value=gain_so_far_usd_value,
         )
 
-    def get_historical_dsr(self) -> Dict[ChecksumEthAddress, DSRAccountReport]:
+    def get_historical_dsr(self) -> Dict[ChecksumEvmAddress, DSRAccountReport]:
         """Gets the historical DSR report per account
 
             This is a premium only call. Check happens only in the API level.
@@ -441,17 +442,17 @@ class MakerdaoDsr(HasDSProxy):
                 if movement.timestamp > to_timestamp:
                     break
 
-                pnl = got_asset = got_balance = spent_asset = spent_balance = None  # noqa: E501
+                pnl = got_asset = got_balance = spent_asset = spent_balance = None
                 balance = Balance(
                     amount=_dsrdai_to_dai(movement.amount),
                     usd_value=movement.amount_usd_value,
                 )
                 if movement.movement_type == 'deposit':
-                    spent_asset = A_DAI
+                    spent_asset = self.dai
                     spent_balance = balance
                     total_balance -= balance
                 else:
-                    got_asset = A_DAI
+                    got_asset = self.dai
                     got_balance = balance
                     total_balance += balance
                     if total_balance.amount - counted_profit.amount > ZERO:
@@ -477,7 +478,7 @@ class MakerdaoDsr(HasDSProxy):
         return events
 
     # -- Methods following the EthereumModule interface -- #
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         super().on_account_removal(address)
         with self.lock:
             self.historical_dsr_reports.pop(address, 'None')

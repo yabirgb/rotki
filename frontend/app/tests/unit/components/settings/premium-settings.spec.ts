@@ -1,23 +1,13 @@
 import { mount, Wrapper } from '@vue/test-utils';
 import { set } from '@vueuse/core';
 import flushPromises from 'flush-promises/index';
-import {
-  createPinia,
-  PiniaVuePlugin,
-  setActivePinia,
-  storeToRefs
-} from 'pinia';
-import Vue from 'vue';
+import { createPinia, setActivePinia, storeToRefs } from 'pinia';
 import Vuetify from 'vuetify';
 import Card from '@/components/helper/Card.vue';
-import PremiumSettings from '@/components/settings/PremiumSettings.vue';
 import { interop } from '@/electron-interop';
-import { Api } from '@/plugins/api';
-import { Interop } from '@/plugins/interop';
+import PremiumSettings from '@/pages/settings/api-keys/premium/index.vue';
 import { api } from '@/services/rotkehlchen-api';
 import { usePremiumStore } from '@/store/session/premium';
-import store from '@/store/store';
-import '../../i18n';
 
 vi.mock('@/electron-interop', () => {
   const mockInterop = {
@@ -30,11 +20,6 @@ vi.mock('@/electron-interop', () => {
 });
 vi.mock('@/services/rotkehlchen-api');
 
-Vue.use(Vuetify);
-Vue.use(Api);
-Vue.use(Interop);
-Vue.use(PiniaVuePlugin);
-
 describe('PremiumSettings.vue', () => {
   let wrapper: Wrapper<PremiumSettings>;
 
@@ -44,7 +29,6 @@ describe('PremiumSettings.vue', () => {
     setActivePinia(pinia);
     return mount(PremiumSettings, {
       pinia,
-      store,
       vuetify,
       components: {
         Card
@@ -54,6 +38,7 @@ describe('PremiumSettings.vue', () => {
   }
 
   beforeEach(() => {
+    document.body.setAttribute('data-app', 'true');
     wrapper = createWrapper();
   });
 
@@ -67,10 +52,10 @@ describe('PremiumSettings.vue', () => {
     (apiKey.element as HTMLInputElement).value = '1234';
     (apiSecret.element as HTMLInputElement).value = '1234';
 
-    apiKey.trigger('input');
-    apiSecret.trigger('input');
+    await apiKey.trigger('input');
+    await apiSecret.trigger('input');
     await wrapper.vm.$nextTick();
-    wrapper.find('.premium-settings__button__setup').trigger('click');
+    await wrapper.find('.premium-settings__button__setup').trigger('click');
     await wrapper.vm.$nextTick();
     await flushPromises();
 
@@ -84,7 +69,10 @@ describe('PremiumSettings.vue', () => {
     await wrapper.vm.$nextTick();
     api.deletePremiumCredentials = vi.fn().mockResolvedValue({ result: true });
 
-    await (wrapper.vm as any).remove();
+    await wrapper.find('.premium-settings__button__delete').trigger('click');
+    await wrapper.vm.$nextTick();
+    await flushPromises();
+    await wrapper.find('[data-cy=button-confirm]').trigger('click');
     await wrapper.vm.$nextTick();
     await flushPromises();
 

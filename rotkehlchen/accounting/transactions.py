@@ -64,6 +64,7 @@ class TransactionsAccountant():
                     f'non history base entry event',
                 )
                 return counter
+
             other_events.append(next_event)
             counter += 1
 
@@ -75,7 +76,7 @@ class TransactionsAccountant():
                 other_events=other_events,
             )
 
-        if event_settings.multitake_treatment == TxMultitakeTreatment.SWAP:  # noqa: E501
+        if event_settings.multitake_treatment == TxMultitakeTreatment.SWAP:
             return self._process_tx_swap(
                 timestamp=timestamp,
                 out_event=event,
@@ -104,7 +105,7 @@ class TransactionsAccountant():
             out_event: HistoryBaseEntry,
             in_event: HistoryBaseEntry,
             event_settings: TxEventSettings,
-    ) -> int:  # noqa: E501
+    ) -> int:
         prices = self.pot.get_prices_for_swap(
             timestamp=timestamp,
             amount_in=in_event.balance.amount,
@@ -141,7 +142,7 @@ class TransactionsAccountant():
             timestamp=timestamp,
             asset=in_event.asset,
             amount=in_event.balance.amount,
-            taxable=event_settings.taxable,
+            taxable=False,  # acquisitions in swaps are never taxable
             given_price=prices[1],
             extra_data={
                 'tx_hash': in_event.serialized_event_identifier,

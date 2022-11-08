@@ -6,8 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from gevent import monkey  # isort:skip # noqa
-monkey.patch_all()  # isort:skip # noqa
+from gevent import monkey  # isort:skip
+monkey.patch_all()  # isort:skip
 import requests
 
 from rotkehlchen.globaldb.handler import GlobalDBHandler
@@ -95,7 +95,7 @@ def main() -> None:
         branch=args.assets_branch,
     )
     print('Applying updates...')
-    GlobalDBHandler(data_dir=target_directory)
+    GlobalDBHandler(data_dir=target_directory, sql_vm_instructions_cb=0)
     assets_updater = AssetsUpdater(msg_aggregator=MessagesAggregator)
     conflicts = assets_updater.perform_update(
         up_to_version=args.target_version,

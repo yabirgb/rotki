@@ -3,17 +3,17 @@ import pytest
 from rotkehlchen.chain.ethereum.interfaces.ammswap.types import ProtocolBalance
 
 from .utils import (
-    EXP_KNOWN_ASSETS_1,
-    EXP_KNOWN_ASSETS_2,
-    EXP_LIQUIDITY_POOL_1,
-    EXP_LIQUIDITY_POOL_2,
-    EXP_UNKNOWN_ASSETS_1,
-    EXP_UNKNOWN_ASSETS_2,
+    EXP_KNOWN_TOKENS_1,
+    EXP_KNOWN_TOKENS_2,
+    EXP_UNKNOWN_TOKENS_1,
+    EXP_UNKNOWN_TOKENS_2,
     LIQUIDITY_POSITION_1,
     LIQUIDITY_POSITION_2,
     TEST_ADDRESS_1,
     TEST_ADDRESS_2,
     TEST_ADDRESS_3,
+    const_exp_liquidity_pool_1,
+    const_exp_liquidity_pool_2,
     store_call_args,
 )
 
@@ -29,9 +29,9 @@ def test_single_address_balance(mock_uniswap):
     protocol_balance = mock_uniswap._get_balances_graph(addresses=addresses)
 
     exp_protocol_balance = ProtocolBalance(
-        address_balances={TEST_ADDRESS_1: [EXP_LIQUIDITY_POOL_1]},
-        known_assets=EXP_KNOWN_ASSETS_1,
-        unknown_assets=EXP_UNKNOWN_ASSETS_1,
+        address_balances={TEST_ADDRESS_1: [const_exp_liquidity_pool_1()]},
+        known_tokens=EXP_KNOWN_TOKENS_1,
+        unknown_tokens=EXP_UNKNOWN_TOKENS_1,
     )
     assert exp_protocol_balance == protocol_balance
 
@@ -53,22 +53,21 @@ def test_multiple_addresses_balances(mock_uniswap):
 
     exp_protocol_balance = ProtocolBalance(
         address_balances={
-            TEST_ADDRESS_1: [EXP_LIQUIDITY_POOL_1],
-            TEST_ADDRESS_2: [EXP_LIQUIDITY_POOL_2],
+            TEST_ADDRESS_1: [const_exp_liquidity_pool_1()],
+            TEST_ADDRESS_2: [const_exp_liquidity_pool_2()],
         },
-        known_assets=EXP_KNOWN_ASSETS_1.union(EXP_KNOWN_ASSETS_2),
-        unknown_assets=EXP_UNKNOWN_ASSETS_1.union(EXP_UNKNOWN_ASSETS_2),
+        known_tokens=EXP_KNOWN_TOKENS_1.union(EXP_KNOWN_TOKENS_2),
+        unknown_tokens=EXP_UNKNOWN_TOKENS_1.union(EXP_UNKNOWN_TOKENS_2),
     )
     assert exp_protocol_balance == protocol_balance
 
 
-@pytest.mark.parametrize("graph_query_limit, no_requests", [(2, 2), (3, 1)])
+@pytest.mark.parametrize('graph_query_limit, no_requests', [(2, 2), (3, 1)])
 def test_pagination(
         mock_uniswap,
         graph_query_limit,
         no_requests,
         mock_graph_query_limit,  # pylint: disable=unused-argument
-        mock_amm_graph_query_limit,  # pylint: disable=unused-argument
 ):
     """Test an extra graph request is done when the number of items in the
     response equals GRAPH_QUERY_LIMIT.

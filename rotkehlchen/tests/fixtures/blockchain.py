@@ -2,14 +2,15 @@ from typing import List, Optional, Sequence
 
 import pytest
 
+from rotkehlchen.chain.aggregator import ChainsAggregator
 from rotkehlchen.chain.avalanche.manager import AvalancheManager
 from rotkehlchen.chain.ethereum.decoding import EVMTransactionDecoder
-from rotkehlchen.chain.ethereum.manager import EthereumManager, NodeName
+from rotkehlchen.chain.ethereum.manager import EthereumManager
 from rotkehlchen.chain.ethereum.transactions import EthTransactions
-from rotkehlchen.chain.manager import ChainManager
+from rotkehlchen.chain.ethereum.types import NodeName
 from rotkehlchen.chain.substrate.manager import SubstrateChainProperties, SubstrateManager
 from rotkehlchen.chain.substrate.types import KusamaAddress, PolkadotAddress, SubstrateChain
-from rotkehlchen.constants.assets import A_DOT
+from rotkehlchen.constants.assets import A_DOT, A_KSM
 from rotkehlchen.db.settings import DEFAULT_BTC_DERIVATION_GAP_LIMIT
 from rotkehlchen.db.utils import BlockchainAccounts
 from rotkehlchen.externalapis.beaconchain import BeaconChain
@@ -20,13 +21,12 @@ from rotkehlchen.tests.utils.ethereum import wait_until_all_nodes_connected
 from rotkehlchen.tests.utils.factories import make_ethereum_address
 from rotkehlchen.tests.utils.substrate import (
     KUSAMA_DEFAULT_OWN_RPC_ENDPOINT,
+    KUSAMA_MAIN_ASSET_DECIMALS,
     KUSAMA_SS58_FORMAT,
-    KUSAMA_TOKEN,
-    KUSAMA_TOKEN_DECIMALS,
     POLKADOT_SS58_FORMAT,
     wait_until_all_substrate_nodes_connected,
 )
-from rotkehlchen.types import BTCAddress, ChecksumEthAddress
+from rotkehlchen.types import BTCAddress, ChecksumEvmAddress
 
 
 @pytest.fixture(name='number_of_eth_accounts')
@@ -35,7 +35,7 @@ def fixture_number_of_eth_accounts():
 
 
 @pytest.fixture(name='ethereum_accounts')
-def fixture_ethereum_accounts(number_of_eth_accounts) -> List[ChecksumEthAddress]:
+def fixture_ethereum_accounts(number_of_eth_accounts) -> List[ChecksumEvmAddress]:
     return [make_ethereum_address() for x in range(number_of_eth_accounts)]
 
 
@@ -70,18 +70,18 @@ def fixture_dot_accounts() -> List[PolkadotAddress]:
 
 
 @pytest.fixture(name='avax_accounts')
-def fixture_avax_accounts() -> List[ChecksumEthAddress]:
+def fixture_avax_accounts() -> List[ChecksumEvmAddress]:
     return []
 
 
 @pytest.fixture(name='blockchain_accounts')
 def fixture_blockchain_accounts(
-        ethereum_accounts: List[ChecksumEthAddress],
+        ethereum_accounts: List[ChecksumEvmAddress],
         btc_accounts: List[BTCAddress],
         bch_accounts: List[BTCAddress],
         ksm_accounts: List[KusamaAddress],
         dot_accounts: List[PolkadotAddress],
-        avax_accounts: List[ChecksumEthAddress],
+        avax_accounts: List[ChecksumEvmAddress],
 ) -> BlockchainAccounts:
     return BlockchainAccounts(
         eth=ethereum_accounts,
@@ -146,7 +146,7 @@ def fixture_evm_transaction_decoder(
     return EVMTransactionDecoder(
         database=database,
         ethereum_manager=ethereum_manager,
-        eth_transactions=eth_transactions,
+        transactions=eth_transactions,
         msg_aggregator=function_scope_messages_aggregator,
     )
 
@@ -155,7 +155,7 @@ def fixture_evm_transaction_decoder(
 def fixture_eth_transactions(
         database,
         ethereum_manager,
-):  # noqa: E501
+):
     return EthTransactions(
         ethereum=ethereum_manager,
         database=database,
@@ -222,8 +222,8 @@ def _make_substrate_manager(
         if chain_type == SubstrateChain.KUSAMA:
             substrate_manager.chain_properties = SubstrateChainProperties(
                 ss58_format=KUSAMA_SS58_FORMAT,
-                token=KUSAMA_TOKEN,
-                token_decimals=KUSAMA_TOKEN_DECIMALS,
+                token=A_KSM,
+                token_decimals=KUSAMA_MAIN_ASSET_DECIMALS,
             )
         else:
             substrate_manager.chain_properties = SubstrateChainProperties(
@@ -331,7 +331,7 @@ def blockchain(
     if start_with_valid_premium:
         premium = Premium(rotki_premium_credentials)
 
-    chain_manager = ChainManager(
+    chains_aggregator = ChainsAggregator(
         blockchain_accounts=blockchain_accounts,
         ethereum_manager=ethereum_manager,
         kusama_manager=kusama_manager,
@@ -347,4 +347,4 @@ def blockchain(
         btc_derivation_gap_limit=btc_derivation_gap_limit,
     )
 
-    return chain_manager
+    return chains_aggregator

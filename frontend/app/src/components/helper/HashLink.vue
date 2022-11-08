@@ -3,7 +3,7 @@
     <v-avatar v-if="showIcon" size="24" class="mr-2">
       <v-img :src="makeBlockie(displayText)" />
     </v-avatar>
-    <span v-if="!linkOnly & !buttons">
+    <span v-if="!linkOnly && !buttons">
       <span v-if="fullAddress" :class="{ 'blur-content': !shouldShowAmount }">
         {{ displayText }}
       </span>
@@ -40,9 +40,9 @@
           <v-icon :x-small="!small" :small="small"> mdi-content-copy </v-icon>
         </v-btn>
       </template>
-      <span>{{ $t('common.actions.copy') }}</span>
+      <span>{{ t('common.actions.copy') }}</span>
     </v-tooltip>
-    <v-tooltip v-if="!noLink || buttons" top open-delay="600" max-width="550">
+    <v-tooltip v-if="!noLink || buttons" top open-delay="600">
       <template #activator="{ on, attrs }">
         <v-btn
           v-if="!!base"
@@ -55,162 +55,122 @@
           class="ml-1"
           :class="dark ? null : 'grey lighten-4'"
           :href="href"
-          :target="target"
+          target="_blank"
           v-on="on"
-          @click="openLink()"
+          @click="onLinkClick()"
         >
           <v-icon :x-small="!small" :small="small"> mdi-launch </v-icon>
         </v-btn>
       </template>
-      <span>{{ $t('hash_link.open_link', { url }) }}</span>
+      <div>
+        <div>{{ t('hash_link.open_link') }}:</div>
+        <div>{{ displayUrl }}</div>
+      </div>
     </v-tooltip>
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { Blockchain } from '@rotki/common/lib/blockchain';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get, useClipboard } from '@vueuse/core';
 import makeBlockie from 'ethereum-blockies-base64';
-import { storeToRefs } from 'pinia';
-import {
-  Chains,
-  ExplorerUrls,
-  explorerUrls
-} from '@/components/helper/asset-urls';
+import { PropType } from 'vue';
 import { useTheme } from '@/composables/common';
-import { interop } from '@/electron-interop';
+import { useLinks } from '@/composables/links';
 import { truncateAddress } from '@/filters';
 import { useEthNamesStore } from '@/store/balances/ethereum-names';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useSessionSettingsStore } from '@/store/settings/session';
+import { Chains, ExplorerUrls, explorerUrls } from '@/types/asset-urls';
 import { randomHex } from '@/utils/data';
 
-export default defineComponent({
-  name: 'HashLink',
-  props: {
-    showIcon: { required: false, type: Boolean, default: false },
-    text: { required: false, type: String, default: '' },
-    fullAddress: { required: false, type: Boolean, default: false },
-    linkOnly: { required: false, type: Boolean, default: false },
-    noLink: { required: false, type: Boolean, default: false },
-    baseUrl: { required: false, type: String, default: '' },
-    chain: {
-      required: false,
-      type: String as PropType<Chains>,
-      default: Blockchain.ETH
-    },
-    tx: { required: false, type: Boolean, default: false },
-    buttons: { required: false, type: Boolean, default: false },
-    small: { required: false, type: Boolean, default: false },
-    truncateLength: { required: false, type: Number, default: 4 }
+const props = defineProps({
+  showIcon: { required: false, type: Boolean, default: false },
+  text: { required: false, type: String, default: '' },
+  fullAddress: { required: false, type: Boolean, default: false },
+  linkOnly: { required: false, type: Boolean, default: false },
+  noLink: { required: false, type: Boolean, default: false },
+  baseUrl: { required: false, type: String, default: '' },
+  chain: {
+    required: false,
+    type: String as PropType<Chains>,
+    default: Blockchain.ETH
   },
-  setup(props) {
-    const { text, baseUrl, chain, tx } = toRefs(props);
-
-    const { scrambleData, shouldShowAmount } = storeToRefs(
-      useSessionSettingsStore()
-    );
-    const { explorers } = storeToRefs(useFrontendSettingsStore());
-    const { dark } = useTheme();
-
-    const { ethNameSelector } = useEthNamesStore();
-
-    const ethName = computed<string | null>(() => {
-      if (!get(scrambleData) || get(tx)) {
-        return get(ethNameSelector(get(text)));
-      }
-
-      return null;
-    });
-
-    const displayText = computed<string>(() => {
-      if (!get(scrambleData)) {
-        return get(text);
-      }
-      const length = get(tx) ? 64 : 40;
-      return randomHex(length);
-    });
-
-    const base = computed<string>(() => {
-      if (get(baseUrl)) {
-        return get(baseUrl);
-      }
-
-      const defaultSetting: ExplorerUrls = explorerUrls[get(chain)];
-      let formattedBaseUrl: string = '';
-      if (get(chain) === 'zksync') {
-        formattedBaseUrl = get(tx)
-          ? defaultSetting.transaction
-          : defaultSetting.address;
-      } else {
-        const explorersSetting =
-          get(explorers)[get(chain) as Exclude<Chains, 'zksync'>];
-
-        if (explorersSetting || defaultSetting) {
-          formattedBaseUrl = get(tx)
-            ? explorersSetting?.transaction ?? defaultSetting.transaction
-            : explorersSetting?.address ?? defaultSetting.address;
-        }
-      }
-
-      if (!formattedBaseUrl) return '';
-
-      return formattedBaseUrl.endsWith('/')
-        ? formattedBaseUrl
-        : `${formattedBaseUrl}/`;
-    });
-
-    const copyText = (text: string) => {
-      const { copy } = useClipboard({ source: text });
-      copy();
-    };
-
-    const url = computed<string>(() => {
-      return get(base) + get(text);
-    });
-
-    const href = computed<string | undefined>(() => {
-      if (interop.isPackaged) {
-        return undefined;
-      }
-
-      return get(url);
-    });
-
-    const target = computed<string | undefined>(() => {
-      if (interop.isPackaged) {
-        return undefined;
-      }
-
-      return '_blank';
-    });
-
-    const openLink = () => {
-      interop.openUrl(get(url));
-    };
-
-    return {
-      ethName,
-      makeBlockie,
-      url,
-      truncateAddress,
-      shouldShowAmount,
-      base,
-      displayText,
-      copyText,
-      href,
-      target,
-      openLink,
-      dark
-    };
-  }
+  tx: { required: false, type: Boolean, default: false },
+  buttons: { required: false, type: Boolean, default: false },
+  small: { required: false, type: Boolean, default: false },
+  truncateLength: { required: false, type: Number, default: 4 }
 });
+
+const { text, baseUrl, chain, tx } = toRefs(props);
+
+const { scrambleData, shouldShowAmount } = storeToRefs(
+  useSessionSettingsStore()
+);
+const { explorers } = storeToRefs(useFrontendSettingsStore());
+const { dark } = useTheme();
+
+const { ethNameSelector } = useEthNamesStore();
+
+const ethName = computed<string | null>(() => {
+  if (!get(scrambleData) || get(tx)) {
+    return get(ethNameSelector(get(text)));
+  }
+
+  return null;
+});
+
+const displayText = computed<string>(() => {
+  if (!get(scrambleData)) {
+    return get(text);
+  }
+  const length = get(tx) ? 64 : 40;
+  return randomHex(length);
+});
+
+const base = computed<string>(() => {
+  if (get(baseUrl)) {
+    return get(baseUrl);
+  }
+
+  const defaultSetting: ExplorerUrls = explorerUrls[get(chain)];
+  let formattedBaseUrl: string = '';
+  if (get(chain) === 'zksync') {
+    formattedBaseUrl = get(tx)
+      ? defaultSetting.transaction
+      : defaultSetting.address;
+  } else {
+    const explorersSetting =
+      get(explorers)[get(chain) as Exclude<Chains, 'zksync'>];
+
+    if (explorersSetting || defaultSetting) {
+      formattedBaseUrl = get(tx)
+        ? explorersSetting?.transaction ?? defaultSetting.transaction
+        : explorersSetting?.address ?? defaultSetting.address;
+    }
+  }
+
+  if (!formattedBaseUrl) return '';
+
+  return formattedBaseUrl.endsWith('/')
+    ? formattedBaseUrl
+    : `${formattedBaseUrl}/`;
+});
+
+const copyText = async (text: string) => {
+  const { copy } = useClipboard({ source: text });
+  await copy();
+};
+
+const url = computed<string>(() => {
+  return get(base) + get(text);
+});
+
+const displayUrl = computed<string>(() => {
+  return get(base) + truncateAddress(get(text), 10);
+});
+
+const { t } = useI18n();
+const { href, onLinkClick } = useLinks(url);
 </script>
 
 <style scoped lang="scss">

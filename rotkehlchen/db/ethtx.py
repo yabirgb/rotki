@@ -15,14 +15,11 @@ from rotkehlchen.db.filtering import ETHTransactionsFilterQuery
 from rotkehlchen.db.history_events import DBHistoryEvents
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.serialization.deserialize import (
-    deserialize_ethereum_address,
-    deserialize_timestamp,
-)
+from rotkehlchen.serialization.deserialize import deserialize_evm_address, deserialize_timestamp
 from rotkehlchen.types import (
-    ChecksumEthAddress,
-    EthereumInternalTransaction,
-    EthereumTransaction,
+    ChecksumEvmAddress,
+    EvmInternalTransaction,
+    EvmTransaction,
     EVMTxHash,
     Timestamp,
     deserialize_evm_tx_hash,
@@ -49,8 +46,8 @@ class DBEthTx():
     def add_ethereum_transactions(
             self,
             write_cursor: 'DBCursor',
-            ethereum_transactions: List[EthereumTransaction],
-            relevant_address: Optional[ChecksumEthAddress],
+            ethereum_transactions: List[EvmTransaction],
+            relevant_address: Optional[ChecksumEvmAddress],
     ) -> None:
         """Adds ethereum transactions to the database"""
         tx_tuples: List[Tuple[Any, ...]] = []
@@ -95,8 +92,8 @@ class DBEthTx():
     def add_ethereum_internal_transactions(
             self,
             write_cursor: 'DBCursor',
-            transactions: List[EthereumInternalTransaction],
-            relevant_address: ChecksumEthAddress,
+            transactions: List[EvmInternalTransaction],
+            relevant_address: ChecksumEvmAddress,
     ) -> None:
         """Adds ethereum transactions to the database"""
         tx_tuples: List[Tuple[Any, ...]] = []
@@ -133,7 +130,7 @@ class DBEthTx():
     def get_ethereum_internal_transactions(
             self,
             parent_tx_hash: EVMTxHash,
-    ) -> List[EthereumInternalTransaction]:
+    ) -> List[EvmInternalTransaction]:
         """Get all internal transactions under a parent tx_hash"""
         cursor = self.db.conn.cursor()
         results = cursor.execute(
@@ -142,7 +139,7 @@ class DBEthTx():
         )
         transactions = []
         for result in results:
-            tx = EthereumInternalTransaction(
+            tx = EvmInternalTransaction(
                 parent_tx_hash=make_evm_tx_hash(result[0]),
                 trace_id=result[1],
                 timestamp=result[2],
@@ -160,7 +157,7 @@ class DBEthTx():
             cursor: 'DBCursor',
             filter_: ETHTransactionsFilterQuery,
             has_premium: bool,
-    ) -> List[EthereumTransaction]:
+    ) -> List[EvmTransaction]:
         """Returns a list of ethereum transactions optionally filtered by
         the given filter query
 
@@ -179,7 +176,7 @@ class DBEthTx():
         ethereum_transactions = []
         for result in results:
             try:
-                tx = EthereumTransaction(
+                tx = EvmTransaction(
                     tx_hash=make_evm_tx_hash(result[0]),
                     timestamp=deserialize_timestamp(result[1]),
                     block_number=result[2],
@@ -208,7 +205,7 @@ class DBEthTx():
             cursor: 'DBCursor',
             filter_: ETHTransactionsFilterQuery,
             has_premium: bool,
-    ) -> Tuple[List[EthereumTransaction], int]:
+    ) -> Tuple[List[EvmTransaction], int]:
         """Gets all ethereum transactions for the query from the D.
 
         Also returns how many are the total found for the filter.
@@ -298,7 +295,7 @@ class DBEthTx():
         status = data.get('status', 1)  # status may be missing for older txs. Assume 1.
         if status is None:
             status = 1
-        contract_address = deserialize_ethereum_address(data['contractAddress']) if data['contractAddress'] else None  # noqa: E501
+        contract_address = deserialize_evm_address(data['contractAddress']) if data['contractAddress'] else None  # noqa: E501
         write_cursor.execute(
             'INSERT INTO ethtx_receipts (tx_hash, contract_address, status, type) '
             'VALUES(?, ?, ?, ?) ',
@@ -313,7 +310,7 @@ class DBEthTx():
                 tx_hash_b,
                 log_index,
                 hexstring_to_bytes(log_entry['data']),
-                deserialize_ethereum_address(log_entry['address']),
+                deserialize_evm_address(log_entry['address']),
                 int(log_entry['removed']),
             ))
 
@@ -374,7 +371,7 @@ class DBEthTx():
 
         return tx_receipt
 
-    def delete_transactions(self, write_cursor: 'DBCursor', address: ChecksumEthAddress) -> None:
+    def delete_transactions(self, write_cursor: 'DBCursor', address: ChecksumEvmAddress) -> None:
         """Delete all transactions related data to the given address from the DB
 
         So transactions, receipts, logs and decoded events
@@ -409,7 +406,7 @@ class DBEthTx():
             [(x, 'ETH', HISTORY_MAPPING_DECODED) for x in tx_hashes],
         )
 
-    def get_queried_range(self, cursor: 'DBCursor', address: ChecksumEthAddress) -> Tuple[Timestamp, Timestamp]:  # noqa: E501
+    def get_queried_range(self, cursor: 'DBCursor', address: ChecksumEvmAddress) -> Tuple[Timestamp, Timestamp]:  # noqa: E501
         """Gets the most conservative range that was queried for the ethereum
         transactions of an address.
 
@@ -439,8 +436,8 @@ class DBEthTx():
 
     def get_or_create_genesis_transaction(
             self,
-            account: ChecksumEthAddress,
-    ) -> EthereumTransaction:
+            account: ChecksumEvmAddress,
+    ) -> EvmTransaction:
         with self.db.conn.read_ctx() as cursor:
             tx_in_db = self.get_ethereum_transactions(
                 cursor=cursor,
@@ -450,7 +447,7 @@ class DBEthTx():
         if len(tx_in_db) == 1:
             tx = tx_in_db[0]
         else:
-            tx = EthereumTransaction(
+            tx = EvmTransaction(
                 timestamp=ETHEREUM_BEGIN,
                 block_number=0,
                 tx_hash=GENESIS_HASH,

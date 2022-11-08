@@ -1,7 +1,3 @@
-vi.mock('@/i18n');
-
-import Vue from 'vue';
-
 function stringify(value: { [key: string]: any }): string {
   return Object.values(value)
     .map(value => value.toString())
@@ -13,10 +9,3 @@ export const mockT = (key: any, args?: any) =>
 
 export const mockTc = (key: string, choice?: number, args?: object) =>
   args ? `${key}::${choice}::${stringify(args)}` : key;
-
-function I18n(vue: typeof Vue): void {
-  vue.prototype.$t = mockT;
-  vue.prototype.$tc = mockTc;
-}
-
-Vue.use(I18n);

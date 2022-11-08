@@ -10,7 +10,7 @@
     >
       <template #activator="{ on }">
         <menu-tooltip-button
-          :tooltip="$t('currency_drop_down.profit_currency')"
+          :tooltip="tc('currency_drop_down.profit_currency')"
           class-name="currency-dropdown secondary--text text--lighten-4"
           :on-menu="on"
         >
@@ -18,13 +18,16 @@
         </menu-tooltip-button>
       </template>
       <div>
-        <v-row class="ps-4 pe-4">
+        <v-row class="px-4 py-3">
           <v-col>
             <v-text-field
               v-model="filter"
+              outlined
+              dense
               autofocus
+              hide-details
               label="Filter"
-              prepend-icon="mdi-magnify"
+              prepend-inner-icon="mdi-magnify"
               @keypress.enter="selectFirst()"
             />
           </v-col>
@@ -37,14 +40,19 @@
             :key="item.tickerSymbol"
             @click="onSelected(item)"
           >
-            <v-list-item-avatar class="currency-list primary--text">
+            <v-list-item-avatar
+              class="currency-list primary--text"
+              :style="{ fontSize: calculateFontSize(item.unicodeSymbol) }"
+            >
               {{ item.unicodeSymbol }}
             </v-list-item-avatar>
             <v-list-item-content>
               <v-list-item-title>
                 {{ item.name }}
               </v-list-item-title>
-              <v-list-item-subtitle v-text="$t('currency_drop_down.hint')" />
+              <v-list-item-subtitle>
+                {{ tc('currency_drop_down.hint') }}
+              </v-list-item-subtitle>
             </v-list-item-content>
           </v-list-item>
         </v-list>
@@ -53,84 +61,73 @@
   </div>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent, ref } from '@vue/composition-api';
-import { get, set, useTimeoutFn } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
 import MenuTooltipButton from '@/components/helper/MenuTooltipButton.vue';
-import { currencies } from '@/data/currencies';
 import { useSettingsStore } from '@/store/settings';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { Currency } from '@/types/currency';
+import { useCurrencies, Currency } from '@/types/currencies';
 
-export default defineComponent({
-  name: 'CurrencyDropdown',
-  components: { MenuTooltipButton },
-  setup() {
-    const { update } = useSettingsStore();
-    const { currency } = storeToRefs(useGeneralSettingsStore());
+const { update } = useSettingsStore();
+const { currency } = storeToRefs(useGeneralSettingsStore());
 
-    const filter = ref<string>('');
-    const visible = ref<boolean>(false);
+const filter = ref<string>('');
+const visible = ref<boolean>(false);
 
-    const filteredCurrencies = computed<Currency[]>(() => {
-      const filterValue = get(filter).toLocaleLowerCase();
-      if (!filterValue) {
-        return currencies;
-      }
-      return currencies.filter(({ name, tickerSymbol }) => {
-        const currencyName = name.toLocaleLowerCase();
-        const symbol = tickerSymbol.toLocaleLowerCase();
-        return (
-          currencyName.indexOf(filterValue) >= 0 ||
-          symbol.indexOf(filterValue) >= 0
-        );
-      });
-    });
+const { tc } = useI18n();
+const { currencies } = useCurrencies();
 
-    const onSelected = async (newCurrency: Currency) => {
-      set(visible, false);
-      if (newCurrency.tickerSymbol === get(currency).tickerSymbol) {
-        return;
-      }
-
-      await update({ mainCurrency: newCurrency.tickerSymbol });
-    };
-
-    const { start, stop, isPending } = useTimeoutFn(
-      () => {
-        set(filter, '');
-      },
-      400,
-      { immediate: false }
-    );
-
-    const selectFirst = async () => {
-      const currencies = get(filteredCurrencies);
-      if (currencies.length === 0) {
-        return;
-      }
-      await onSelected(currencies[0]);
-      if (get(isPending)) {
-        stop();
-      }
-      start();
-    };
-
-    return {
-      filter,
-      visible,
-      currency,
-      selectFirst,
-      filteredCurrencies,
-      onSelected
-    };
+const filteredCurrencies = computed<Currency[]>(() => {
+  const filterValue = get(filter).toLocaleLowerCase();
+  const supportedCurrencies = get(currencies);
+  if (!filterValue) {
+    return supportedCurrencies;
   }
+  return supportedCurrencies.filter(({ name, tickerSymbol }) => {
+    const currencyName = name.toLocaleLowerCase();
+    const symbol = tickerSymbol.toLocaleLowerCase();
+    return (
+      currencyName.indexOf(filterValue) >= 0 || symbol.indexOf(filterValue) >= 0
+    );
+  });
 });
+
+const onSelected = async (newCurrency: Currency) => {
+  set(visible, false);
+  if (newCurrency.tickerSymbol === get(currency).tickerSymbol) {
+    return;
+  }
+
+  await update({ mainCurrency: newCurrency.tickerSymbol });
+};
+
+const { start, stop, isPending } = useTimeoutFn(
+  () => {
+    set(filter, '');
+  },
+  400,
+  { immediate: false }
+);
+
+const selectFirst = async () => {
+  const currencies = get(filteredCurrencies);
+  if (currencies.length === 0) {
+    return;
+  }
+  await onSelected(currencies[0]);
+  if (get(isPending)) {
+    stop();
+  }
+  start();
+};
+
+const calculateFontSize = (symbol: string) => {
+  const length = symbol.length;
+  return `${2.4 - length * 0.4}em`;
+};
 </script>
 
 <style scoped lang="scss">
-::v-deep {
+:deep() {
   .currency-dropdown {
     font-size: 1.6em !important;
     font-weight: bold !important;
@@ -143,7 +140,6 @@ export default defineComponent({
 }
 
 .currency-list {
-  font-size: 2em;
   font-weight: bold;
 }
 </style>

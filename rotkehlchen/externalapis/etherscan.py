@@ -30,14 +30,14 @@ from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.externalapis.interface import ExternalServiceWithApiKey
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import (
-    deserialize_ethereum_transaction,
+    deserialize_evm_transaction,
     deserialize_int_from_str,
     deserialize_timestamp,
 )
 from rotkehlchen.types import (
-    ChecksumEthAddress,
-    EthereumInternalTransaction,
-    EthereumTransaction,
+    ChecksumEvmAddress,
+    EvmInternalTransaction,
+    EvmTransaction,
     EVMTxHash,
     ExternalService,
     Timestamp,
@@ -122,7 +122,7 @@ class Etherscan(ExternalServiceWithApiKey):
             action: str,
             options: Optional[Dict[str, Any]] = None,
             timeout: Optional[Tuple[int, int]] = None,
-    ) -> Union[List[Dict[str, Any]], str, List[EthereumTransaction], Dict[str, Any]]:
+    ) -> Union[List[Dict[str, Any]], str, List[EvmTransaction], Dict[str, Any]]:
         """Queries etherscan
 
         May raise:
@@ -241,30 +241,30 @@ class Etherscan(ExternalServiceWithApiKey):
     @overload
     def get_transactions(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             action: Literal['txlistinternal'],
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-    ) -> Iterator[List[EthereumInternalTransaction]]:
+    ) -> Iterator[List[EvmInternalTransaction]]:
         ...
 
     @overload
     def get_transactions(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             action: Literal['txlist'],
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-    ) -> Iterator[List[EthereumTransaction]]:
+    ) -> Iterator[List[EvmTransaction]]:
         ...
 
     def get_transactions(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             action: Literal['txlist', 'txlistinternal'],
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
-    ) -> Union[Iterator[List[EthereumTransaction]], Iterator[List[EthereumInternalTransaction]]]:
+    ) -> Union[Iterator[List[EvmTransaction]], Iterator[List[EvmInternalTransaction]]]:
         """Gets a list of transactions (either normal or internal) for account.
 
         May raise:
@@ -279,7 +279,7 @@ class Etherscan(ExternalServiceWithApiKey):
             to_block = self.get_blocknumber_by_time(to_ts)
             options['endBlock'] = str(to_block)
 
-        transactions: Union[Sequence[EthereumTransaction], Sequence[EthereumInternalTransaction]] = []  # noqa: E501
+        transactions: Union[Sequence[EvmTransaction], Sequence[EvmInternalTransaction]] = []  # noqa: E501
         is_internal = action == 'txlistinternal'
         while True:
             result = self._query(module='account', action=action, options=options)
@@ -289,10 +289,10 @@ class Etherscan(ExternalServiceWithApiKey):
                 try:
                     # Handle genesis block transactions
                     if entry['hash'].startswith('GENESIS') is False:
-                        tx = deserialize_ethereum_transaction(  # type: ignore
+                        tx = deserialize_evm_transaction(  # type: ignore
                             data=entry,
                             internal=is_internal,
-                            ethereum=None,
+                            manager=None,
                         )
                     else:
                         # Handling genesis transactions
@@ -302,10 +302,10 @@ class Etherscan(ExternalServiceWithApiKey):
                         entry['from'] = ZERO_ADDRESS
                         entry['hash'] = GENESIS_HASH
                         entry['traceId'] = trace_id
-                        internal_tx = deserialize_ethereum_transaction(
+                        internal_tx = deserialize_evm_transaction(
                             data=entry,
                             internal=True,
-                            ethereum=None,
+                            manager=None,
                         )
                         with self.db.user_write() as cursor:  # type: ignore  # db always here
                             dbtx.add_ethereum_internal_transactions(
@@ -336,7 +336,7 @@ class Etherscan(ExternalServiceWithApiKey):
 
     def get_token_transaction_hashes(
             self,
-            account: ChecksumEthAddress,
+            account: ChecksumEvmAddress,
             from_ts: Optional[Timestamp] = None,
             to_ts: Optional[Timestamp] = None,
     ) -> Iterator[List[str]]:
@@ -411,7 +411,7 @@ class Etherscan(ExternalServiceWithApiKey):
         transaction_data = self._query(module='proxy', action='eth_getTransactionByHash', options=options)  # noqa: E501
         return transaction_data
 
-    def get_code(self, account: ChecksumEthAddress) -> str:
+    def get_code(self, account: ChecksumEvmAddress) -> str:
         """Gets the deployment bytecode at the given address
 
         May raise:
@@ -436,7 +436,7 @@ class Etherscan(ExternalServiceWithApiKey):
 
     def eth_call(
             self,
-            to_address: ChecksumEthAddress,
+            to_address: ChecksumEvmAddress,
             input_data: str,
     ) -> str:
         """Performs an eth_call on the given address and the given input data.
@@ -455,7 +455,7 @@ class Etherscan(ExternalServiceWithApiKey):
 
     def get_logs(
             self,
-            contract_address: ChecksumEthAddress,
+            contract_address: ChecksumEvmAddress,
             topics: List[str],
             from_block: int,
             to_block: Union[int, str] = 'latest',

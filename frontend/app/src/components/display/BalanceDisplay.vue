@@ -9,14 +9,13 @@
   >
     <div :class="`d-flex flex-column align-${align}`">
       <amount-display
-        :loading-="!!!value"
-        :asset="symbol"
+        :loading="priceLoading"
+        :asset="asset"
         :asset-padding="assetPadding"
         :value="value.amount"
         class="d-block font-weight-medium"
       />
       <amount-display
-        :loading-="!!!value"
         fiat-currency="USD"
         :asset-padding="assetPadding"
         :value="value.usdValue"
@@ -25,58 +24,38 @@
         class="d-block grey--text"
       />
     </div>
-    <asset-link v-if="!noIcon" class="ml-1" icon :asset="asset">
+    <asset-link v-if="!noIcon" class="ml-4" icon :asset="asset">
       <asset-icon :identifier="asset" size="24px" />
     </asset-link>
   </div>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { Balance } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+import { PropType } from 'vue';
 import AssetLink from '@/components/assets/AssetLink.vue';
-import { useAssetInfoRetrieval } from '@/store/assets';
 
-export default defineComponent({
-  name: 'BalanceDisplay',
-  components: { AssetLink },
-  props: {
-    asset: { required: true, type: String },
-    value: {
-      required: false,
-      type: Object as PropType<Balance>,
-      default: null
-    },
-    noIcon: { required: false, type: Boolean, default: false },
-    noJustify: { required: false, type: Boolean, default: false },
-    align: { required: false, type: String, default: 'end' },
-    mode: {
-      required: false,
-      type: String as PropType<'gain' | 'loss' | ''>,
-      default: ''
-    },
-    assetPadding: { required: false, type: Number, default: 0 },
-    ticker: { required: false, type: Boolean, default: true },
-    priceLoading: { required: false, type: Boolean, default: false }
+const props = defineProps({
+  asset: { required: true, type: String },
+  value: {
+    required: false,
+    type: Object as PropType<Balance>,
+    default: null
   },
-  setup(props) {
-    const { asset } = toRefs(props);
-    const { getAssetSymbol } = useAssetInfoRetrieval();
-    const symbol = computed(() => {
-      const identifier = get(asset);
-      return identifier ? getAssetSymbol(identifier) : '';
-    });
-    return {
-      symbol
-    };
-  }
+  noIcon: { required: false, type: Boolean, default: false },
+  noJustify: { required: false, type: Boolean, default: false },
+  align: { required: false, type: String, default: 'end' },
+  mode: {
+    required: false,
+    type: String as PropType<'gain' | 'loss' | ''>,
+    default: ''
+  },
+  assetPadding: { required: false, type: Number, default: 0 },
+  ticker: { required: false, type: Boolean, default: true },
+  priceLoading: { required: false, type: Boolean, default: false }
 });
+
+const { asset } = toRefs(props);
 </script>
 
 <style module lang="scss">

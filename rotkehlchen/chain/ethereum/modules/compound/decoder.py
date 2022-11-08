@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.assets.asset import EthereumToken
-from rotkehlchen.assets.utils import symbol_to_asset_or_token
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.assets.utils import get_crypto_asset_by_symbol
 from rotkehlchen.chain.ethereum.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.ethereum.decoding.structures import ActionItem
 from rotkehlchen.chain.ethereum.decoding.utils import maybe_reshuffle_events
@@ -13,7 +13,7 @@ from rotkehlchen.chain.ethereum.utils import asset_normalized_value, token_norma
 from rotkehlchen.constants.assets import A_COMP
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress, EthereumTransaction
+from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hex_or_bytes_to_int
 
 from .constants import COMPTROLLER_PROXY, CPT_COMPOUND
@@ -42,18 +42,25 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
 
     def _decode_mint(
             self,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             tx_log: EthereumTxReceiptLog,
             decoded_events: List[HistoryBaseEntry],
-            compound_token: EthereumToken,
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+            compound_token: EvmToken,
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         minter = hex_or_bytes_to_address(tx_log.data[0:32])
         if not self.base.is_tracked(minter):
-            return None, None
+            return None, []
 
         mint_amount_raw = hex_or_bytes_to_int(tx_log.data[32:64])
         minted_amount_raw = hex_or_bytes_to_int(tx_log.data[64:96])
-        underlying_asset = symbol_to_asset_or_token(compound_token.symbol[1:])
+        underlying_asset = get_crypto_asset_by_symbol(
+            symbol=compound_token.symbol[1:],
+            evm_chain=compound_token.chain,
+        )
+        if underlying_asset is None:
+            return None, []
+        underlying_asset = underlying_asset.resolve_to_crypto_asset()
+
         mint_amount = asset_normalized_value(mint_amount_raw, underlying_asset)
         minted_amount = token_normalized_value(minted_amount_raw, compound_token)
         out_event = None
@@ -69,7 +76,7 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
 
         if out_event is None:
             log.debug(f'At compound mint decoding of tx {transaction.tx_hash.hex()} the out event was not found')  # noqa: E501
-            return None, None
+            return None, []
 
         # also create an action item for the receive of the cTokens
         action_item = ActionItem(
@@ -84,21 +91,28 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
             to_counterparty=CPT_COMPOUND,
             paired_event_data=(out_event, True),
         )
-        return None, action_item
+        return None, [action_item]
 
     def _decode_redeem(
             self,
             tx_log: EthereumTxReceiptLog,
             decoded_events: List[HistoryBaseEntry],
-            compound_token: EthereumToken,
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+            compound_token: EvmToken,
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         redeemer = hex_or_bytes_to_address(tx_log.data[0:32])
         if not self.base.is_tracked(redeemer):
-            return None, None
+            return None, []
 
         redeem_amount_raw = hex_or_bytes_to_int(tx_log.data[32:64])
         redeem_tokens_raw = hex_or_bytes_to_int(tx_log.data[64:96])
-        underlying_token = symbol_to_asset_or_token(compound_token.symbol[1:])
+        underlying_token = get_crypto_asset_by_symbol(
+            symbol=compound_token.symbol[1:],
+            evm_chain=compound_token.chain,
+        )
+        if underlying_token is None:
+            return None, []
+
+        underlying_token = underlying_token.resolve_to_crypto_asset()
         redeem_amount = asset_normalized_value(redeem_amount_raw, underlying_token)
         redeem_tokens = token_normalized_value(redeem_tokens_raw, compound_token)
         out_event = in_event = None
@@ -118,17 +132,17 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
                 out_event = event
 
         maybe_reshuffle_events(out_event=out_event, in_event=in_event, events_list=decoded_events)
-        return None, None
+        return None, []
 
     def decode_compound_token_movement(
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: Optional[List[ActionItem]],  # pylint: disable=unused-argument
-            compound_token: EthereumToken,
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+            compound_token: EvmToken,
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         if tx_log.topics[0] == MINT_COMPOUND_TOKEN:
             log.debug(f'Hash: {transaction.tx_hash.hex()}')
             return self._decode_mint(transaction=transaction, tx_log=tx_log, decoded_events=decoded_events, compound_token=compound_token)  # noqa: E501
@@ -136,29 +150,29 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
         if tx_log.topics[0] == REDEEM_COMPOUND_TOKEN:
             return self._decode_redeem(tx_log=tx_log, decoded_events=decoded_events, compound_token=compound_token)  # noqa: E501
 
-        return None, None
+        return None, []
 
     def decode_comp_claim(
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
             action_items: Optional[List[ActionItem]],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         """Example tx:
         https://etherscan.io/tx/0x024bd402420c3ba2f95b875f55ce2a762338d2a14dac4887b78174254c9ab807
         """
         if tx_log.topics[0] != DISTRIBUTED_SUPPLIER_COMP:
-            return None, None
+            return None, []
 
         supplier_address = hex_or_bytes_to_address(tx_log.topics[2])
         if not self.base.is_tracked(supplier_address):
-            return None, None
+            return None, []
 
         comp_raw_amount = hex_or_bytes_to_int(tx_log.data[0:32])
         if comp_raw_amount == 0:
-            return None, None  # do not count zero comp collection
+            return None, []  # do not count zero comp collection
 
         # A DistributedSupplierComp event can happen without a transfer. Just accrues
         # comp in the Comptroller until enough for a transfer is there. We should only
@@ -170,18 +184,18 @@ class CompoundDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
                 event.notes = f'Collect {event.balance.amount} COMP from compound'
                 break
 
-        return None, None
+        return None, []
 
     # -- DecoderInterface methods
 
-    def addresses_to_decoders(self) -> Dict[ChecksumEthAddress, Tuple[Any, ...]]:
+    def addresses_to_decoders(self) -> Dict[ChecksumEvmAddress, Tuple[Any, ...]]:
         compound_tokens = GlobalDBHandler().get_ethereum_tokens(protocol='compound')
-        mapping: Dict[ChecksumEthAddress, Tuple[Any, ...]] = {}
+        mapping: Dict[ChecksumEvmAddress, Tuple[Any, ...]] = {}
         for token in compound_tokens:
             if token == A_COMP:
                 continue
 
-            mapping[token.ethereum_address] = (self.decode_compound_token_movement, token)
+            mapping[token.evm_address] = (self.decode_compound_token_movement, token)
         mapping[COMPTROLLER_PROXY.address] = (self.decode_comp_claim,)
         return mapping
 

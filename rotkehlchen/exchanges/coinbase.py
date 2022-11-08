@@ -11,7 +11,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction, LedgerActionType
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_coinbase
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
@@ -429,7 +429,7 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             log.error(msg)
             return None, msg
 
-        returned_balances: DefaultDict[Asset, Balance] = defaultdict(Balance)
+        returned_balances: DefaultDict[AssetWithOracles, Balance] = defaultdict(Balance)
         for account in resp:
             try:
                 if not account['balance']:
@@ -460,13 +460,13 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase balance result with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase balance result with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -511,13 +511,13 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase transaction with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase trade with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -569,13 +569,13 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase conversion with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase conversion with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -695,12 +695,12 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found coinbase deposit/withdrawal with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found coinbase deposit/withdrawal with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)
@@ -807,12 +807,12 @@ class Coinbase(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found coinbase transaction with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found coinbase transaction with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)

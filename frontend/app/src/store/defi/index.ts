@@ -1,12 +1,9 @@
 import { AddressIndexed } from '@rotki/common';
 import { DefiAccount } from '@rotki/common/lib/account';
 import { Blockchain, DefiProtocol } from '@rotki/common/lib/blockchain';
-import { computed, ComputedRef, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import sortBy from 'lodash/sortBy';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import { getPremium } from '@/composables/session';
-import i18n from '@/i18n';
+import { ComputedRef, Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
 import { balanceKeys } from '@/services/consts';
 import { ProtocolVersion } from '@/services/defi/consts';
 import { api } from '@/services/rotkehlchen-api';
@@ -14,43 +11,46 @@ import {
   ALL_DECENTRALIZED_EXCHANGES,
   ALL_MODULES
 } from '@/services/session/consts';
-import { Section, Status } from '@/store/const';
 import { useAaveStore } from '@/store/defi/aave';
 import { useBalancerStore } from '@/store/defi/balancer';
 import { useCompoundStore } from '@/store/defi/compound';
-import {
-  AAVE,
-  AIRDROP_POAP,
-  COMPOUND,
-  getProtocolIcon,
-  LIQUITY,
-  MAKERDAO_DSR,
-  MAKERDAO_VAULTS,
-  YEARN_FINANCE_VAULTS,
-  YEARN_FINANCE_VAULTS_V2
-} from '@/store/defi/const';
 import { useLiquityStore } from '@/store/defi/liquity';
 import { useMakerDaoStore } from '@/store/defi/makerdao';
 import { useDefiSupportedProtocolsStore } from '@/store/defi/protocols';
 import { useSushiswapStore } from '@/store/defi/sushiswap';
 import {
-  Airdrop,
-  AirdropDetail,
-  Airdrops,
-  AirdropType,
   AllDefiProtocols,
   DefiProtocolSummary,
-  OverviewDefiProtocol,
-  PoapDelivery,
   TokenInfo
 } from '@/store/defi/types';
 import { useUniswapStore } from '@/store/defi/uniswap';
 import { useYearnStore } from '@/store/defi/yearn';
 import { useNotifications } from '@/store/notifications';
+import { getStatus, setStatus } from '@/store/status';
 import { useTasks } from '@/store/tasks';
-import { getStatus, isLoading, setStatus } from '@/store/utils';
+import { isLoading } from '@/store/utils';
 import { Writeable } from '@/types';
+import {
+  Airdrop,
+  AIRDROP_POAP,
+  AirdropDetail,
+  Airdrops,
+  AirdropType,
+  PoapDelivery
+} from '@/types/airdrops';
+import {
+  AAVE,
+  COMPOUND,
+  getProtocolIcon,
+  LIQUITY,
+  MAKERDAO_DSR,
+  MAKERDAO_VAULTS,
+  OverviewDefiProtocol,
+  YEARN_FINANCE_VAULTS,
+  YEARN_FINANCE_VAULTS_V2
+} from '@/types/defi/protocols';
 import { Module } from '@/types/modules';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { Zero } from '@/utils/bignumbers';
@@ -67,7 +67,7 @@ export const useDefiStore = defineStore('defi', () => {
 
   const { awaitTask } = useTasks();
   const { notify } = useNotifications();
-  const premium = getPremium();
+  const premium = usePremium();
 
   const liquityStore = useLiquityStore();
   const yearnStore = useYearnStore();
@@ -78,6 +78,7 @@ export const useDefiStore = defineStore('defi', () => {
   const sushiswapStore = useSushiswapStore();
   const uniswapStore = useUniswapStore();
   const lendingStore = useDefiSupportedProtocolsStore();
+  const { t, tc } = useI18n();
 
   const {
     vaultsBalances: yearnV1Balances,
@@ -220,7 +221,7 @@ export const useDefiStore = defineStore('defi', () => {
       return Object.values(accounts);
     });
 
-  const overview = computed(() => {
+  const overview: ComputedRef<DefiProtocolSummary[]> = computed(() => {
     const shouldDisplay = (summary: DefiProtocolSummary) => {
       const lending = summary.totalLendingDepositUsd.gt(0);
       const debt = summary.totalDebtUsd.gt(0);
@@ -355,7 +356,7 @@ export const useDefiStore = defineStore('defi', () => {
           summary[protocol].tokenInfo?.tokenName !== entry.baseBalance.tokenName
         ) {
           const tokenInfo: Writeable<TokenInfo> = summary[protocol].tokenInfo!;
-          tokenInfo.tokenName = `${i18n.t('defi_overview.multiple_assets')}`;
+          tokenInfo.tokenName = `${t('defi_overview.multiple_assets')}`;
           tokenInfo.tokenSymbol = '';
         }
 
@@ -470,19 +471,17 @@ export const useDefiStore = defineStore('defi', () => {
         taskId,
         taskType,
         {
-          title: i18n.tc('actions.defi.balances.task.title'),
+          title: tc('actions.defi.balances.task.title'),
           numericKeys: balanceKeys
         }
       );
 
       set(allProtocols, result);
     } catch (e: any) {
-      const title = i18n.tc('actions.defi.balances.error.title');
-      const message = i18n.tc(
-        'actions.defi.balances.error.description',
-        undefined,
-        { error: e.message }
-      );
+      const title = tc('actions.defi.balances.error.title');
+      const message = tc('actions.defi.balances.error.description', undefined, {
+        error: e.message
+      });
       notify({
         title,
         message,
@@ -582,24 +581,22 @@ export const useDefiStore = defineStore('defi', () => {
     setStatus(newStatus, section);
 
     try {
-      const { taskId } = await api.airdrops();
+      const { taskId } = await api.defi.fetchAirdrops();
       const { result } = await awaitTask<Airdrops, TaskMeta>(
         taskId,
         TaskType.DEFI_AIRDROPS,
         {
-          title: i18n.t('actions.defi.airdrops.task.title').toString(),
+          title: t('actions.defi.airdrops.task.title').toString(),
           numericKeys: balanceKeys
         }
       );
       set(airdrops, result);
     } catch (e: any) {
       notify({
-        title: i18n.t('actions.defi.airdrops.error.title').toString(),
-        message: i18n
-          .t('actions.defi.airdrops.error.description', {
-            error: e.message
-          })
-          .toString(),
+        title: t('actions.defi.airdrops.error.title').toString(),
+        message: t('actions.defi.airdrops.error.description', {
+          error: e.message
+        }).toString(),
         display: true
       });
     }
@@ -644,6 +641,12 @@ export const useDefiStore = defineStore('defi', () => {
     set(airdrops, {});
     resetState(ALL_MODULES);
   };
+
+  watch(premium, premium => {
+    if (!premium) {
+      reset();
+    }
+  });
 
   return {
     allProtocols,

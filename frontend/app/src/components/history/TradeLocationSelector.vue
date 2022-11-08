@@ -13,7 +13,7 @@
             chips
             :class="outlined ? 'trade-location-selector--outlined' : null"
             :outlined="outlined"
-            :label="$t('trade_location_selector.label')"
+            :label="t('trade_location_selector.label')"
             item-text="name"
             item-value="identifier"
             @input="input"
@@ -29,8 +29,8 @@
         <v-card-text>
           {{
             !value
-              ? $t('trade_location_selector.selection_none')
-              : $t('trade_location_selector.selection_single', {
+              ? t('trade_location_selector.selection_none')
+              : t('trade_location_selector.selection_single', {
                   location: name
                 })
           }}
@@ -40,66 +40,50 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { tradeLocations } from '@/components/history/consts';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import LocationIcon from '@/components/history/LocationIcon.vue';
-import { TradeLocationData } from '@/components/history/type';
-import { TradeLocation } from '@/services/history/types';
+import { TradeLocation } from '@/types/history/trade-location';
+import { TradeLocationData, useTradeLocations } from '@/types/trades';
 
-export default defineComponent({
-  name: 'TradeLocationSelector',
-  components: { LocationIcon },
-  props: {
-    value: { required: true, type: Object as PropType<TradeLocation> },
-    availableLocations: {
-      required: false,
-      type: Array as PropType<string[]>,
-      default: () => []
-    },
-    outlined: { required: false, type: Boolean, default: false }
+const { t } = useI18n();
+
+const props = defineProps({
+  value: { required: true, type: Object as PropType<TradeLocation> },
+  availableLocations: {
+    required: false,
+    type: Array as PropType<string[]>,
+    default: () => []
   },
-  emits: ['input'],
-  setup(props, { emit }) {
-    const { availableLocations, value } = toRefs(props);
-
-    const locations = computed<TradeLocationData[]>(() => {
-      return tradeLocations.filter(location =>
-        get(availableLocations).includes(location.identifier)
-      );
-    });
-
-    const name = computed<string>(() => {
-      return (
-        tradeLocations.find(location => location.identifier === get(value))
-          ?.name ?? ''
-      );
-    });
-
-    const input = (value: TradeLocation) => {
-      emit('input', value);
-    };
-
-    return {
-      locations,
-      name,
-      tradeLocations,
-      input
-    };
-  }
+  outlined: { required: false, type: Boolean, default: false }
 });
+
+const emit = defineEmits(['input']);
+const { availableLocations, value } = toRefs(props);
+const { tradeLocations } = useTradeLocations();
+
+const locations = computed<TradeLocationData[]>(() => {
+  return get(tradeLocations).filter(location =>
+    get(availableLocations).includes(location.identifier)
+  );
+});
+
+const name = computed<string>(() => {
+  return (
+    get(tradeLocations).find(location => location.identifier === get(value))
+      ?.name ?? ''
+  );
+});
+
+const input = (value: TradeLocation) => {
+  emit('input', value);
+};
 </script>
 
 <style scoped lang="scss">
 .trade-location-selector {
   &--outlined {
-    ::v-deep {
+    :deep() {
       /* stylelint-disable */
       .v-label:not(.v-label--active) {
         /* stylelint-enable */

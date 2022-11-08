@@ -1,15 +1,15 @@
 <template>
   <v-autocomplete
-    v-bind="$attrs"
+    v-bind="rootAttrs"
     data-cy="location-input"
     :value="value"
-    :disabled="pending"
     :items="locations"
+    :attach="attach"
     item-value="identifier"
     item-text="name"
     auto-select-first
     @input="change"
-    v-on="$listeners"
+    v-on="listeners"
   >
     <template #item="{ item, attrs, on }">
       <location-icon
@@ -33,64 +33,59 @@
   </v-autocomplete>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { tradeLocations } from '@/components/history/consts';
+<script setup lang="ts">
+import { PropType, useListeners } from 'vue';
 import LocationIcon from '@/components/history/LocationIcon.vue';
-import { TradeLocationData } from '@/components/history/type';
+import { TradeLocationData, useTradeLocations } from '@/types/trades';
 
-export default defineComponent({
-  name: 'LocationSelector',
-  components: { LocationIcon },
-  props: {
-    value: { required: false, type: String, default: '' },
-    pending: { required: false, type: Boolean, default: false },
-    items: {
-      required: false,
-      type: Array as PropType<string[]>,
-      default: () => []
-    },
-    excludes: {
-      required: false,
-      type: Array as PropType<string[]>,
-      default: () => []
-    }
+const props = defineProps({
+  value: { required: false, type: String, default: '' },
+  items: {
+    required: false,
+    type: Array as PropType<string[]>,
+    default: () => []
   },
-  emits: ['change'],
-  setup(props, { emit }) {
-    const { items, excludes } = toRefs(props);
-
-    const change = (_value: string) => emit('change', _value);
-
-    const locations = computed<TradeLocationData[]>(() => {
-      const itemsVal = get(items);
-      const excludesVal = get(excludes);
-
-      return tradeLocations.filter(item => {
-        const included =
-          itemsVal && itemsVal.length > 0
-            ? itemsVal.includes(item.identifier)
-            : true;
-
-        const excluded =
-          excludesVal && excludesVal.length > 0
-            ? excludesVal.includes(item.identifier)
-            : false;
-
-        return included && !excluded;
-      });
-    });
-
-    return {
-      locations,
-      change
-    };
+  excludes: {
+    required: false,
+    type: Array as PropType<string[]>,
+    default: () => []
+  },
+  attach: {
+    required: false,
+    type: String,
+    default: undefined
   }
+});
+
+const emit = defineEmits<{
+  (e: 'change', value: string): void;
+}>();
+
+const rootAttrs = useAttrs();
+const listeners = useListeners();
+
+const { items, excludes } = toRefs(props);
+
+const change = (_value: string) => emit('change', _value);
+
+const { tradeLocations } = useTradeLocations();
+
+const locations = computed<TradeLocationData[]>(() => {
+  const itemsVal = get(items);
+  const excludesVal = get(excludes);
+
+  return get(tradeLocations).filter(item => {
+    const included =
+      itemsVal && itemsVal.length > 0
+        ? itemsVal.includes(item.identifier)
+        : true;
+
+    const excluded =
+      excludesVal && excludesVal.length > 0
+        ? excludesVal.includes(item.identifier)
+        : false;
+
+    return included && !excluded;
+  });
 });
 </script>

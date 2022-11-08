@@ -1,20 +1,20 @@
 <template>
   <v-snackbar
-    v-model="notification.display"
+    v-model="visibleNotification.display"
     :class="$style.popup"
-    :timeout="notification.duration"
+    :timeout="visibleNotification.duration"
     top
     right
     :light="!$vuetify.theme.dark"
     app
     rounded
     width="400px"
-    @input="displayed([notification.id])"
+    @input="displayed([visibleNotification.id])"
   >
     <notification
       popup
-      :notification="notification"
-      @dismiss="dismiss(notification.id)"
+      :notification="visibleNotification"
+      @dismiss="dismiss(visibleNotification.id)"
     />
     <v-divider />
     <v-row v-if="queue.length > 0" justify="end">
@@ -25,7 +25,7 @@
               <v-icon>mdi-notification-clear-all</v-icon>
             </v-btn>
           </template>
-          <span>{{ $t('notification_popup.dismiss_all') }}</span>
+          <span>{{ t('notification_popup.dismiss_all') }}</span>
         </v-tooltip>
       </v-col>
     </v-row>
@@ -40,60 +40,46 @@
           />
         </div>
       </template>
-      <span v-text="$t('notification_popup.tooltip')" />
+      <span v-text="t('notification_popup.tooltip')" />
     </v-tooltip>
   </v-snackbar>
 </template>
 
-<script lang="ts">
-import { defineComponent, nextTick, ref, watch } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+<script setup lang="ts">
 import Notification from '@/components/status/notifications/Notification.vue';
 import { setupNotifications } from '@/composables/notifications';
 import { emptyNotification } from '@/store/notifications';
 
-const NotificationPopup = defineComponent({
-  name: 'NotificationPopup',
-  components: { Notification },
-  setup() {
-    const notification = ref(emptyNotification());
-    const { queue, displayed } = setupNotifications();
-    const dismiss = (id: number) => {
-      displayed([id]);
-      set(notification, { ...get(notification), display: false });
-    };
+const visibleNotification = ref(emptyNotification());
+const { queue, displayed } = setupNotifications();
+const dismiss = async (id: number) => {
+  await displayed([id]);
+  set(visibleNotification, { ...get(visibleNotification), display: false });
+};
 
-    const dismissAll = () => {
-      displayed(get(queue).map(({ id }) => id));
-      set(notification, { ...get(notification), display: false });
-    };
+const dismissAll = async () => {
+  await displayed(get(queue).map(({ id }) => id));
+  set(visibleNotification, { ...get(visibleNotification), display: false });
+};
 
-    watch(
-      queue,
-      () => {
-        const data = [...get(queue)];
-        if (!get(notification).display && data.length > 0) {
-          const next = data.shift();
-          if (!next) {
-            return;
-          }
-          nextTick(() => {
-            set(notification, next);
-          });
-        }
-      },
-      { deep: true }
-    );
-    return {
-      queue,
-      notification,
-      dismiss,
-      dismissAll,
-      displayed
-    };
-  }
-});
-export default NotificationPopup;
+watch(
+  queue,
+  () => {
+    const data = [...get(queue)];
+    if (!get(visibleNotification).display && data.length > 0) {
+      const next = data.shift();
+      if (!next) {
+        return;
+      }
+      nextTick(() => {
+        set(visibleNotification, next);
+      });
+    }
+  },
+  { deep: true }
+);
+
+const { t } = useI18n();
 </script>
 <style module lang="scss">
 .popup {

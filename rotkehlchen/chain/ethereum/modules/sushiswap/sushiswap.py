@@ -8,22 +8,20 @@ from rotkehlchen.chain.ethereum.interfaces.ammswap.types import (
     AddressEvents,
     AddressEventsBalances,
     AddressToLPBalances,
-    AddressTrades,
     AssetToPrice,
     DDAddressEvents,
     EventType,
 )
 from rotkehlchen.chain.ethereum.interfaces.ammswap.utils import SUBGRAPH_REMOTE_ERROR_MSG
-from rotkehlchen.chain.ethereum.trades import AMMTrade
+from rotkehlchen.chain.ethereum.modules.sushiswap.constants import CPT_SUSHISWAP_V2
 from rotkehlchen.errors.misc import ModuleInitializationFailure, RemoteError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.types import ChecksumEthAddress, Location, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Location, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 
 if TYPE_CHECKING:
-    from rotkehlchen.accounting.structures.balance import AssetBalance
     from rotkehlchen.chain.ethereum.manager import EthereumManager
     from rotkehlchen.db.dbhandler import DBHandler
     from rotkehlchen.db.drivers.gevent import DBCursor
@@ -72,7 +70,7 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
     def _get_events_balances(
             self,
             write_cursor: 'DBCursor',
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             from_timestamp: Timestamp,
             to_timestamp: Timestamp,
     ) -> AddressEventsBalances:
@@ -84,8 +82,8 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
         address_events_balances: AddressEventsBalances = {}
         address_events: DDAddressEvents = defaultdict(list)
         db_address_events: AddressEvents = {}
-        new_addresses: List[ChecksumEthAddress] = []
-        existing_addresses: List[ChecksumEthAddress] = []
+        new_addresses: List[ChecksumEvmAddress] = []
+        existing_addresses: List[ChecksumEvmAddress] = []
         min_end_ts: Timestamp = to_timestamp
 
         # Get addresses' last used query range for Sushiswap events
@@ -187,7 +185,7 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
 
     def get_balances(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
     ) -> AddressToLPBalances:
         """Get the addresses' balances in the Sushiswap protocol
 
@@ -196,8 +194,12 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
         """
         protocol_balance = self._get_balances_graph(addresses=addresses)
 
-        known_assets = protocol_balance.known_assets
-        unknown_assets = protocol_balance.unknown_assets
+        self.add_lp_tokens_to_db(
+            lp_balances_mappings=protocol_balance.address_balances,
+            protocol=CPT_SUSHISWAP_V2,
+        )
+        known_assets = protocol_balance.known_tokens
+        unknown_assets = protocol_balance.unknown_tokens
         known_asset_price = self._get_known_asset_price(
             known_assets=known_assets,
             unknown_assets=unknown_assets,
@@ -214,54 +216,15 @@ class Sushiswap(AMMSwapPlatform, EthereumModule):
 
         return protocol_balance.address_balances
 
-    def get_trades_history(
-        self,
-        addresses: List[ChecksumEthAddress],
-        reset_db_data: bool,
-        from_timestamp: Timestamp,
-        to_timestamp: Timestamp,
-    ) -> AddressTrades:
-        """Get the addresses' trades history in the Sushiswap protocol"""
-        with self.trades_lock:
-            if reset_db_data is True:
-                with self.database.user_write() as cursor:
-                    self.database.delete_sushiswap_trades_data(cursor)
-
-            trades = self._get_trades(
-                addresses=addresses,
-                from_timestamp=from_timestamp,
-                to_timestamp=to_timestamp,
-                only_cache=False,
-            )
-        return trades
-
-    def _get_trades_graph_for_address(
-            self,
-            address: ChecksumEthAddress,
-            start_ts: Timestamp,
-            end_ts: Timestamp,
-    ) -> List[AMMTrade]:
-        trades = []
-        try:
-            trades.extend(self._read_subgraph_trades(address, start_ts, end_ts))
-        except RemoteError as e:
-            log.error(
-                f'Error querying sushiswap trades using graph for address {address} '
-                f'between {start_ts} and {end_ts}. {str(e)}',
-            )
-
-        return trades
-
     def delete_events_data(self, write_cursor: 'DBCursor') -> None:
         self.database.delete_sushiswap_events_data(write_cursor)
 
     def deactivate(self) -> None:
         with self.database.user_write() as cursor:
-            self.database.delete_sushiswap_trades_data(cursor)
             self.database.delete_sushiswap_events_data(cursor)
 
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
+    def on_account_addition(self, address: ChecksumEvmAddress) -> None:
         pass
 
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass

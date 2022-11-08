@@ -15,10 +15,10 @@ from typing import (
 from eth_utils import to_checksum_address
 
 from rotkehlchen.accounting.structures.types import HistoryEventType
-from rotkehlchen.assets.asset import Asset, EthereumToken
-from rotkehlchen.assets.utils import get_asset_by_symbol
+from rotkehlchen.assets.asset import AssetWithOracles, EvmToken
+from rotkehlchen.assets.utils import get_crypto_asset_by_symbol
 from rotkehlchen.constants.misc import ZERO
-from rotkehlchen.errors.asset import UnknownAsset, UnprocessableTradePair
+from rotkehlchen.errors.asset import UnknownAsset, UnprocessableTradePair, WrongAssetType
 from rotkehlchen.errors.serialization import ConversionError, DeserializationError
 from rotkehlchen.externalapis.utils import read_hash, read_integer
 from rotkehlchen.fval import AcceptableFValInitInput, FVal
@@ -26,9 +26,9 @@ from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
     AssetAmount,
     AssetMovementCategory,
-    ChecksumEthAddress,
-    EthereumInternalTransaction,
-    EthereumTransaction,
+    ChecksumEvmAddress,
+    EvmInternalTransaction,
+    EvmTransaction,
     Fee,
     HexColorCode,
     Optional,
@@ -39,7 +39,7 @@ from rotkehlchen.types import (
 from rotkehlchen.utils.misc import convert_to_int, create_timestamp, iso8601ts_to_timestamp
 
 if TYPE_CHECKING:
-    from rotkehlchen.chain.ethereum.manager import EthereumManager
+    from rotkehlchen.chain.evm.manager import EvmManager
 
 
 logger = logging.getLogger(__name__)
@@ -290,7 +290,7 @@ def _split_pair(pair: TradePair) -> Tuple[str, str]:
     return assets[0], assets[1]
 
 
-def pair_get_assets(pair: TradePair) -> Tuple[Asset, Asset]:
+def pair_get_assets(pair: TradePair) -> Tuple[AssetWithOracles, AssetWithOracles]:
     """Returns a tuple with the (base, quote) assets
 
     May raise:
@@ -298,10 +298,10 @@ def pair_get_assets(pair: TradePair) -> Tuple[Asset, Asset]:
     - UnknownAsset
     """
     base_str, quote_str = _split_pair(pair)
-    base_asset = get_asset_by_symbol(base_str)
+    base_asset = get_crypto_asset_by_symbol(base_str)
     if base_asset is None:
         raise UnknownAsset(base_str)
-    quote_asset = get_asset_by_symbol(quote_str)
+    quote_asset = get_crypto_asset_by_symbol(quote_str)
     if quote_asset is None:
         raise UnknownAsset(quote_str)
     return base_asset, quote_asset
@@ -322,7 +322,7 @@ def deserialize_trade_pair(pair: str) -> TradePair:
         raise DeserializationError(str(e)) from e
     except UnknownAsset as e:
         raise DeserializationError(
-            f'Unknown asset {e.asset_name} found while processing trade pair',
+            f'Unknown asset {e.identifier} found while processing trade pair',
         ) from e
 
     return TradePair(pair)
@@ -390,7 +390,7 @@ def deserialize_hex_color_code(symbol: str) -> HexColorCode:
     return HexColorCode(symbol)
 
 
-def deserialize_ethereum_address(symbol: str) -> ChecksumEthAddress:
+def deserialize_evm_address(symbol: str) -> ChecksumEvmAddress:
     """Deserialize a symbol, check that it's a valid ethereum address
     and return it checksummed.
 
@@ -401,7 +401,7 @@ def deserialize_ethereum_address(symbol: str) -> ChecksumEthAddress:
         return to_checksum_address(symbol)
     except ValueError as e:
         raise DeserializationError(
-            f'Invalid ethereum address: {symbol}',
+            f'Invalid evm address: {symbol}',
         ) from e
 
 
@@ -470,13 +470,14 @@ def deserialize_int_from_hex_or_int(symbol: Union[str, int], location: str) -> i
     return result
 
 
-def deserialize_ethereum_token_from_db(identifier: str) -> EthereumToken:
-    """Takes an identifier and returns the <EthereumToken>"""
-    ethereum_token = EthereumToken.from_identifier(identifier=identifier)
-    if ethereum_token is None:
+def deserialize_ethereum_token_from_db(identifier: str) -> EvmToken:
+    """Takes an identifier and returns the <EvmToken>"""
+    try:
+        ethereum_token = EvmToken(identifier)
+    except (UnknownAsset, WrongAssetType) as e:
         raise DeserializationError(
             f'Could not initialize an ethereum token with identifier {identifier}',
-        )
+        ) from e
 
     return ethereum_token
 
@@ -494,54 +495,54 @@ def deserialize_optional(input_val: Optional[X], fn: Callable[[X], Y]) -> Option
 
 
 @overload
-def deserialize_ethereum_transaction(
+def deserialize_evm_transaction(
         data: Dict[str, Any],
         internal: Literal[True],
-        ethereum: Optional['EthereumManager'] = None,
-) -> EthereumInternalTransaction:
+        manager: Optional['EvmManager'] = None,
+) -> EvmInternalTransaction:
     ...
 
 
 @overload
-def deserialize_ethereum_transaction(
+def deserialize_evm_transaction(
         data: Dict[str, Any],
         internal: Literal[False],
-        ethereum: Optional['EthereumManager'] = None,
-) -> EthereumTransaction:
+        manager: Optional['EvmManager'] = None,
+) -> EvmTransaction:
     ...
 
 
-def deserialize_ethereum_transaction(
+def deserialize_evm_transaction(
         data: Dict[str, Any],
         internal: bool,
-        ethereum: Optional['EthereumManager'] = None,
-) -> Union[EthereumTransaction, EthereumInternalTransaction]:
+        manager: Optional['EvmManager'] = None,
+) -> Union[EvmTransaction, EvmInternalTransaction]:
     """Reads dict data of a transaction and deserializes it.
     If the transaction is not from etherscan then it's missing some data
-    so ethereum manager is used to fetch it.
+    so evm manager is used to fetch it.
 
     Can raise DeserializationError if something is wrong
     """
-    source = 'etherscan' if ethereum is None else 'web3'
+    source = 'etherscan' if manager is None else 'web3'
     try:
         tx_hash = deserialize_evm_tx_hash(data['hash'])
         block_number = read_integer(data, 'blockNumber', source)
         if 'timeStamp' not in data:
-            if ethereum is None:
-                raise DeserializationError('Got in deserialize ethereum transaction without timestamp and without ethereum manager')  # noqa: E501
+            if manager is None:
+                raise DeserializationError('Got in deserialize evm transaction without timestamp and without evm manager')  # noqa: E501
 
-            block_data = ethereum.get_block_by_number(block_number)
+            block_data = manager.get_block_by_number(block_number)
             timestamp = Timestamp(read_integer(block_data, 'timestamp', source))
         else:
             timestamp = deserialize_timestamp(data['timeStamp'])
 
-        from_address = deserialize_ethereum_address(data['from'])
+        from_address = deserialize_evm_address(data['from'])
         is_empty_to_address = data['to'] != '' and data['to'] is not None
-        to_address = deserialize_ethereum_address(data['to']) if is_empty_to_address else None
+        to_address = deserialize_evm_address(data['to']) if is_empty_to_address else None
         value = read_integer(data, 'value', source)
 
         if internal:
-            return EthereumInternalTransaction(
+            return EvmInternalTransaction(
                 parent_tx_hash=tx_hash,
                 trace_id=int(data['traceId']),
                 timestamp=timestamp,
@@ -555,15 +556,15 @@ def deserialize_ethereum_transaction(
         gas_price = read_integer(data=data, key='gasPrice', api=source)
         input_data = read_hash(data, 'input', source)
         if 'gasUsed' not in data:
-            if ethereum is None:
-                raise DeserializationError('Got in deserialize ethereum transaction without gasUsed and without ethereum manager')  # noqa: E501
+            if manager is None:
+                raise DeserializationError('Got in deserialize evm transaction without gasUsed and without evm manager')  # noqa: E501
             tx_hash = deserialize_evm_tx_hash(data['hash'])
-            receipt_data = ethereum.get_transaction_receipt(tx_hash)
+            receipt_data = manager.get_transaction_receipt(tx_hash)
             gas_used = read_integer(receipt_data, 'gasUsed', source)
         else:
             gas_used = read_integer(data, 'gasUsed', source)
         nonce = read_integer(data, 'nonce', source)
-        return EthereumTransaction(
+        return EvmTransaction(
             timestamp=timestamp,
             block_number=block_number,
             tx_hash=tx_hash,
@@ -578,7 +579,7 @@ def deserialize_ethereum_transaction(
         )
     except KeyError as e:
         raise DeserializationError(
-            f'ethereum {"internal" if internal else ""}transaction from {source} missing expected key {str(e)}',  # noqa: E501
+            f'evm {"internal" if internal else ""}transaction from {source} missing expected key {str(e)}',  # noqa: E501
         ) from e
 
 

@@ -43,10 +43,13 @@ export class BlockchainBalancesPage extends AccountBalancesPage {
     // account balances card section for particular blockchain type should be visible
     // sometime the table need long time to be loaded
     cy.get(`[data-cy="blockchain-balances-${balance.blockchain}"]`, {
-      timeout: 300000
+      timeout: 120000
     }).as('blockchain-section');
 
     cy.get('@blockchain-section').should('exist');
+    cy.get('@blockchain-section')
+      .get('.v-data-table__progress', { timeout: 300000 })
+      .should('not.exist');
 
     cy.get('@blockchain-section')
       .find('[data-cy="blockchain-balances"] tbody')
@@ -83,12 +86,24 @@ export class BlockchainBalancesPage extends AccountBalancesPage {
       { blockchain: 'Bitcoin', symbol: Blockchain.BTC, renderedValue: Zero }
     ];
 
+    cy.get('[data-cy=blockchain-asset-balances] .v-data-table__empty-wrapper', {
+      timeout: 300000
+    }).should('not.exist');
+
     blockchainBalances.forEach(blockchainBalance => {
       const tableClass = `[data-cy="blockchain-balances-${blockchainBalance.symbol}"]`;
+      cy.get(tableClass).scrollIntoView();
       cy.get('body').then($body => {
         if ($body.find(tableClass).length > 0) {
+          cy.get(`${tableClass} .v-data-table__progress`, {
+            timeout: 240000
+          }).should('not.be.exist');
+
           cy.get(
-            `${tableClass} tr:contains(${blockchainBalance.symbol}) td:nth-child(4) [data-cy="display-amount"]`
+            `${tableClass} tr:contains(${blockchainBalance.symbol}) td:nth-child(4) [data-cy="display-amount"]`,
+            {
+              timeout: 120000
+            }
           ).each($amount => {
             blockchainBalance.renderedValue =
               blockchainBalance.renderedValue.plus(
@@ -120,6 +135,9 @@ export class BlockchainBalancesPage extends AccountBalancesPage {
       .clear()
       .type(label);
     cy.get('.big-dialog__buttons__confirm').click();
+    cy.get('[data-cy=bottom-dialog]', { timeout: 120000 }).should(
+      'not.be.visible'
+    );
   }
 
   deleteBalance(balance: FixtureBlockchainBalance, position: number) {

@@ -3,17 +3,15 @@
     #default="{ error, success, update }"
     setting="ethStakingTaxableAfterWithdrawalEnabled"
     :error-message="
-      $tc(
-        'account_settings.messages.eth_staking_taxable_after_withdrawal.error'
-      )
+      tc('account_settings.messages.eth_staking_taxable_after_withdrawal.error')
     "
     :success-message="
       enabled =>
         enabled
-          ? $tc(
+          ? tc(
               'account_settings.messages.eth_staking_taxable_after_withdrawal.enabled'
             )
-          : $tc(
+          : tc(
               'account_settings.messages.eth_staking_taxable_after_withdrawal.disabled'
             )
     "
@@ -24,7 +22,7 @@
       :success-messages="success"
       :error-messages="error"
       :label="
-        $tc('accounting_settings.labels.eth_staking_taxable_after_withdrawal')
+        tc('accounting_settings.labels.eth_staking_taxable_after_withdrawal')
       "
       color="primary"
       @change="update"
@@ -33,9 +31,6 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import SettingsOption from '@/components/settings/controls/SettingsOption.vue';
 import { useAccountingSettingsStore } from '@/store/settings/accounting';
 
@@ -47,4 +42,6 @@ const { ethStakingTaxableAfterWithdrawalEnabled: enabled } = storeToRefs(
 onMounted(() => {
   set(ethStakingTaxableAfterWithdrawalEnabled, get(enabled));
 });
+
+const { tc } = useI18n();
 </script>

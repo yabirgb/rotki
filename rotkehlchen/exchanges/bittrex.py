@@ -12,7 +12,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_bittrex
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.errors.asset import UnknownAsset, UnprocessableTradePair, UnsupportedAsset
@@ -59,7 +59,7 @@ log = RotkehlchenLogsAdapter(logger)
 BITTREX_V3_PUBLIC_ENDPOINTS = ('currencies',)
 
 
-def bittrex_pair_to_world(given_pair: str) -> Tuple[Asset, Asset]:
+def bittrex_pair_to_world(given_pair: str) -> Tuple[AssetWithOracles, AssetWithOracles]:
     """
     Turns a pair written in bittrex to way to rotki base/quote asset
 
@@ -309,20 +309,20 @@ class Bittrex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             log.error(msg)
             return None, msg
 
-        returned_balances: Dict[Asset, Balance] = {}
+        returned_balances: Dict[AssetWithOracles, Balance] = {}
         for entry in resp:
             try:
                 asset = asset_from_bittrex(entry['currencySymbol'])
                 amount = deserialize_asset_amount(entry['total'])
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unsupported bittrex asset {e.asset_name}. '
+                    f'Found unsupported bittrex asset {e.identifier}. '
                     f' Ignoring its balance query.',
                 )
                 continue
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unknown bittrex asset {e.asset_name}. '
+                    f'Found unknown bittrex asset {e.identifier}. '
                     f' Ignoring its balance query.',
                 )
                 continue
@@ -417,13 +417,13 @@ class Bittrex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found bittrex trade with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found bittrex trade with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnprocessableTradePair as e:
@@ -489,12 +489,12 @@ class Bittrex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         except UnknownAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found bittrex deposit/withdrawal with unknown asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except UnsupportedAsset as e:
             self.msg_aggregator.add_warning(
                 f'Found bittrex deposit/withdrawal with unsupported asset '
-                f'{e.asset_name}. Ignoring it.',
+                f'{e.identifier}. Ignoring it.',
             )
         except (DeserializationError, KeyError) as e:
             msg = str(e)

@@ -1,16 +1,16 @@
 <template>
   <fragment>
     <v-divider class="my-4" />
-    <loan-row :title="$t('makerdao_vault_debt.stability_fee')" class="mb-2">
+    <loan-row :title="tc('makerdao_vault_debt.stability_fee')" class="mb-2">
       <percentage-display :value="stabilityFee" :asset-padding="assetPadding" />
     </loan-row>
-    <loan-row :title="$t('makerdao_vault_debt.total_lost')">
+    <loan-row :title="tc('makerdao_vault_debt.total_lost')">
       <div v-if="premium">
         <amount-display
           :asset-padding="assetPadding"
           :value="interest"
           :loading="loading"
-          asset="DAI"
+          :asset="dai"
         />
       </div>
       <div v-else>
@@ -20,47 +20,40 @@
   </fragment>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
+import { assetSymbolToIdentifierMap } from '@rotki/common/lib/data';
 import LoanRow from '@/components/defi/loan/LoanRow.vue';
 import Fragment from '@/components/helper/Fragment';
 import PremiumLock from '@/components/premium/PremiumLock.vue';
-import { getPremium } from '@/composables/session';
+import { usePremium } from '@/composables/premium';
 import { Zero } from '@/utils/bignumbers';
 
-export default defineComponent({
-  name: 'MakerDaoVaultDebtDetails',
-  components: { PremiumLock, LoanRow, Fragment },
-  props: {
-    totalInterestOwed: {
-      type: BigNumber,
-      required: true
-    },
-    stabilityFee: {
-      type: String,
-      required: true
-    },
-    loading: {
-      type: Boolean,
-      required: true
-    }
+const props = defineProps({
+  totalInterestOwed: {
+    type: BigNumber,
+    required: true
   },
-  setup(props) {
-    const premium = getPremium();
-    const { totalInterestOwed } = toRefs(props);
-    const interest = computed(() => {
-      if (get(totalInterestOwed).isNegative()) {
-        return Zero;
-      }
-      return get(totalInterestOwed);
-    });
-    return {
-      interest,
-      premium,
-      assetPadding: 4
-    };
+  stabilityFee: {
+    type: String,
+    required: true
+  },
+  loading: {
+    type: Boolean,
+    required: true
   }
 });
+
+const premium = usePremium();
+const { totalInterestOwed } = toRefs(props);
+const { tc } = useI18n();
+const interest = computed(() => {
+  if (get(totalInterestOwed).isNegative()) {
+    return Zero;
+  }
+  return get(totalInterestOwed);
+});
+
+const dai: string = assetSymbolToIdentifierMap.DAI;
+const assetPadding = 4;
 </script>

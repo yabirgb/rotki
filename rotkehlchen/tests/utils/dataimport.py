@@ -1,9 +1,13 @@
 from rotkehlchen.accounting.ledger_actions import LedgerAction, LedgerActionType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.accounting.structures.balance import Balance
+from rotkehlchen.accounting.structures.base import HistoryBaseEntry
+from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
 from rotkehlchen.assets.converters import asset_from_binance, asset_from_cryptocom
 from rotkehlchen.assets.utils import symbol_to_asset_or_token
 from rotkehlchen.constants.assets import (
     A_BAT,
+    A_BNB,
     A_BTC,
     A_DAI,
     A_DOGE,
@@ -24,9 +28,11 @@ from rotkehlchen.constants.assets import (
 from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.db.filtering import (
     AssetMovementsFilterQuery,
+    HistoryEventFilterQuery,
     LedgerActionsFilterQuery,
     TradesFilterQuery,
 )
+from rotkehlchen.db.history_events import DBHistoryEvents
 from rotkehlchen.db.ledger_actions import DBLedgerActions
 from rotkehlchen.exchanges.data_structures import AssetMovement, Trade
 from rotkehlchen.fval import FVal
@@ -39,6 +45,7 @@ from rotkehlchen.types import (
     Location,
     Price,
     Timestamp,
+    TimestampMS,
     TradeType,
 )
 
@@ -541,7 +548,7 @@ def assert_cryptocom_special_events_import_results(rotki: Rotkehlchen):
         timestamp=Timestamp(1635390998),
         location=Location.CRYPTOCOM,
         base_asset=symbol_to_asset_or_token('EUR'),
-        quote_asset=symbol_to_asset_or_token('USDC'),
+        quote_asset=A_USDC.resolve_to_evm_token(),
         trade_type=TradeType.BUY,
         amount=AssetAmount(FVal('11.3')),
         rate=Price(FVal('1.145132743362831858407079646')),
@@ -669,7 +676,7 @@ def assert_blockfi_trades_import_results(rotki: Rotkehlchen):
         timestamp=Timestamp(1612051199),
         location=Location.BLOCKFI,
         base_asset=symbol_to_asset_or_token('LTC'),
-        quote_asset=symbol_to_asset_or_token('USDC'),
+        quote_asset=A_USDC.resolve_to_evm_token(),
         trade_type=TradeType.SELL,
         amount=AssetAmount(FVal('42.23878904')),
         rate=Price(FVal('151.6283999982779809352223797')),
@@ -1085,7 +1092,7 @@ def assert_bisq_trades_import_results(rotki: Rotkehlchen):
         base_asset=symbol_to_asset_or_token('SC'),
         quote_asset=symbol_to_asset_or_token('BTC'),
         trade_type=TradeType.SELL,
-        amount=AssetAmount(FVal(0.0364)),
+        amount=AssetAmount(FVal(9811.32075471)),
         rate=Price(FVal(0.00000371)),
         fee=Fee(FVal(0.0002)),
         fee_currency=symbol_to_asset_or_token('BTC'),
@@ -1121,7 +1128,7 @@ def assert_bisq_trades_import_results(rotki: Rotkehlchen):
         base_asset=symbol_to_asset_or_token('DASH'),
         quote_asset=symbol_to_asset_or_token('BTC'),
         trade_type=TradeType.SELL,
-        amount=AssetAmount(FVal(0.30)),
+        amount=AssetAmount(FVal(19.45685539)),
         rate=Price(FVal(0.01541873)),
         fee=Fee(FVal(0.0009)),
         fee_currency=symbol_to_asset_or_token('BTC'),
@@ -1157,7 +1164,7 @@ def assert_bisq_trades_import_results(rotki: Rotkehlchen):
         base_asset=symbol_to_asset_or_token('BTC'),
         quote_asset=symbol_to_asset_or_token('EUR'),
         trade_type=TradeType.SELL,
-        amount=AssetAmount(FVal(794)),
+        amount=AssetAmount(FVal(0.05)),
         rate=Price(FVal(15883.3283)),
         fee=Fee(FVal(2.01)),
         fee_currency=symbol_to_asset_or_token('BSQ'),
@@ -1169,7 +1176,7 @@ def assert_bisq_trades_import_results(rotki: Rotkehlchen):
         base_asset=symbol_to_asset_or_token('BTC'),
         quote_asset=symbol_to_asset_or_token('EUR'),
         trade_type=TradeType.SELL,
-        amount=AssetAmount(FVal(505)),
+        amount=AssetAmount(FVal(0.01)),
         rate=Price(FVal(50500.0000)),
         fee=Fee(FVal(0.40)),
         fee_currency=symbol_to_asset_or_token('BSQ'),
@@ -1181,7 +1188,7 @@ def assert_bisq_trades_import_results(rotki: Rotkehlchen):
         base_asset=symbol_to_asset_or_token('BTC'),
         quote_asset=symbol_to_asset_or_token('EUR'),
         trade_type=TradeType.SELL,
-        amount=AssetAmount(FVal(2450)),
+        amount=AssetAmount(FVal(0.01)),
         rate=Price(FVal(49000.0000)),
         fee=Fee(FVal(0.29)),
         fee_currency=symbol_to_asset_or_token('BSQ'),
@@ -1275,7 +1282,7 @@ def assert_binance_import_results(rotki: Rotkehlchen):
             timestamp=Timestamp(1605169314),
             location=Location.BINANCE,
             base_asset=A_BTC,
-            quote_asset=Asset('IOTA'),
+            quote_asset=CryptoAsset('IOTA'),
             trade_type=TradeType.SELL,
             amount=AssetAmount(FVal('0.001366875')),
             rate=Price(FVal('0.00002025')),
@@ -1288,7 +1295,7 @@ def assert_binance_import_results(rotki: Rotkehlchen):
             timestamp=Timestamp(1605903740),
             location=Location.BINANCE,
             base_asset=asset_from_binance('BNB'),
-            quote_asset=Asset('SOL-2'),
+            quote_asset=CryptoAsset('SOL-2'),
             trade_type=TradeType.BUY,
             amount=AssetAmount(FVal('0.00072724')),
             rate=Price(FVal('0.3537908069071033997951901302')),
@@ -1301,7 +1308,7 @@ def assert_binance_import_results(rotki: Rotkehlchen):
             timestamp=Timestamp(1605903740),
             location=Location.BINANCE,
             base_asset=asset_from_binance('BNB'),
-            quote_asset=Asset('SOL-2'),
+            quote_asset=CryptoAsset('SOL-2'),
             trade_type=TradeType.BUY,
             amount=AssetAmount(FVal('0.000237955')),
             rate=Price(FVal('1.643676176003315604061614975')),
@@ -1314,7 +1321,7 @@ def assert_binance_import_results(rotki: Rotkehlchen):
             timestamp=Timestamp(1605910681),
             location=Location.BINANCE,
             base_asset=A_USDT,
-            quote_asset=Asset('DAR'),
+            quote_asset=EvmToken('eip155:56/erc20:0x23CE9e926048273eF83be0A3A8Ba9Cb6D45cd978'),
             trade_type=TradeType.SELL,
             amount=AssetAmount(FVal('1157.56')),
             rate=Price(FVal('3.44')),
@@ -1326,13 +1333,13 @@ def assert_binance_import_results(rotki: Rotkehlchen):
         Trade(
             timestamp=Timestamp(1605911401),
             location=Location.BINANCE,
-            base_asset=Asset('IOTA'),
+            base_asset=CryptoAsset('IOTA'),
             quote_asset=A_USDT,
             trade_type=TradeType.BUY,
             amount=AssetAmount(FVal('882')),
             rate=Price(FVal('0.7694083249980764791875048088')),
             fee=Fee(FVal('-0.882')),
-            fee_currency=Asset('IOTA'),
+            fee_currency=CryptoAsset('IOTA'),
             link='',
             notes='Imported from binance CSV file. Binance operation: Buy / Sell',
         ),
@@ -1394,7 +1401,7 @@ def assert_binance_import_results(rotki: Rotkehlchen):
             action_type=LedgerActionType.INCOME,
             location=Location.BINANCE,
             amount=AssetAmount(FVal(0.115147055)),
-            asset=Asset('DAR'),
+            asset=EvmToken('eip155:56/erc20:0x23CE9e926048273eF83be0A3A8Ba9Cb6D45cd978'),
             rate=None,
             rate_asset=None,
             link=None,
@@ -1450,3 +1457,160 @@ def assert_binance_import_results(rotki: Rotkehlchen):
         'Skipped 4 rows during processing binance csv file. Check logs for details',
     ]
     assert warnings == expected_warnings
+
+
+def assert_rotki_generic_trades_import_results(rotki: Rotkehlchen):
+    expected_trades = [
+        Trade(
+            timestamp=Timestamp(1659085200),
+            location=Location.BINANCE,
+            base_asset=A_USDC,
+            quote_asset=A_ETH,
+            trade_type=TradeType.SELL,
+            amount=AssetAmount(FVal('1.0000')),
+            rate=Price(FVal('1875.64')),
+            fee=None,
+            fee_currency=None,
+            notes='Trade USDC for ETH',
+        ), Trade(
+            timestamp=Timestamp(1659171600),
+            location=Location.KRAKEN,
+            base_asset=A_BTC,
+            quote_asset=A_LTC,
+            trade_type=TradeType.BUY,
+            amount=AssetAmount(FVal('4.3241')),
+            rate=Price(FVal('90.85983210379038412617654541')),
+            fee=None,
+            fee_currency=None,
+            notes='Trade LTC for BTC',
+        ), Trade(
+            timestamp=Timestamp(1659344400),
+            location=Location.KUCOIN,
+            base_asset=A_UNI,
+            quote_asset=A_DAI,
+            trade_type=TradeType.SELL,
+            amount=AssetAmount(FVal('880.0000')),
+            rate=Price(FVal('0.02272727272727272727272727273')),
+            fee=Fee(FVal('0.1040')),
+            fee_currency=A_USD,
+            notes='Trade UNI for DAI',
+        ),
+    ]
+    with rotki.data.db.conn.read_ctx() as cursor:
+        trades = rotki.data.db.get_trades(cursor, filter_query=TradesFilterQuery.make(), has_premium=True)  # noqa: E501
+        warnings = rotki.msg_aggregator.consume_warnings()
+
+    expected_warnings = [
+        'Deserialization error during rotki generic trades CSV import. Failed to deserialize Location value luno. Ignoring entry',  # noqa: E501
+        'During rotki generic trades import, csv row {\'Location\': \'bisq\', \'Base Currency\': \'eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F\', \'Quote Currency\': \'eip155:1/erc20:0xdAC17F958D2ee523a2206206994597C13D831ec7\', \'Type\': \'Buy\', \'Buy Amount\': \'0\', \'Sell Amount\': \'4576.6400\', \'Fee\': \'5.1345\', \'Fee Currency\': \'USD\', \'Description\': \'Trade USDT for DAI\', \'Timestamp\': \'1659345600000\'} has zero amount bought. Ignoring entry',  # noqa: E501
+    ]
+    assert trades == expected_trades
+    assert warnings == expected_warnings
+
+
+def assert_rotki_generic_events_import_results(rotki: Rotkehlchen):
+    expected_history_events = [
+        HistoryBaseEntry(
+            identifier=1,
+            event_identifier=b'1xyz',  # placeholder as this field is randomly generated on import
+            sequence_index=0,
+            timestamp=TimestampMS(1658912400000),
+            location=Location.KUCOIN,
+            asset=A_EUR,
+            event_type=HistoryEventType.DEPOSIT,
+            event_subtype=HistoryEventSubType.SPEND,
+            balance=Balance(
+                amount=FVal('1000.00'),
+                usd_value=ZERO,
+            ),
+            notes='Deposit EUR to Kucoin',
+        ), HistoryBaseEntry(
+            identifier=2,
+            event_identifier=b'2xyz',  # placeholder as this field is randomly generated on import
+            sequence_index=1,
+            timestamp=TimestampMS(1658998800000),
+            location=Location.BINANCE,
+            asset=A_USDT,
+            event_type=HistoryEventType.WITHDRAWAL,
+            event_subtype=HistoryEventSubType.RECEIVE,
+            balance=Balance(
+                amount=FVal('99.00'),
+                usd_value=ZERO,
+            ),
+            notes='',
+        ), HistoryBaseEntry(
+            identifier=3,
+            event_identifier=b'2xyz',  # placeholder as this field is randomly generated on import
+            sequence_index=2,
+            timestamp=TimestampMS(1658998800000),
+            location=Location.BINANCE,
+            asset=A_USDT,
+            event_type=HistoryEventType.WITHDRAWAL,
+            event_subtype=HistoryEventSubType.FEE,
+            balance=Balance(
+                amount=FVal('1.00'),
+                usd_value=ZERO,
+            ),
+            notes='',
+        ), HistoryBaseEntry(
+            identifier=4,
+            event_identifier=b'3xyz',  # placeholder as this field is randomly generated on import
+            sequence_index=2,
+            timestamp=TimestampMS(1659085200000),
+            location=Location.KRAKEN,
+            asset=A_BNB,
+            event_type=HistoryEventType.WITHDRAWAL,
+            event_subtype=HistoryEventSubType.RECEIVE,
+            balance=Balance(
+                amount=FVal('1.01'),
+                usd_value=ZERO,
+            ),
+            notes='',
+        ), HistoryBaseEntry(
+            identifier=5,
+            event_identifier=b'5xyz',  # placeholder as this field is randomly generated on import
+            sequence_index=4,
+            timestamp=TimestampMS(1659430800000),
+            location=Location.COINBASE,
+            asset=A_BTC,
+            event_type=HistoryEventType.SPEND,
+            event_subtype=HistoryEventSubType.NONE,
+            balance=Balance(
+                amount=FVal('0.0910'),
+                usd_value=ZERO,
+            ),
+            notes='',
+        ),
+    ]
+    with rotki.data.db.conn.read_ctx() as cursor:
+        history_db = DBHistoryEvents(rotki.data.db)
+        history_events = history_db.get_history_events(
+            cursor=cursor,
+            filter_query=HistoryEventFilterQuery.make(),
+            has_premium=True,
+        )
+        warnings = rotki.msg_aggregator.consume_warnings()
+    expected_warnings = [
+        'Deserialization error during rotki generic events CSV import. Failed to deserialize Location value luno. Ignoring entry',  # noqa: E501
+        'Deserialization error during rotki generic events CSV import. Failed to deserialize Location value cex. Ignoring entry',  # noqa: E501
+        'Unsupported entry Invalid. Data: {\'Type\': \'Invalid\', \'Location\': \'bisq\', \'Currency\': \'BCH\', \'Amount\': \'0.3456\', \'Fee\': \'\', \'Fee Currency\': \'\', \'Description\': \'\', \'Timestamp\': \'1659686400000\'}',  # noqa: E501
+    ]
+    assert len(history_events) == 5
+    assert len(expected_history_events) == 5
+    assert len(warnings) == 3
+    assert warnings == expected_warnings
+    for actual, expected in zip(history_events, expected_history_events):
+        assert_is_equal_history_event(actual=actual, expected=expected)
+
+
+def assert_is_equal_history_event(
+        actual: HistoryBaseEntry,
+        expected: HistoryBaseEntry,
+) -> None:
+    """Compares two `HistoryBaseEntry` objects omitting the `event_identifier` as its
+    generated randomly upon import."""
+    actual_dict = actual.serialize()
+    actual_dict.pop('event_identifier')
+    expected_dict = expected.serialize()
+    expected_dict.pop('event_identifier')
+    assert actual_dict == expected_dict

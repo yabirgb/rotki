@@ -1,25 +1,34 @@
 import datetime
+import os
 import re
 import sys
 import tempfile
+import warnings as test_warnings
+from enum import auto
 from pathlib import Path
+from typing import List
 
 import py
 import pytest
 
-from rotkehlchen.config import default_data_directory
-from rotkehlchen.constants.misc import DEFAULT_SQL_VM_INSTRUCTIONS_CB
-from rotkehlchen.globaldb.handler import GlobalDBHandler
+from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import TRACE, add_logging_level, configure_logging
 from rotkehlchen.tests.utils.args import default_args
+from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
+
+
+class TestEnvironment(SerializableEnumMixin):
+    STANDARD = auto()  # test during normal development
+    NIGHTLY = auto()  # all tests
+    NFTS = auto()  # nft tests
+
 
 add_logging_level('TRACE', TRACE)
 configure_logging(default_args())
 # sql instructions for global DB are customizable here:
 # https://github.com/rotki/rotki/blob/eb5bef269207e8b84075ee36ce7c3804115ed6a0/rotkehlchen/tests/fixtures/globaldb.py#L33
-GlobalDBHandler(default_data_directory(), DEFAULT_SQL_VM_INSTRUCTIONS_CB)
 
-from rotkehlchen.tests.fixtures import *  # noqa: F401,F403
+from rotkehlchen.tests.fixtures import *  # noqa: F403
 
 # monkey patch web3's non-thread safe lru cache with our own version
 from rotkehlchen.chain.ethereum import patch_web3  # isort:skip # pylint: disable=unused-import # lgtm[py/unused-import] # noqa
@@ -105,7 +114,9 @@ def profiler(request):
         now = datetime.datetime.now()
         tmpdirname = tempfile.gettempdir()
         stack_path = Path(tmpdirname) / f'{now:%Y%m%d_%H%M}_stack.data'
-        print(f'Stack data is saved at: {stack_path}')
+        test_warnings.warn(UserWarning(
+            f'Stack data is saved at: {stack_path}',
+        ))
         stack_stream = open(stack_path, 'w')
         flame = FlameGraphCollector(stack_stream)
         profiler_instance = TraceSampler(flame)
@@ -114,3 +125,16 @@ def profiler(request):
 
     if profiler_instance is not None:
         profiler_instance.stop()
+
+
+def requires_env(allowed_envs: List[TestEnvironment]):
+    """Conditionally run tests if the environment is in the list of allowed environments"""
+    try:
+        env = TestEnvironment.deserialize(os.environ.get('TEST_ENVIRONMENT', 'standard'))
+    except DeserializationError:
+        env = TestEnvironment.STANDARD
+
+    return pytest.mark.skipif(
+        env not in allowed_envs,
+        reason=f'Not suitable envrionment {env} for current test',
+    )

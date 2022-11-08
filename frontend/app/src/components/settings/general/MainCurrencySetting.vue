@@ -2,19 +2,14 @@
   <settings-option
     #default="{ error, success, update }"
     setting="mainCurrency"
-    :error-message="$tc('general_settings.validation.currency.error')"
-    :success-message="
-      symbol =>
-        $tc('general_settings.validation.currency.success', 0, {
-          symbol
-        })
-    "
+    :error-message="tc('general_settings.validation.currency.error')"
+    :success-message="successMessage"
   >
     <v-select
       v-model="selectedCurrency"
       outlined
       class="general-settings__fields__currency-selector"
-      :label="$t('general_settings.amount.labels.main_currency')"
+      :label="tc('general_settings.amount.labels.main_currency')"
       item-text="tickerSymbol"
       return-object
       :items="currencies"
@@ -29,7 +24,8 @@
           v-on="on"
         >
           <v-list-item-avatar
-            class="general-settings__currency-list primary--text"
+            class="general-settings__currency-list primary--text font-weight-bold"
+            :style="{ fontSize: calculateFontSize(item.unicodeSymbol) }"
           >
             {{ item.unicodeSymbol }}
           </v-list-item-avatar>
@@ -38,7 +34,7 @@
               {{ item.name }}
             </v-list-item-title>
             <v-list-item-subtitle>
-              {{ $t('general_settings.amount.labels.main_currency_subtitle') }}
+              {{ tc('general_settings.amount.labels.main_currency_subtitle') }}
             </v-list-item-subtitle>
           </v-list-item-content>
         </v-list-item>
@@ -48,17 +44,25 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
-import { currencies } from '@/data/currencies';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { Currency } from '@/types/currency';
+import { useCurrencies, Currency } from '@/types/currencies';
 
-const selectedCurrency = ref<Currency>(currencies[0]);
+const { currencies } = useCurrencies();
+const selectedCurrency = ref<Currency>(get(currencies)[0]);
 const { currency } = storeToRefs(useGeneralSettingsStore());
+const { tc } = useI18n();
+
+const successMessage = (symbol: string) =>
+  tc('general_settings.validation.currency.success', 0, {
+    symbol
+  });
 
 onMounted(() => {
   set(selectedCurrency, get(currency));
 });
+
+const calculateFontSize = (symbol: string) => {
+  const length = symbol.length;
+  return `${2.4 - length * 0.4}em`;
+};
 </script>

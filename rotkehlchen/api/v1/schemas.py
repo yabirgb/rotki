@@ -1,4 +1,5 @@
 import logging
+from enum import auto
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -11,6 +12,7 @@ from typing import (
     Union,
     overload,
 )
+from uuid import uuid4
 
 import webargs
 from eth_utils import to_checksum_address
@@ -26,7 +28,15 @@ from rotkehlchen.accounting.structures.types import (
     HistoryEventType,
 )
 from rotkehlchen.accounting.types import SchemaEventType
-from rotkehlchen.assets.asset import EthereumToken, UnderlyingToken
+from rotkehlchen.assets.asset import (
+    Asset,
+    AssetWithNameAndType,
+    AssetWithOracles,
+    CryptoAsset,
+    CustomAsset,
+    EvmToken,
+    UnderlyingToken,
+)
 from rotkehlchen.assets.types import AssetType
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
 from rotkehlchen.chain.bitcoin.bch.utils import validate_bch_address_input
@@ -51,6 +61,8 @@ from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.data_import.manager import DataImportSource
 from rotkehlchen.db.filtering import (
     AssetMovementsFilterQuery,
+    AssetsFilterQuery,
+    CustomAssetsFilterQuery,
     Eth2DailyStatsFilterQuery,
     ETHTransactionsFilterQuery,
     HistoryEventFilterQuery,
@@ -65,18 +77,22 @@ from rotkehlchen.errors.misc import InputError, RemoteError, XPUBError
 from rotkehlchen.errors.serialization import DeserializationError, EncodingError
 from rotkehlchen.exchanges.kraken import KrakenAccountType
 from rotkehlchen.exchanges.manager import ALL_SUPPORTED_EXCHANGES, SUPPORTED_EXCHANGES
+from rotkehlchen.globaldb import GlobalDBHandler
 from rotkehlchen.history.types import HistoricalPriceOracle
 from rotkehlchen.icons import ALLOWED_ICON_EXTENSIONS
 from rotkehlchen.inquirer import CurrentPriceOracle
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
     AVAILABLE_MODULES_MAP,
+    NON_EVM_CHAINS,
     AddressbookEntry,
     AddressbookType,
     AssetMovementCategory,
     BTCAddress,
-    ChecksumEthAddress,
+    ChainID,
+    ChecksumEvmAddress,
     CostBasisMethod,
+    EvmTokenKind,
     ExchangeLocationID,
     ExternalService,
     ExternalServiceApiCredentials,
@@ -87,7 +103,8 @@ from rotkehlchen.types import (
     UserNote,
 )
 from rotkehlchen.utils.hexbytes import hexstring_to_bytes
-from rotkehlchen.utils.misc import create_order_by_rules_list, is_valid_ethereum_tx_hash, ts_now
+from rotkehlchen.utils.misc import create_order_by_rules_list, ts_now
+from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
 
 from .fields import (
     AmountField,
@@ -120,9 +137,10 @@ from .fields import (
 )
 
 if TYPE_CHECKING:
-    from rotkehlchen.assets.asset import Asset
+    from rotkehlchen.db.dbhandler import DBHandler
     from rotkehlchen.externalapis.coingecko import Coingecko
     from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+    from rotkehlchen.interfaces import HistoricalPriceOracleInterface
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -207,7 +225,7 @@ class EthereumTransactionQuerySchema(
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
     protocols = DelimitedOrNormalList(fields.String(), load_default=None)
-    asset = AssetField(load_default=None)
+    asset = AssetField(expected_type=CryptoAsset, load_default=None)
     exclude_ignored_assets = fields.Boolean(load_default=True)
 
     @validates_schema
@@ -290,8 +308,8 @@ class TradesQuerySchema(
         DBPaginationSchema,
         DBOrderBySchema,
 ):
-    base_asset = AssetField(load_default=None)
-    quote_asset = AssetField(load_default=None)
+    base_asset = AssetField(expected_type=Asset, load_default=None)
+    quote_asset = AssetField(expected_type=Asset, load_default=None)
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
     trade_type = SerializableEnumField(enum_class=TradeType, load_default=None)
@@ -377,7 +395,7 @@ class StakingQuerySchema(
 ):
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
-    asset = AssetField(load_default=None)
+    asset = AssetField(expected_type=AssetWithOracles, load_default=None)
     event_subtypes = fields.List(
         SerializableEnumField(enum_class=HistoryEventSubType),
         load_default=None,
@@ -404,11 +422,14 @@ class StakingQuerySchema(
                 else:
                     attributes.append(order_by_attribute)
             data['order_by_attributes'] = attributes
-        asset_list: Optional[Tuple['Asset', ...]] = None
+        asset_list: Optional[Tuple['AssetWithOracles', ...]] = None
         if data['asset'] is not None:
             asset_list = (data['asset'],)
         if self.treat_eth2_as_eth is True and data['asset'] == A_ETH:
-            asset_list = (A_ETH, A_ETH2)
+            asset_list = (
+                A_ETH.resolve_to_asset_with_oracles(),
+                A_ETH2.resolve_to_asset_with_oracles(),
+            )
 
         query_filter = HistoryEventFilterQuery.make(
             order_by_rules=create_order_by_rules_list(data),
@@ -460,7 +481,7 @@ class HistoryBaseEntrySchema(Schema):
     timestamp = TimestampField(ts_multiplier=1000, required=True)
     location = LocationField(required=True)
     event_type = SerializableEnumField(enum_class=HistoryEventType, required=True)
-    asset = AssetField(required=True, form_with_incomplete_data=True)
+    asset = AssetField(required=True, expected_type=Asset, form_with_incomplete_data=True)
     balance = fields.Nested(BalanceSchema, required=True)
     location_label = fields.String(required=False)
     notes = fields.String(required=False)
@@ -485,10 +506,7 @@ class HistoryBaseEntrySchema(Schema):
         if self.identifier_required is True and data['identifier'] is None:
             raise ValidationError('History event identifier should be given')
         try:
-            if is_valid_ethereum_tx_hash(data['event_identifier']):
-                data['event_identifier'] = HistoryBaseEntry.deserialize_event_identifier(data['event_identifier'])  # noqa: 501
-            else:
-                data['event_identifier'] = HistoryBaseEntry.deserialize_event_identifier_from_kraken(data['event_identifier'])  # noqa: 501
+            data['event_identifier'] = HistoryBaseEntry.deserialize_event_identifier(data['event_identifier'])  # noqa: E501
         except DeserializationError as e:
             raise ValidationError(str(e)) from e
 
@@ -509,7 +527,7 @@ class AssetMovementsQuerySchema(
         DBPaginationSchema,
         DBOrderBySchema,
 ):
-    asset = AssetField(load_default=None)
+    asset = AssetField(expected_type=Asset, load_default=None)
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
     action = SerializableEnumField(enum_class=AssetMovementCategory, load_default=None)
@@ -584,7 +602,7 @@ class LedgerActionsQuerySchema(
         DBPaginationSchema,
         DBOrderBySchema,
 ):
-    asset = AssetField(load_default=None)
+    asset = AssetField(expected_type=Asset, load_default=None)
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
     type = SerializableEnumField(enum_class=LedgerActionType, load_default=None)
@@ -656,13 +674,13 @@ class LedgerActionsQuerySchema(
 class TradeSchema(Schema):
     timestamp = TimestampUntilNowField(required=True)
     location = LocationField(required=True)
-    base_asset = AssetField(required=True)
-    quote_asset = AssetField(required=True)
+    base_asset = AssetField(expected_type=Asset, required=True)
+    quote_asset = AssetField(expected_type=Asset, required=True)
     trade_type = SerializableEnumField(enum_class=TradeType, required=True)
     amount = PositiveAmountField(required=True)
     rate = PriceField(required=True)
     fee = FeeField(load_default=None)
-    fee_currency = AssetField(load_default=None)
+    fee_currency = AssetField(expected_type=Asset, load_default=None)
     link = fields.String(load_default=None)
     notes = fields.String(load_default=None)
 
@@ -696,9 +714,9 @@ class LedgerActionSchema(Schema):
     action_type = SerializableEnumField(enum_class=LedgerActionType, required=True)
     location = LocationField(required=True)
     amount = AmountField(required=True)
-    asset = AssetField(required=True)
+    asset = AssetField(expected_type=Asset, required=True)
     rate = PriceField(load_default=None)
-    rate_asset = AssetField(load_default=None)
+    rate_asset = AssetField(expected_type=Asset, load_default=None)
     link = fields.String(load_default=None)
     notes = fields.String(load_default=None)
 
@@ -727,6 +745,10 @@ class LedgerActionSchema(Schema):
         return {'action': LedgerAction(**data)}
 
 
+class IntegerIdentifierListSchema(Schema):
+    identifiers = DelimitedOrNormalList(fields.Integer(required=True), required=True)
+
+
 class IntegerIdentifierSchema(Schema):
     identifier = fields.Integer(required=True)
 
@@ -736,7 +758,7 @@ class StringIdentifierSchema(Schema):
 
 
 class ManuallyTrackedBalanceAddSchema(Schema):
-    asset = AssetField(required=True)
+    asset = AssetField(expected_type=Asset, required=True)
     label = fields.String(required=True)
     amount = PositiveAmountField(required=True)
     location = LocationField(required=True)
@@ -782,7 +804,7 @@ class TradePatchSchema(TradeSchema):
 
 
 class TradeDeleteSchema(Schema):
-    trade_id = fields.String(required=True)
+    trades_ids = DelimitedOrNormalList(fields.String(required=True), required=True)
 
 
 class TagSchema(Schema):
@@ -888,7 +910,7 @@ class ModifiableSettingsSchema(Schema):
     # even though it gets validated since we try to connect to it
     ksm_rpc_endpoint = fields.String(load_default=None)
     dot_rpc_endpoint = fields.String(load_default=None)
-    main_currency = AssetField(load_default=None)
+    main_currency = AssetField(expected_type=AssetWithOracles, load_default=None)
     # TODO: Add some validation to this field
     date_display_format = fields.String(load_default=None)
     active_modules = fields.List(fields.String(), load_default=None)
@@ -1118,7 +1140,7 @@ class BlockchainBalanceQuerySchema(AsyncQueryArgumentSchema):
 
 
 class StatisticsAssetBalanceSchema(Schema):
-    asset = AssetField(required=True)
+    asset = AssetField(expected_type=Asset, required=True)
     from_timestamp = TimestampField(load_default=Timestamp(0))
     to_timestamp = TimestampField(load_default=ts_now)
 
@@ -1245,11 +1267,7 @@ class XpubAddSchema(AsyncQueryArgumentSchema):
         required=True,
         exclude_types=NON_BITCOIN_CHAINS,
     )
-    xpub_type = fields.String(
-        required=False,
-        load_default=None,
-        validate=webargs.validate.OneOf(choices=('p2pkh', 'p2sh_p2wpkh', 'wpkh')),
-    )
+    xpub_type = SerializableEnumField(XpubType, load_default=None)
     tags = fields.List(fields.String(), load_default=None)
 
     @post_load
@@ -1258,11 +1276,11 @@ class XpubAddSchema(AsyncQueryArgumentSchema):
             data: Dict[str, Any],
             **_kwargs: Any,
     ) -> Any:
-        xpub_type_str = data.pop('xpub_type', None)
+        xpub_type = data.pop('xpub_type', None)
         try:
-            xpub_type = None if xpub_type_str is None else XpubType.deserialize(xpub_type_str)
-            xpub_hdkey = HDKey.from_xpub(data['xpub'], xpub_type=xpub_type, path='m')
-        except (DeserializationError, XPUBError) as e:
+            derivation_path = 'm' if data['derivation_path'] is None else data['derivation_path']
+            xpub_hdkey = HDKey.from_xpub(data['xpub'], xpub_type=xpub_type, path=derivation_path)
+        except XPUBError as e:
             raise ValidationError(
                 f'Failed to initialize an xpub due to {str(e)}',
                 field_name='xpub',
@@ -1422,7 +1440,9 @@ def _transform_btc_or_bch_address(
 
 
 def _transform_eth_address(
-        ethereum: EthereumManager, given_address: str) -> ChecksumEthAddress:
+        ethereum: EthereumManager,
+        given_address: str,
+) -> ChecksumEvmAddress:
     try:
         address = to_checksum_address(given_address)
     except ValueError:
@@ -1638,7 +1658,7 @@ class BlockchainAccountsDeleteSchema(AsyncQueryArgumentSchema):
 
 
 class IgnoredAssetsSchema(Schema):
-    assets = fields.List(AssetField(), required=True)
+    assets = fields.List(AssetField(expected_type=Asset), required=True)
 
 
 class IgnoredActionsGetSchema(Schema):
@@ -1652,49 +1672,65 @@ class IgnoredActionsModifySchema(Schema):
 
 class OptionalEthereumAddressSchema(Schema):
     address = EthereumAddressField(required=False, load_default=None)
+    chain = SerializableEnumField(enum_class=ChainID, required=False, load_default=None)
 
 
 class RequiredEthereumAddressSchema(Schema):
     address = EthereumAddressField(required=True)
+    chain = SerializableEnumField(enum_class=ChainID, required=True)
+
+
+class OptionalEvmTokenInformationSchema(Schema):
+    address = EthereumAddressField(required=False)
+    chain = SerializableEnumField(enum_class=ChainID, required=False)
+    token_kind = SerializableEnumField(enum_class=EvmTokenKind, required=False)
 
 
 class UnderlyingTokenInfoSchema(Schema):
     address = EthereumAddressField(required=True)
+    token_kind = SerializableEnumField(enum_class=EvmTokenKind, required=True)
     weight = FloatingPercentageField(required=True)
 
 
-def _validate_external_ids(
+def _validate_single_oracle_id(
         data: Dict[str, Any],
-        coingecko_obj: 'Coingecko',
-        cryptocompare_obj: 'Cryptocompare',
+        oracle_name: Literal['coingecko', 'cryptocompare'],
+        oracle_obj: 'HistoricalPriceOracleInterface',
 ) -> None:
-    coingecko = data.get('coingecko')
-    if coingecko and coingecko not in coingecko_obj.all_coins():
-        raise ValidationError(
-            f'Given coingecko identifier {coingecko} is not valid. Make sure the identifier '
-            f'is correct and in this list https://api.coingecko.com/api/v3/coins/list',
-            field_name='coingecko',
-        )
+    coin_key = data.get(oracle_name)
+    if coin_key:
+        try:
+            all_coins = oracle_obj.all_coins()
+        except RemoteError as e:
+            raise ValidationError(
+                f'Could not validate {oracle_name} identifer {coin_key} due to '
+                f'problem communicating with {oracle_name}: {str(e)}',
+            ) from e
 
-    cryptocompare = data.get('cryptocompare')
-    if cryptocompare and cryptocompare not in cryptocompare_obj.all_coins():
-        raise ValidationError(
-            f'Given cryptocompare identifier {cryptocompare} isnt valid. Make sure the identifier '
-            f'is correct and in this list https://min-api.cryptocompare.com/data/all/coinlist',
-            field_name='cryptocompare',
-        )
+        if coin_key not in all_coins:
+            raise ValidationError(
+                f'Given {oracle_name} identifier {coin_key} is not valid. Make sure the '
+                f'identifier is correct and in the list of valid {oracle_name} identifiers',
+                field_name=oracle_name,
+            )
 
 
-class AssetSchema(Schema):
-    identifier = fields.String(required=False, load_default=None)
-    asset_type = AssetTypeField(required=True, exclude_types=(AssetType.ETHEREUM_TOKEN,))
+class BaseCryptoAssetSchema(Schema):
     name = fields.String(required=True)
     symbol = fields.String(required=True)
     started = TimestampField(load_default=None)
-    forked = AssetField(load_default=None)
-    swapped_for = AssetField(load_default=None)
+    swapped_for = AssetField(expected_type=CryptoAsset, load_default=None)
     coingecko = fields.String(load_default=None)
     cryptocompare = fields.String(load_default=None)
+
+
+class CryptoAssetSchema(BaseCryptoAssetSchema):
+    identifier = fields.String(required=False, load_default=None)
+    asset_type = AssetTypeField(
+        required=True,
+        exclude_types=(AssetType.EVM_TOKEN, AssetType.NFT),
+    )
+    forked = AssetField(expected_type=CryptoAsset, load_default=None)
 
     def __init__(
             self,
@@ -1715,11 +1751,150 @@ class AssetSchema(Schema):
     ) -> None:
         if self.identifier_required is True and data['identifier'] is None:
             raise ValidationError(message='Asset schema identifier should be given', field_name='identifier')  # noqa: E501
-        _validate_external_ids(data, self.coingecko_obj, self.cryptocompare_obj)
+        _validate_single_oracle_id(data, 'coingecko', self.coingecko_obj)
+        _validate_single_oracle_id(data, 'cryptocompare', self.cryptocompare_obj)
 
 
-class EthereumTokenSchema(Schema):
-    address = EthereumAddressField(required=True)
+class IgnoredAssetsHandling(SerializableEnumMixin):
+    NONE = auto()
+    EXCLUDE = auto()
+    SHOW_ONLY = auto()
+
+
+class AssetsPostSchema(DBPaginationSchema, DBOrderBySchema):
+    name = fields.String(load_default=None)
+    symbol = fields.String(load_default=None)
+    asset_type = SerializableEnumField(enum_class=AssetType, load_default=None)
+    ignored_assets_handling = SerializableEnumField(enum_class=IgnoredAssetsHandling, load_default=IgnoredAssetsHandling.NONE)  # noqa: E501
+    show_user_owned_assets_only = fields.Boolean(load_default=False)
+    identifiers = DelimitedOrNormalList(fields.String(required=True), load_default=None)
+
+    def __init__(self, db: 'DBHandler') -> None:
+        super().__init__()
+        self.db = db
+
+    @validates_schema
+    def validate_schema(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> None:
+        # the length of `order_by_attributes` and `ascending` are the same. So check only one.
+        if data['order_by_attributes'] is not None and len(data['order_by_attributes']) > 1:
+            raise ValidationError(
+                message='Multiple fields ordering is not allowed.',
+                field_name='order_by_attributes',
+            )
+
+    @post_load
+    def make_assets_post_query(
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        with self.db.user_write() as write_cursor, GlobalDBHandler().conn.read_ctx() as globaldb_read_cursor:  # noqa: E501
+            ignored_assets_filter_params: Optional[Tuple[Literal['IN', 'NOT IN'], List[str]]] = None  # noqa: E501
+            if data['ignored_assets_handling'] == IgnoredAssetsHandling.EXCLUDE:
+                ignored_assets_filter_params = (
+                    'NOT IN',
+                    [asset.identifier for asset in self.db.get_ignored_assets(write_cursor)],
+                )
+            elif data['ignored_assets_handling'] == IgnoredAssetsHandling.SHOW_ONLY:
+                ignored_assets_filter_params = (
+                    'IN',
+                    [asset.identifier for asset in self.db.get_ignored_assets(write_cursor)],
+                )
+
+            if data['show_user_owned_assets_only'] is True:
+                globaldb_read_cursor.execute('SELECT asset_id FROM user_owned_assets;')
+                identifiers = [entry[0] for entry in globaldb_read_cursor]
+            else:
+                identifiers = data['identifiers']
+
+            filter_query = AssetsFilterQuery.make(
+                and_op=True,
+                order_by_rules=create_order_by_rules_list(
+                    data=data,
+                    default_order_by_field='name',
+                ),
+                limit=data['limit'],
+                offset=data['offset'],
+                name=data['name'],
+                symbol=data['symbol'],
+                asset_type=data['asset_type'],
+                identifiers=identifiers,
+                ignored_assets_filter_params=ignored_assets_filter_params,
+            )
+        return {'filter_query': filter_query, 'identifiers': data['identifiers']}
+
+
+class AssetsSearchLevenshteinSchema(DBOrderBySchema, DBPaginationSchema):
+    value = fields.String(required=True)
+    return_exact_matches = fields.Boolean(load_default=False)
+    evm_chain = SerializableEnumField(enum_class=ChainID, load_default=None)
+
+    @validates_schema
+    def validate_schema(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> None:
+        # the length of `order_by_attributes` and `ascending` are the same. So check only one.
+        if data['order_by_attributes'] is not None and len(data['order_by_attributes']) > 1:
+            raise ValidationError(
+                message='Multiple fields ordering is not allowed.',
+                field_name='order_by_attributes',
+            )
+
+    @post_load
+    def make_assets_search_query(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        filter_query = AssetsFilterQuery.make(
+            and_op=True,
+            order_by_rules=create_order_by_rules_list(data=data, default_order_by_field='name'),
+            evm_chain=data['evm_chain'],
+        )
+        return {
+            'filter_query': filter_query,
+            'substring_search': data['value'].strip().casefold(),
+            'limit': data['limit'],
+        }
+
+
+class AssetsSearchByColumnSchema(AssetsSearchLevenshteinSchema):
+    search_column = fields.String(
+        required=True,
+        validate=webargs.validate.OneOf(choices=('name', 'symbol')),
+    )
+
+    @post_load
+    def make_assets_search_query(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        filter_query = AssetsFilterQuery.make(
+            and_op=True,
+            order_by_rules=create_order_by_rules_list(data=data, default_order_by_field='name'),
+            limit=data['limit'],
+            offset=0,  # this is needed for the `limit` argument to work.
+            substring_search=data['value'].strip(),
+            search_column=data['search_column'],
+            return_exact_matches=data['return_exact_matches'],
+            evm_chain=data['evm_chain'],
+        )
+        return {'filter_query': filter_query}
+
+
+class AssetsMappingSchema(Schema):
+    identifiers = DelimitedOrNormalList(fields.String(required=True), required=True)
+
+
+class EvmTokenSchema(BaseCryptoAssetSchema, RequiredEthereumAddressSchema):
+    token_kind = SerializableEnumField(enum_class=EvmTokenKind, required=True)
     decimals = fields.Integer(
         strict=True,
         validate=webargs.validate.Range(
@@ -1729,12 +1904,6 @@ class EthereumTokenSchema(Schema):
         ),
         required=True,
     )
-    name = fields.String(required=True)
-    symbol = fields.String(required=True)
-    started = TimestampField(load_default=None)
-    swapped_for = AssetField(load_default=None)
-    coingecko = fields.String(load_default=None)
-    cryptocompare = fields.String(load_default=None)
     protocol = fields.String(load_default=None)
     underlying_tokens = fields.List(fields.Nested(UnderlyingTokenInfoSchema), load_default=None)
 
@@ -1774,17 +1943,18 @@ class EthereumTokenSchema(Schema):
                 )
 
         if self.coingecko_obj is not None:
-            # most probably validation happens at ModifyEthereumTokenSchema
+            # most probably validation happens at ModifyEvmTokenSchema
             # so this is not needed. Kind of an ugly way to do this but can't
             # find a way around it at the moment
-            _validate_external_ids(data, self.coingecko_obj, self.cryptocompare_obj)  # type: ignore  # noqa:E501
+            _validate_single_oracle_id(data, 'coingecko', self.coingecko_obj)
+            _validate_single_oracle_id(data, 'cryptocompare', self.cryptocompare_obj)  # type: ignore  # noqa: E501
 
     @post_load
     def transform_data(  # pylint: disable=no-self-use
             self,
             data: Dict[str, Any],
             **_kwargs: Any,
-    ) -> EthereumToken:
+    ) -> EvmToken:
         given_underlying_tokens = data.pop('underlying_tokens', None)
         underlying_tokens = None
         if given_underlying_tokens is not None:
@@ -1792,13 +1962,14 @@ class EthereumTokenSchema(Schema):
             for entry in given_underlying_tokens:
                 underlying_tokens.append(UnderlyingToken(
                     address=entry['address'],
+                    token_kind=entry['token_kind'],
                     weight=entry['weight'],
                 ))
-        return EthereumToken.initialize(**data, underlying_tokens=underlying_tokens)
+        return EvmToken.initialize(**data, underlying_tokens=underlying_tokens)
 
 
-class ModifyEthereumTokenSchema(Schema):
-    token = fields.Nested(EthereumTokenSchema, required=True)
+class ModifyEvmTokenSchema(Schema):
+    token = fields.Nested(EvmTokenSchema, required=True)
 
     def __init__(
             self,
@@ -1819,18 +1990,23 @@ class ModifyEthereumTokenSchema(Schema):
     ) -> None:
         # Not the best way to do it. Need to manually validate, coingecko/cryptocompare id here
         token: fields.Nested = self.declared_fields['token']  # type: ignore
-        serialized_token = data['token'].serialize_all_info()
+        serialized_token = data['token'].to_dict()
         serialized_token.pop('identifier')
-        _validate_external_ids(
+        _validate_single_oracle_id(
             data=serialized_token,
-            coingecko_obj=token.schema.coingecko_obj,
-            cryptocompare_obj=token.schema.cryptocompare_obj,
+            oracle_name='coingecko',
+            oracle_obj=token.schema.coingecko_obj,
+        )
+        _validate_single_oracle_id(
+            data=serialized_token,
+            oracle_name='cryptocompare',
+            oracle_obj=token.schema.cryptocompare_obj,
         )
 
 
 class AssetsReplaceSchema(Schema):
     source_identifier = fields.String(required=True)
-    target_asset = AssetField(required=True, form_with_incomplete_data=True)
+    target_asset = AssetField(required=True, expected_type=Asset, form_with_incomplete_data=True)
 
 
 class QueriedAddressesSchema(Schema):
@@ -1859,12 +2035,15 @@ class DataImportSchema(AsyncQueryArgumentSchema):
 
 
 class AssetIconUploadSchema(Schema):
-    asset = AssetField(required=True, form_with_incomplete_data=True)
+    asset = AssetField(required=True, expected_type=Asset, form_with_incomplete_data=True)
     file = FileField(required=True, allowed_extensions=ALLOWED_ICON_EXTENSIONS)
 
 
 class ExchangeRatesSchema(AsyncQueryArgumentSchema):
-    currencies = DelimitedOrNormalList(MaybeAssetField(), required=True)
+    currencies = DelimitedOrNormalList(
+        MaybeAssetField(expected_type=AssetWithOracles),
+        required=True,
+    )
 
 
 class WatcherSchema(Schema):
@@ -1907,29 +2086,37 @@ class WatchersDeleteSchema(Schema):
 
 
 class SingleAssetIdentifierSchema(Schema):
-    asset = AssetField(required=True, form_with_incomplete_data=True)
+    asset = AssetField(required=True, expected_type=Asset, form_with_incomplete_data=True)
+
+
+class SingleAssetWithOraclesIdentifierSchema(Schema):
+    asset = AssetField(
+        required=True,
+        expected_type=AssetWithOracles,
+        form_with_incomplete_data=True,
+    )
 
 
 class CurrentAssetsPriceSchema(AsyncQueryArgumentSchema):
     assets = DelimitedOrNormalList(
-        AssetField(required=True),
+        AssetField(expected_type=AssetWithNameAndType, required=True),
         required=True,
         validate=webargs.validate.Length(min=1),
     )
-    target_asset = AssetField(required=True)
+    target_asset = AssetField(expected_type=Asset, required=True)
     ignore_cache = fields.Boolean(load_default=False)
 
 
 class HistoricalAssetsPriceSchema(AsyncQueryArgumentSchema):
     assets_timestamp = fields.List(
         fields.Tuple(  # type: ignore # Tuple is not annotated
-            (AssetField(required=True), TimestampField(required=True)),
+            (AssetField(expected_type=Asset, required=True), TimestampField(required=True)),
             required=True,
         ),
         required=True,
         validate=webargs.validate.Length(min=1),
     )
-    target_asset = AssetField(required=True)
+    target_asset = AssetField(expected_type=Asset, required=True)
 
 
 class AssetUpdatesRequestSchema(AsyncQueryArgumentSchema):
@@ -1957,8 +2144,8 @@ class NamedEthereumModuleDataSchema(Schema):
 
 class NamedOracleCacheSchema(Schema):
     oracle = HistoricalPriceOracleField(required=True)
-    from_asset = AssetField(required=True)
-    to_asset = AssetField(required=True)
+    from_asset = AssetField(expected_type=AssetWithOracles, required=True)
+    to_asset = AssetField(expected_type=AssetWithOracles, required=True)
 
 
 class NamedOracleCacheCreateSchema(AsyncQueryArgumentSchema, NamedOracleCacheSchema):
@@ -1979,8 +2166,8 @@ class BinanceMarketsUserSchema(Schema):
 
 
 class ManualPriceSchema(Schema):
-    from_asset = AssetField(required=True)
-    to_asset = AssetField(required=True)
+    from_asset = AssetField(expected_type=Asset, required=True)
+    to_asset = AssetField(expected_type=Asset, required=True)
     price = PriceField(required=True)
 
 
@@ -1993,13 +2180,13 @@ class SnapshotTimestampQuerySchema(Schema):
 
 
 class ManualPriceRegisteredSchema(Schema):
-    from_asset = AssetField(load_default=None)
-    to_asset = AssetField(load_default=None)
+    from_asset = AssetField(expected_type=Asset, load_default=None)
+    to_asset = AssetField(expected_type=Asset, load_default=None)
 
 
 class ManualPriceDeleteSchema(Schema):
-    from_asset = AssetField(required=True)
-    to_asset = AssetField(required=True)
+    from_asset = AssetField(expected_type=Asset, required=True)
+    to_asset = AssetField(expected_type=Asset, required=True)
     timestamp = TimestampField(required=True)
 
 
@@ -2268,7 +2455,11 @@ class SnapshotQuerySchema(SnapshotTimestampQuerySchema):
 class BalanceSnapshotSchema(Schema):
     timestamp = TimestampField(required=True)
     category = SerializableEnumField(enum_class=BalanceType, required=True)
-    asset_identifier = AssetField(required=True, form_with_incomplete_data=True)
+    asset_identifier = AssetField(
+        expected_type=Asset,
+        required=True,
+        form_with_incomplete_data=True,
+    )
     amount = AmountField(required=True)
     usd_value = AmountField(required=True)
 
@@ -2331,7 +2522,12 @@ class SnapshotEditingSchema(Schema):
             )
 
 
-class EthereumNodeSchema(Schema):
+class Web3NodeSchema(Schema):
+    blockchain = BlockchainField(required=True, exclude_types=(SupportedBlockchain.ETHEREUM_BEACONCHAIN,))  # noqa: E501
+
+
+class Web3AddNodeSchema(Schema):
+    blockchain = BlockchainField(required=True, exclude_types=(SupportedBlockchain.ETHEREUM_BEACONCHAIN,))  # noqa: E501
     name = fields.String(
         required=True,
         validate=webargs.validate.NoneOf(
@@ -2345,7 +2541,7 @@ class EthereumNodeSchema(Schema):
     active = fields.Boolean(load_default=False)
 
 
-class EthereumNodeEditSchema(EthereumNodeSchema):
+class Web3NodeEditSchema(Web3AddNodeSchema):
     name = fields.String(
         required=True,
         validate=webargs.validate.NoneOf(
@@ -2374,7 +2570,8 @@ class EthereumNodeEditSchema(EthereumNodeSchema):
             )
 
 
-class EthereumNodeListDeleteSchema(Schema):
+class Web3NodeListDeleteSchema(Schema):
+    blockchain = BlockchainField(required=True, exclude_types=(SupportedBlockchain.ETHEREUM_BEACONCHAIN,))  # noqa: E501
     identifier = fields.Integer(required=True)
 
     @validates_schema
@@ -2395,7 +2592,7 @@ class DetectTokensSchema(
     OnlyCacheQuerySchema,
     OptionalAddressesListSchema,
 ):
-    ...
+    blockchain = BlockchainField(required=True, exclude_types=list(NON_EVM_CHAINS))
 
 
 class UserNotesPutSchema(Schema):
@@ -2420,7 +2617,7 @@ class UserNotesGetSchema(DBPaginationSchema, DBOrderBySchema):
     location = fields.String(load_default=None)
 
     @post_load
-    def make_ethereum_transaction_query(  # pylint: disable=no-self-use
+    def make_user_notes_query(  # pylint: disable=no-self-use
             self,
             data: Dict[str, Any],
             **_kwargs: Any,
@@ -2437,3 +2634,67 @@ class UserNotesGetSchema(DBPaginationSchema, DBOrderBySchema):
         return {
             'filter_query': filter_query,
         }
+
+
+class CustomAssetsQuerySchema(DBPaginationSchema, DBOrderBySchema):
+    name = fields.String(load_default=None)
+    identifier = fields.String(load_default=None)
+    custom_asset_type = fields.String(load_default=None)
+
+    @post_load
+    def make_custom_assets_query(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        filter_query = CustomAssetsFilterQuery.make(
+            limit=data['limit'],
+            offset=data['offset'],
+            order_by_rules=create_order_by_rules_list(
+                data=data,
+                default_order_by_field='name',
+                is_ascending_by_default=True,
+            ),
+            name=data['name'],
+            identifier=data['identifier'],
+            custom_asset_type=data['custom_asset_type'],
+        )
+        return {'filter_query': filter_query}
+
+
+class BaseCustomAssetSchema(Schema):
+    name = fields.String(required=True)
+    notes = fields.String(load_default=None)
+    custom_asset_type = fields.String(required=True)
+
+    @post_load
+    def make_custom_asset(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, CustomAsset]:
+        custom_asset = CustomAsset.initialize(
+            identifier=str(uuid4()),
+            name=data['name'],
+            notes=data['notes'],
+            custom_asset_type=data['custom_asset_type'],
+        )
+        return {'custom_asset': custom_asset}
+
+
+class EditCustomAssetSchema(BaseCustomAssetSchema):
+    identifier = fields.UUID(required=True)
+
+    @post_load
+    def make_custom_asset(  # pylint: disable=no-self-use
+            self,
+            data: Dict[str, Any],
+            **_kwargs: Any,
+    ) -> Dict[str, CustomAsset]:
+        custom_asset = CustomAsset.initialize(
+            identifier=str(data['identifier']),
+            name=data['name'],
+            notes=data['notes'],
+            custom_asset_type=data['custom_asset_type'],
+        )
+        return {'custom_asset': custom_asset}

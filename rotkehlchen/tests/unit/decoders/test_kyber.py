@@ -6,14 +6,14 @@ from rotkehlchen.accounting.structures.types import HistoryEventSubType, History
 from rotkehlchen.chain.ethereum.decoding.constants import CPT_GAS
 from rotkehlchen.chain.ethereum.decoding.decoder import EVMTransactionDecoder
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceipt, EthereumTxReceiptLog
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.constants import ZERO
 from rotkehlchen.constants.assets import A_CRV, A_ETH, A_USDC
 from rotkehlchen.db.ethtx import DBEthTx
 from rotkehlchen.fval import FVal
 from rotkehlchen.types import (
-    EthereumInternalTransaction,
-    EthereumTransaction,
+    EvmInternalTransaction,
+    EvmTransaction,
     Location,
     Timestamp,
     deserialize_evm_tx_hash,
@@ -30,7 +30,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
     msg_aggregator = MessagesAggregator()
     tx_hex = '0xe9cc9f27ef2a09fe23abc886a0a0f7ae19d9e2eb73663e1e41e07a3e0c011b87'
     evmhash = deserialize_evm_tx_hash(tx_hex)
-    transaction = EthereumTransaction(
+    transaction = EvmTransaction(
         tx_hash=evmhash,
         timestamp=1591043988,
         block_number=10182160,
@@ -52,7 +52,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
             EthereumTxReceiptLog(
                 log_index=87,
                 data=hexstring_to_bytes('0x0000000000000000000000000000000000000000000000000000000002aea540'),  # noqa: E501
-                address=string_to_ethereum_address('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+                address=string_to_evm_address('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'),  # noqa: E501
@@ -62,7 +62,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
             ), EthereumTxReceiptLog(
                 log_index=93,
                 data=hexstring_to_bytes('0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0000000000000000000000000000000000000000000000000000000002aea540000000000000000000000000000000000000000000000000029a80338e28df730000000000000000000000006d379cb5ba04c09293b21bf314e7aba3ffeaaf5b000000000000000000000000000000000000000000000000029a80338e28df730000000000000000000000001670dfb52806de7789d5cf7d5c005cf7083f9a5d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000000'),  # noqa: E501
-                address=string_to_ethereum_address('0x65bF64Ff5f51272f729BDcD7AcFB00677ced86Cd'),
+                address=string_to_evm_address('0x65bF64Ff5f51272f729BDcD7AcFB00677ced86Cd'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xd30ca399cb43507ecec6a629a35cf45eb98cda550c27696dcb0d8c4a3873ce6c'),  # noqa: E501
@@ -71,7 +71,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
             ),
         ],
     )
-    internal_tx = EthereumInternalTransaction(
+    internal_tx = EvmInternalTransaction(
         parent_tx_hash=evmhash,
         trace_id=27,
         timestamp=Timestamp(1591043988),
@@ -87,7 +87,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
         decoder = EVMTransactionDecoder(
             database=database,
             ethereum_manager=ethereum_manager,
-            eth_transactions=eth_transactions,
+            transactions=eth_transactions,
             msg_aggregator=msg_aggregator,
         )
         events = decoder.decode_transaction(cursor, transaction=transaction, tx_receipt=receipt)
@@ -109,7 +109,7 @@ def test_kyber_legacy_old_contract(database, ethereum_manager, eth_transactions)
                 usd_value=ZERO,
             ),
             location_label='0x6d379cb5BA04c09293b21Bf314E7aba3FfEAaF5b',
-            notes='Burned 0.01212979988 ETH in gas from 0x6d379cb5BA04c09293b21Bf314E7aba3FfEAaF5b',  # noqa: E501
+            notes='Burned 0.01212979988 ETH for gas',
             counterparty=CPT_GAS,
         ), HistoryBaseEntry(
             event_identifier=HistoryBaseEntry.deserialize_event_identifier(
@@ -154,7 +154,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
     msg_aggregator = MessagesAggregator()
     tx_hex = '0xe80928d5e21f9628c047af1f8b191cbffbb6b8b9945adb502cfb3af152552f22'
     evmhash = deserialize_evm_tx_hash(tx_hex)
-    transaction = EthereumTransaction(
+    transaction = EvmTransaction(
         tx_hash=evmhash,
         timestamp=1644182638,
         block_number=14154915,
@@ -176,7 +176,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
             EthereumTxReceiptLog(
                 log_index=349,
                 data=hexstring_to_bytes('0x00000000000000000000000000000000000000000000000000000001e52b2aa0'),  # noqa: E501
-                address=string_to_ethereum_address('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+                address=string_to_evm_address('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'),  # noqa: E501
@@ -187,7 +187,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
             EthereumTxReceiptLog(
                 log_index=369,
                 data=hexstring_to_bytes('0x000000000000000000000000000000000000000000000083a3ee0140f345d2d8'),  # noqa: E501
-                address=string_to_ethereum_address('0xD533a949740bb3306d119CC777fa900bA034cd52'),
+                address=string_to_evm_address('0xD533a949740bb3306d119CC777fa900bA034cd52'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'),  # noqa: E501
@@ -198,7 +198,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
             EthereumTxReceiptLog(
                 log_index=372,
                 data=hexstring_to_bytes('0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000d533a949740bb3306d119cc777fa900ba034cd520000000000000000000000005340f6faff9bf55f66c16db6bf9e020d987f87d000000000000000000000000000000000000000000000000000000001e52b2aa0000000000000000000000000000000000000000000000083a3ee0140f345d2d8000000000000000000000000de63aef60307655405835da74ba02ce4db1a42fb0000000000000000000000000000000000000000000000000000000000000012'),  # noqa: E501
-                address=string_to_ethereum_address('0x9AAb3f75489902f3a48495025729a0AF77d4b11e'),
+                address=string_to_evm_address('0x9AAb3f75489902f3a48495025729a0AF77d4b11e'),
                 removed=False,
                 topics=[
                     hexstring_to_bytes('0xf724b4df6617473612b53d7f88ecc6ea983074b30960a049fcd0657ffe808083'),  # noqa: E501
@@ -214,7 +214,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
         decoder = EVMTransactionDecoder(
             database=database,
             ethereum_manager=ethereum_manager,
-            eth_transactions=eth_transactions,
+            transactions=eth_transactions,
             msg_aggregator=msg_aggregator,
         )
         events = decoder.decode_transaction(cursor, transaction=transaction, tx_receipt=receipt)
@@ -236,7 +236,7 @@ def test_kyber_legacy_new_contract(database, ethereum_manager, eth_transactions)
                 usd_value=ZERO,
             ),
             location_label='0x5340F6faff9BF55F66C16Db6Bf9E020d987F87D0',
-            notes='Burned 0.066614401 ETH in gas from 0x5340F6faff9BF55F66C16Db6Bf9E020d987F87D0',  # noqa: E501
+            notes='Burned 0.066614401 ETH for gas',
             counterparty=CPT_GAS,
         ), HistoryBaseEntry(
             event_identifier=HistoryBaseEntry.deserialize_event_identifier(

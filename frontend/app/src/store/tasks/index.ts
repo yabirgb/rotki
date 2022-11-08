@@ -1,11 +1,9 @@
 import { ActionResult } from '@rotki/common/lib/data';
-import { computed, ref, Ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import dayjs from 'dayjs';
 import find from 'lodash/find';
 import toArray from 'lodash/toArray';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import i18n from '@/i18n';
+import { Ref } from 'vue';
+
 import { api } from '@/services/rotkehlchen-api';
 import { TaskNotFoundError } from '@/services/types-api';
 import { Task, TaskMeta } from '@/types/task';
@@ -24,25 +22,31 @@ const unlockTask = (lockedTasks: Ref<number[]>, taskId: number) => {
   return locked;
 };
 
-const error: (task: Task<TaskMeta>, message?: string) => ActionResult<{}> = (
-  task,
-  error
-) => ({
-  result: {},
-  message: i18n
-    .t('task_manager.error', {
+const useError = () => {
+  const { tc } = useI18n();
+  const error: (task: Task<TaskMeta>, message?: string) => ActionResult<{}> = (
+    task,
+    error
+  ) => ({
+    result: {},
+    message: tc('task_manager.error', 0, {
       taskId: task.id,
       title: task.meta.title,
       error
     })
-    .toString()
-});
+  });
+  return {
+    error
+  };
+};
 
 export const useTasks = defineStore('tasks', () => {
   const locked = ref<number[]>([]);
   const tasks = ref<TaskMap<TaskMeta>>({});
   const handlers: Record<string, (result: any, meta: any) => void> = {};
   let isRunning = false;
+
+  const { error } = useError();
 
   const registerHandler = <R, M extends TaskMeta>(
     task: TaskType,
@@ -129,25 +133,27 @@ export const useTasks = defineStore('tasks', () => {
   ) {
     addTask(id, type, meta);
 
-    return new Promise<{ result: R; meta: M }>((resolve, reject) => {
-      registerHandler<R, M>(
-        type,
-        (actionResult, meta) => {
-          unregisterHandler(type, id.toString());
-          const { result, message } = actionResult;
-          if (result === null) {
-            const errorMessage = message
-              ? message
-              : `No message returned for ${TaskType[type]} with id ${id}`;
+    return new Promise<{ result: R; meta: M; message?: string }>(
+      (resolve, reject) => {
+        registerHandler<R, M>(
+          type,
+          (actionResult, meta) => {
+            unregisterHandler(type, id.toString());
+            const { result, message } = actionResult;
+            if (result === null) {
+              const errorMessage = message
+                ? message
+                : `No message returned for ${TaskType[type]} with id ${id}`;
 
-            reject(new Error(errorMessage));
-          } else {
-            resolve({ result, meta });
-          }
-        },
-        nonUnique ? id.toString() : undefined
-      );
-    });
+              reject(new Error(errorMessage));
+            } else {
+              resolve({ result, meta, message });
+            }
+          },
+          nonUnique ? id.toString() : undefined
+        );
+      }
+    );
   }
 
   function filterOutUnprocessable(taskIds: number[]): number[] {
@@ -230,11 +236,6 @@ export const useTasks = defineStore('tasks', () => {
     isRunning = false;
   };
 
-  const reset = () => {
-    set(tasks, {});
-    set(locked, []);
-  };
-
   return {
     tasks: taskList,
     taskById: tasks,
@@ -248,8 +249,7 @@ export const useTasks = defineStore('tasks', () => {
     metadata,
     addTask,
     awaitTask,
-    monitor,
-    reset
+    monitor
   };
 });
 

@@ -41,7 +41,7 @@ Click [here](https://rotki.readthedocs.io/en/latest/changelog.html) for the late
 
 ## Contribute
 
-rotki is an opensource project and as such any and all help is really appreciated.
+rotki is an open source project and as such any and all help is really appreciated.
 
 ### Issues or code
 
@@ -62,9 +62,9 @@ If you are interested to work in the project full-time or part-time we are alway
 
 The best way to contribute financially and all the while help with the development of the project is to [purchase](https://rotki.com/products/) a premium subscription. We accept both crypto and fiat currencies!
 
-#### Github sponsor
+#### GitHub sponsor
 
-You can sponsor us through Github [here](https://github.com/sponsors/rotki/) and get some nice badges in return.
+You can sponsor us through GitHub [here](https://github.com/sponsors/rotki/) and get some nice badges in return.
 
 #### Donations
 
@@ -75,4 +75,4 @@ For people who don't want to purchase a subscription but would still like to sup
 
 #### Gitcoin Grant
 
-You can also supports us via a [Gitcoin grant](https://gitcoin.co/grants/149/rotki) and receive kudos and other NFTs in the Gitcoin platform.
+You can also support us via a [Gitcoin grant](https://gitcoin.co/grants/149/rotki) and receive kudos and other NFTs in the Gitcoin platform.

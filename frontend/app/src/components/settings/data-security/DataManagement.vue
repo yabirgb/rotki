@@ -1,10 +1,10 @@
 <template>
   <setting-category>
     <template #title>
-      {{ $t('data_management.title') }}
+      {{ tc('data_management.title') }}
     </template>
     <template #subtitle>
-      {{ $t('data_management.subtitle') }}
+      {{ tc('data_management.subtitle') }}
     </template>
 
     <v-form ref="form">
@@ -22,24 +22,20 @@
     <confirm-dialog
       v-if="confirm"
       display
-      :title="$t('data_management.confirm.title')"
-      :message="$t('data_management.confirm.message', { source: sourceLabel })"
+      :title="tc('data_management.confirm.title')"
+      :message="
+        tc('data_management.confirm.message', 0, { source: sourceLabel })
+      "
       @confirm="purge(source)"
       @cancel="confirm = false"
     />
   </setting-category>
 </template>
 <script setup lang="ts">
-import { ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import ConfirmDialog from '@/components/dialogs/ConfirmDialog.vue';
-import PurgeSelector, {
-  PurgeParams
-} from '@/components/settings/data-security/PurgeSelector.vue';
+import PurgeSelector from '@/components/settings/data-security/PurgeSelector.vue';
 import SettingCategory from '@/components/settings/SettingCategory.vue';
-import { BaseMessage } from '@/components/settings/utils';
 import { EXTERNAL_EXCHANGES } from '@/data/defaults';
-import i18n from '@/i18n';
 import { api } from '@/services/rotkehlchen-api';
 import {
   ALL_CENTRALIZED_EXCHANGES,
@@ -48,10 +44,11 @@ import {
   ALL_TRANSACTIONS
 } from '@/services/session/consts';
 import { Purgeable } from '@/services/session/types';
-
 import { useSessionStore } from '@/store/session';
 import { SUPPORTED_EXCHANGES, SupportedExchange } from '@/types/exchanges';
+import { BaseMessage } from '@/types/messages';
 import { Module } from '@/types/modules';
+import { PurgeParams } from '@/types/purge';
 
 const source = ref<Purgeable>(ALL_TRANSACTIONS);
 const status = ref<BaseMessage | null>(null);
@@ -60,6 +57,8 @@ const pending = ref<boolean>(false);
 const sourceLabel = ref<string>('');
 
 const { purgeCache } = useSessionStore();
+
+const { tc } = useI18n();
 
 const showConfirmation = (source: PurgeParams) => {
   set(sourceLabel, source.text);
@@ -97,21 +96,17 @@ const purge = async (source: string) => {
     set(pending, true);
     await purgeSource(source);
     set(status, {
-      success: i18n
-        .t('data_management.success', {
-          source: get(sourceLabel)
-        })
-        .toString(),
+      success: tc('data_management.success', 0, {
+        source: get(sourceLabel)
+      }),
       error: ''
     });
     setTimeout(() => set(status, null), 5000);
   } catch (e: any) {
     set(status, {
-      error: i18n
-        .t('data_management.error', {
-          source: get(sourceLabel)
-        })
-        .toString(),
+      error: tc('data_management.error', 0, {
+        source: get(sourceLabel)
+      }),
       success: ''
     });
   } finally {

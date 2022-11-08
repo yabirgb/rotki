@@ -1,24 +1,15 @@
-import { Severity } from '@rotki/common/lib/messages';
-import { ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import i18n from '@/i18n';
-import { balanceKeys } from '@/services/consts';
 import { api } from '@/services/rotkehlchen-api';
-import { SYNC_DOWNLOAD, SyncAction } from '@/services/types-api';
-import { useNotifications } from '@/store/notifications';
 import { PremiumCredentialsPayload } from '@/store/session/types';
-import { useTasks } from '@/store/tasks';
 import { ActionStatus } from '@/store/types';
-import { TaskMeta } from '@/types/task';
-import { TaskType } from '@/types/task-type';
 
 export const usePremiumStore = defineStore('session/premium', () => {
   const premium = ref(false);
   const premiumSync = ref(false);
+  const componentsReady = ref(false);
 
-  const { isTaskRunning, awaitTask } = useTasks();
-  const { notify } = useNotifications();
+  const showComponents = computed(() => {
+    return get(premium) && get(componentsReady);
+  });
 
   const setup = async ({
     apiKey,
@@ -59,60 +50,13 @@ export const usePremiumStore = defineStore('session/premium', () => {
     }
   };
 
-  async function forceSync(
-    action: SyncAction,
-    logout: () => Promise<void>
-  ): Promise<void> {
-    const taskType = TaskType.FORCE_SYNC;
-    if (get(isTaskRunning(taskType))) {
-      return;
-    }
-
-    try {
-      const { taskId } = await api.forceSync(action);
-      await awaitTask<boolean, TaskMeta>(taskId, taskType, {
-        title: i18n.tc('actions.session.force_sync.task.title'),
-        numericKeys: balanceKeys
-      });
-      const title = i18n.tc('actions.session.force_sync.success.title');
-      const message = i18n.tc('actions.session.force_sync.success.message');
-
-      notify({
-        title,
-        message,
-        severity: Severity.INFO,
-        display: true
-      });
-
-      if (action === SYNC_DOWNLOAD) {
-        await logout();
-      }
-    } catch (e: any) {
-      const title = i18n.tc('actions.session.force_sync.error.title');
-      const message = i18n.tc('actions.session.force_sync.error.message', 0, {
-        error: e.message
-      });
-
-      notify({
-        title,
-        message,
-        display: true
-      });
-    }
-  }
-
-  const reset = () => {
-    set(premium, false);
-    set(premiumSync, false);
-  };
-
   return {
     premium,
     premiumSync,
+    componentsReady,
+    showComponents,
     setup,
-    deletePremium,
-    forceSync,
-    reset
+    deletePremium
   };
 });
 

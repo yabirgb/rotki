@@ -1,45 +1,36 @@
 <template>
   <card v-if="loadingData || locationBreakdown.length > 0" outlined-body>
-    <template #title> {{ $t('common.assets') }} </template>
+    <template #title> {{ t('common.assets') }} </template>
     <asset-balances :loading="loadingData" :balances="locationBreakdown" />
   </card>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { AssetBalanceWithPrice } from '@rotki/common';
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
+import { ComputedRef } from 'vue';
 import AssetBalances from '@/components/AssetBalances.vue';
+import { useBalancesBreakdownStore } from '@/store/balances/breakdown';
 import { useTasks } from '@/store/tasks';
-import { useStore } from '@/store/utils';
 import { TaskType } from '@/types/task-type';
 
-export default defineComponent({
-  name: 'LocationAssets',
-  components: { AssetBalances },
-  props: {
-    identifier: { required: true, type: String }
-  },
-  setup(props) {
-    const { identifier } = toRefs(props);
-    const { isTaskRunning } = useTasks();
+const props = defineProps({
+  identifier: { required: true, type: String }
+});
 
-    const store = useStore();
-    const locationBreakdown = computed<AssetBalanceWithPrice[]>(() => {
-      return store.getters['balances/locationBreakdown'](get(identifier));
-    });
+const { identifier } = toRefs(props);
+const { isTaskRunning } = useTasks();
 
-    const loadingData = computed<boolean>(() => {
-      return (
-        get(isTaskRunning(TaskType.QUERY_BLOCKCHAIN_BALANCES)) ||
-        get(isTaskRunning(TaskType.QUERY_EXCHANGE_BALANCES)) ||
-        get(isTaskRunning(TaskType.QUERY_BALANCES))
-      );
-    });
+const { t } = useI18n();
 
-    return {
-      locationBreakdown,
-      loadingData
-    };
-  }
+const { locationBreakdown: breakdown } = useBalancesBreakdownStore();
+const locationBreakdown: ComputedRef<AssetBalanceWithPrice[]> = computed(() => {
+  return get(breakdown(get(identifier)));
+});
+
+const loadingData = computed<boolean>(() => {
+  return (
+    get(isTaskRunning(TaskType.QUERY_BLOCKCHAIN_BALANCES)) ||
+    get(isTaskRunning(TaskType.QUERY_EXCHANGE_BALANCES)) ||
+    get(isTaskRunning(TaskType.QUERY_BALANCES))
+  );
 });
 </script>

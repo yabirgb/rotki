@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import gevent
 
-from rotkehlchen.accounting.structures.balance import AssetBalance, Balance
+from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.misc import ONE
 from rotkehlchen.db.eth2 import ETH2_DEPOSITS_PREFIX, DBEth2
@@ -15,7 +15,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
-from rotkehlchen.types import ChecksumEthAddress, Eth2PubKey, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Eth2PubKey, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.interfaces import EthereumModule
 from rotkehlchen.utils.misc import from_gwei, ts_now
@@ -78,7 +78,7 @@ class Eth2(EthereumModule):
 
     def get_staking_deposits(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[Eth2Deposit]:
         """Get the eth2 deposits for all tracked validators and all validators associated
         with any given eth1 address.
@@ -129,7 +129,7 @@ class Eth2(EthereumModule):
 
     def fetch_eth1_validator_data(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[ValidatorID]:
         """Query all eth1 addresses for their validators and get all corresponding deposits.
 
@@ -177,7 +177,7 @@ class Eth2(EthereumModule):
 
     def get_balances(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
             fetch_validators_for_eth1: bool,
     ) -> Dict[Eth2PubKey, Balance]:
         """
@@ -222,13 +222,13 @@ class Eth2(EthereumModule):
                 continue  # should not happen
             ownership_proportion = index_to_ownership.get(validator_index, ONE)
             amount = from_gwei(entry.balance) * ownership_proportion
-            balance_mapping[pubkey] += Balance(amount, amount * usd_price)  # noqa: E501
+            balance_mapping[pubkey] += Balance(amount, amount * usd_price)
 
         return balance_mapping
 
     def get_details(
             self,
-            addresses: List[ChecksumEthAddress],
+            addresses: List[ChecksumEvmAddress],
     ) -> List[ValidatorDetails]:
         """Go through the list of eth1 addresses and find all eth2 validators associated
         with them along with their details.
@@ -460,22 +460,17 @@ class Eth2(EthereumModule):
         ])
 
     # -- Methods following the EthereumModule interface -- #
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List[AssetBalance]]:  # pylint: disable=useless-return  # noqa: E501
-        """Just query balances and add detected validators to DB. Return nothing"""
+    def on_account_addition(self, address: ChecksumEvmAddress) -> None:
+        """Just add validators to DB."""
         try:
-            self.get_balances(
-                addresses=[address],
-                fetch_validators_for_eth1=True,
-            )
+            self.fetch_eth1_validator_data([address])
         except RemoteError as e:
             self.msg_aggregator.add_error(
                 f'Did not manage to query beaconcha.in api for address {address} due to {str(e)}.'
                 f' If you have Eth2 staked balances the final balance results may not be accurate',
             )
 
-        return None
-
-    def on_account_removal(self, address: ChecksumEthAddress) -> None:
+    def on_account_removal(self, address: ChecksumEvmAddress) -> None:
         pass
 
     def deactivate(self) -> None:

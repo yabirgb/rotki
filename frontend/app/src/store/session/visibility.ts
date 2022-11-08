@@ -1,7 +1,4 @@
 import { Nullable } from '@rotki/common';
-import { ref, watch } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
 import { Pinned } from '@/store/session/types';
 
 export const useAreaVisibilityStore = defineStore('session/visibility', () => {
@@ -23,17 +20,6 @@ export const useAreaVisibilityStore = defineStore('session/visibility', () => {
     }
   };
 
-  const reset = () => {
-    set(showAbout, false);
-    set(pinned, null);
-    set(showDrawer, false);
-    set(isMini, false);
-    set(showNotificationBar, false);
-    set(showHelpBar, false);
-    set(showNotesSidebar, false);
-    set(showPinned, false);
-  };
-
   watch(pinned, (current, prev) => {
     if (current !== prev) {
       set(showPinned, !!current);
@@ -49,8 +35,7 @@ export const useAreaVisibilityStore = defineStore('session/visibility', () => {
     showDrawer,
     pinned,
     showPinned,
-    toggleDrawer,
-    reset
+    toggleDrawer
   };
 });
 

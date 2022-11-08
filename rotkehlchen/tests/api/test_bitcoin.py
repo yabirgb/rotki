@@ -1,18 +1,21 @@
 import random
 from http import HTTPStatus
 
+import gevent
 import pytest
 import requests
 
 from rotkehlchen.tests.utils.api import (
+    ASYNC_TASK_WAIT_TIMEOUT,
     api_url_for,
     assert_error_response,
     assert_ok_async_response,
     assert_proper_response,
     assert_proper_response_with_result,
-    wait_for_async_task_with_result,
+    wait_for_async_task,
 )
 from rotkehlchen.tests.utils.factories import UNIT_BTC_ADDRESS1, UNIT_BTC_ADDRESS2
+from rotkehlchen.types import SupportedBlockchain
 
 EXPECTED_XPUB_ADDESSES = [
     '125yorj66rmk82tMAPG7x97iY8D7cashiA',
@@ -56,6 +59,9 @@ EXPECTED_XPUB_ADDESSES = [
     '1DNg5csVnUkheYczaBECsfby8ZcmZkYnJK',
 ]
 
+TEST_BITCOIN_XPUB_1 = 'xpub6DCi5iJ57ZPd5qPzvTm5hUt6X23TJdh9H4NjNsNbt7t7UuTMJfawQWsdWRFhfLwkiMkB1rQ4ZJWLB9YBnzR7kbs9N8b2PsKZgKUHQm1X4or'  # noqa: E501
+TEST_BITCOIN_XPUB_2 = 'xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk'  # noqa: E501
+
 
 def _check_xpub_addition_outcome(outcome, xpub):
     """Checks the outcome of the xpub additions for the following test.
@@ -96,7 +102,7 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     """
     # Disable caching of query results
     rotki = rotkehlchen_api_server.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
     async_query = random.choice([False, True])
 
     tag1 = {
@@ -105,7 +111,7 @@ def test_add_delete_xpub(rotkehlchen_api_server):
         'background_color': 'ffffff',
         'foreground_color': '000000',
     }
-    response = requests.put(
+    requests.put(
         api_url_for(
             rotkehlchen_api_server,
             'tagsresource',
@@ -124,12 +130,11 @@ def test_add_delete_xpub(rotkehlchen_api_server):
         ), json=tag2,
     )
     assert_proper_response(response)
-    xpub1 = 'xpub6DCi5iJ57ZPd5qPzvTm5hUt6X23TJdh9H4NjNsNbt7t7UuTMJfawQWsdWRFhfLwkiMkB1rQ4ZJWLB9YBnzR7kbs9N8b2PsKZgKUHQm1X4or'  # noqa : E501
     xpub1_label = 'ledger_test_xpub'
     xpub1_tags = ['ledger', 'public']
     json_data = {
         'async_query': async_query,
-        'xpub': xpub1,
+        'xpub': TEST_BITCOIN_XPUB_1,
         'label': xpub1_label,
         'tags': xpub1_tags,
     }
@@ -140,15 +145,21 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
-    _check_xpub_addition_outcome(outcome, xpub1)
+        assert_proper_response(response)
+
+    response = requests.get(api_url_for(
+        rotkehlchen_api_server,
+        'blockchainbalancesresource',
+    ))
+    result = assert_proper_response_with_result(response)
+    _check_xpub_addition_outcome(result, TEST_BITCOIN_XPUB_1)
 
     # Make sure that adding existing xpub fails
     json_data = {
         'async_query': False,
-        'xpub': xpub1,
+        'xpub': TEST_BITCOIN_XPUB_1,
         'label': xpub1_label,
         'tags': xpub1_tags,
     }
@@ -159,17 +170,16 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     assert_error_response(
         response=response,
-        contained_in_msg=f'Xpub {xpub1} for BTC with derivation path None is already tracked',
+        contained_in_msg=f'Xpub {TEST_BITCOIN_XPUB_1} for BTC with derivation path None is already tracked',  # noqa: E501
         status_code=HTTPStatus.BAD_REQUEST,
     )
 
     # Add an xpub with no derived addresses
-    xpub2 = 'xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk'  # noqa : E501
     xpub2_label = None
     xpub2_tags = None
     json_data = {
         'async_query': async_query,
-        'xpub': xpub2,
+        'xpub': TEST_BITCOIN_XPUB_2,
         'label': xpub2_label,
         'tags': xpub2_tags,
     }
@@ -180,10 +190,16 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
-    _check_xpub_addition_outcome(outcome, xpub1)
+        assert_proper_response(response)
+
+    response = requests.get(api_url_for(
+        rotkehlchen_api_server,
+        'blockchainbalancesresource',
+    ))
+    result = assert_proper_response_with_result(response)
+    _check_xpub_addition_outcome(result, TEST_BITCOIN_XPUB_1)
 
     # Also make sure that blockchain account data endpoint returns everything correctly
     response = requests.get(api_url_for(
@@ -200,22 +216,24 @@ def test_add_delete_xpub(rotkehlchen_api_server):
 
     assert len(outcome['xpubs']) == 2
     for entry in outcome['xpubs']:
-        assert len(entry) == 5
-        if entry['xpub'] == xpub1:
+        assert len(entry) == 6
+        if entry['xpub'] == TEST_BITCOIN_XPUB_1:
             for address_data in entry['addresses']:
                 assert address_data['address'] in EXPECTED_XPUB_ADDESSES
                 assert address_data['label'] is None
                 assert address_data['tags'] == xpub1_tags
+                assert entry['blockchain'] == 'BTC'
         else:
-            assert entry['xpub'] == xpub2
+            assert entry['xpub'] == TEST_BITCOIN_XPUB_2
             assert entry['addresses'] is None
             assert entry['label'] is None
             assert entry['tags'] is None
+            assert entry['blockchain'] == 'BTC'
 
     # Now delete the xpub and make sure all derived addresses are gone
     json_data = {
         'async_query': async_query,
-        'xpub': xpub1,
+        'xpub': TEST_BITCOIN_XPUB_1,
         'derivation_path': None,
     }
     response = requests.delete(api_url_for(
@@ -225,32 +243,33 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
+        assert_proper_response(response)
 
-    btc = outcome['per_account']['BTC']
-    assert len(btc['standalone']) == 2
-    assert UNIT_BTC_ADDRESS1 in btc['standalone']
-    assert UNIT_BTC_ADDRESS2 in btc['standalone']
-
-    assert 'xpubs' not in btc
-    totals = outcome['totals']['assets']
-    assert totals['BTC']['amount'] is not None
-    assert totals['BTC']['usd_value'] is not None
+    assert rotki.chains_aggregator.accounts.btc[:2] == [UNIT_BTC_ADDRESS1, UNIT_BTC_ADDRESS2]
+    assert rotki.chains_aggregator.accounts.btc == [UNIT_BTC_ADDRESS1, UNIT_BTC_ADDRESS2]
 
     # Also make sure all mappings are gone from the DB
     cursor = rotki.data.db.conn.cursor()
     result = cursor.execute('SELECT object_reference from tag_mappings;').fetchall()
     assert len(result) == 0, 'all tag mappings should have been deleted'
-    result = cursor.execute('SELECT * from xpub_mappings WHERE xpub=?', (xpub1,)).fetchall()
+    result = cursor.execute('SELECT * from xpub_mappings WHERE xpub=?', (TEST_BITCOIN_XPUB_1,)).fetchall()  # noqa: E501
     assert len(result) == 0, 'all xpub mappings should have been deleted'
 
+
+@pytest.mark.parametrize('number_of_eth_accounts', [0])
+def test_add_delete_xpub_multiple_chains(rotkehlchen_api_server):
+    # Disable caching of query results
+    rotki = rotkehlchen_api_server.rest_api.rotkehlchen
+    rotki.chains_aggregator.cache_ttl_secs = 0
+    async_query = random.choice([False, True])
+
     # Test that adding a BCH xpub works
-    bch_xpub1 = 'xpub6By8JDaPr5L6oHfgQDc47quD69qH1hTwnFYbuia8paiYxSE9u84KZfYqn6xLMUqxKK3wNpsgP4Kwu1gzXHD5xBxj5HrLposEYL6PwZzpAMZ'  # noqa: 501
+    xpub = 'xpub6By8JDaPr5L6oHfgQDc47quD69qH1hTwnFYbuia8paiYxSE9u84KZfYqn6xLMUqxKK3wNpsgP4Kwu1gzXHD5xBxj5HrLposEYL6PwZzpAMZ'  # noqa: 501
     json_data = {
         'async_query': async_query,
-        'xpub': bch_xpub1,
+        'xpub': xpub,
         'derivation_path': None,
     }
     response = requests.put(api_url_for(
@@ -260,14 +279,39 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
+        assert_proper_response(response)
 
-    # test that adding the same BCH xpub for BTC works
+    # Check that periodic derivation doesn't break anything
+    # Testing here since test_tasks_manager.py only tests scheduling
+    rotki.task_manager.last_xpub_derivation_ts = 0   # to be sure that the task will be scheduled
+    rotki.task_manager._maybe_schedule_xpub_derivation()
+    with gevent.Timeout(ASYNC_TASK_WAIT_TIMEOUT):
+        while len(rotki.task_manager.greenlet_manager.greenlets) != 0:
+            gevent.sleep(1)
+
+    # Check that bch accounts were detected while btc accounts were not affected
+    assert rotki.chains_aggregator.accounts.bch != []
+    assert rotki.chains_aggregator.accounts.btc == []
+    with rotki.data.db.conn.read_ctx() as cursor:
+        result = rotki.data.db.get_addresses_to_xpub_mapping(
+            cursor=cursor,
+            blockchain=SupportedBlockchain.BITCOIN_CASH,
+            addresses=rotki.chains_aggregator.accounts.bch,
+        )
+        assert len(result) == len(rotki.chains_aggregator.accounts.bch)
+        result = rotki.data.db.get_addresses_to_xpub_mapping(
+            cursor=cursor,
+            blockchain=SupportedBlockchain.BITCOIN,
+            addresses=rotki.chains_aggregator.accounts.bch,
+        )
+        assert len(result) == 0
+
+    # test that adding the same xpub for BTC works
     json_data = {
         'async_query': async_query,
-        'xpub': bch_xpub1,
+        'xpub': xpub,
         'derivation_path': None,
     }
     response = requests.put(api_url_for(
@@ -277,9 +321,70 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
+        assert_proper_response(response)
+
+    # Check that addresses that have balances on both bitcoin and bitcoin cash are stored properly
+    with rotki.data.db.conn.read_ctx() as cursor:
+        mutual_in_chains_aggregator = 0
+        for btc_addr in rotki.chains_aggregator.accounts.btc:
+            if btc_addr in rotki.chains_aggregator.accounts.bch:
+                mutual_in_chains_aggregator += 1
+        # get mutual by querying BCH accounts from known BTC accounts
+        # this checks that bitcoin mappings in the db are not broken
+        mutual_in_db_1 = len(rotki.data.db.get_addresses_to_xpub_mapping(
+            cursor=cursor,
+            blockchain=SupportedBlockchain.BITCOIN,
+            addresses=rotki.chains_aggregator.accounts.bch,
+        ))
+        # get mutual by querying BTC accounts from known BCH accounts
+        # this checks that bitcoin cash mappings in the db are not broken
+        mutual_in_db_2 = len(rotki.data.db.get_addresses_to_xpub_mapping(
+            cursor=cursor,
+            blockchain=SupportedBlockchain.BITCOIN_CASH,
+            addresses=rotki.chains_aggregator.accounts.btc,
+        ))
+        # Check that there are some accounts that are used on both btc and bch
+        assert mutual_in_chains_aggregator > 0
+        # Check that information about these accounts matches between chain manager and the db
+        assert mutual_in_chains_aggregator == mutual_in_db_1 == mutual_in_db_2
+
+    # Test that editing one xpub doesn't affect other if the only difference is chain
+    json_data_patch = {
+        'xpub': xpub,
+        'label': 'qwerty',
+    }
+    response = requests.patch(api_url_for(
+        rotkehlchen_api_server,
+        'btcxpubresource',
+        blockchain='BTC',
+    ), json=json_data_patch)
+    assert_proper_response(response)
+
+    response = requests.get(api_url_for(
+        rotkehlchen_api_server,
+        'blockchainsaccountsresource',
+        blockchain='BTC',
+    ))
+    result = assert_proper_response_with_result(response)
+
+    assert len(result['xpubs']) == 1
+    xpub_return = result['xpubs'][0]
+    assert xpub_return['label'] == 'qwerty'
+    assert xpub_return['blockchain'] == 'BTC'
+
+    response = requests.get(api_url_for(
+        rotkehlchen_api_server,
+        'blockchainsaccountsresource',
+        blockchain='BCH',
+    ))
+    result = assert_proper_response_with_result(response)
+
+    assert len(result['xpubs']) == 1
+    xpub_return = result['xpubs'][0]
+    assert xpub_return['label'] is None
+    assert xpub_return['blockchain'] == 'BCH'
 
     # Test that deleting a BCH xpub works as expected
     response = requests.delete(api_url_for(
@@ -289,17 +394,64 @@ def test_add_delete_xpub(rotkehlchen_api_server):
     ), json=json_data)
     if async_query:
         task_id = assert_ok_async_response(response)
-        outcome = wait_for_async_task_with_result(rotkehlchen_api_server, task_id, timeout=180)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
     else:
-        outcome = assert_proper_response_with_result(response)
+        assert_proper_response(response)
 
-    assert 'BCH' not in outcome['per_account']
+    # Also make sure mappings are gone from the DB
+    cursor = rotki.data.db.conn.cursor()
+    result = cursor.execute('SELECT object_reference from tag_mappings;').fetchall()
+    assert len(result) == 0, 'all tag mappings should have been deleted'
+    result = cursor.execute('SELECT * from xpub_mappings WHERE xpub=?', (xpub,)).fetchall()
+    assert rotki.chains_aggregator.accounts.bch == []
+    # Check that we still have derived BTC addresses
+    assert len(result) >= 23
+    for address, xpub, _, _, _, blockchain in result:
+        assert address in rotki.chains_aggregator.accounts.btc
+        assert xpub == xpub
+        assert blockchain == 'BTC'
+
+    # test that adding a btc p2tr xpub works
+    btc_xpub3 = 'xpub6D8VW7U5pTXMsuyyj3NRFP5QbzENbMijxAqy596niQTdc3PVBWcFEPYF8ZZBzeKopsN5Dvk3psNRRwwZAUhwhhzaaX6QV6izd189YmQ6DR6'  # noqa: E501
+    json_data = {
+        'async_query': async_query,
+        'xpub': btc_xpub3,
+        'xpub_type': 'p2tr',
+        'derivation_path': 'm/86/0/0',
+    }
+    response = requests.put(api_url_for(
+        rotkehlchen_api_server,
+        'btcxpubresource',
+        blockchain='BTC',
+    ), json=json_data)
+    if async_query:
+        task_id = assert_ok_async_response(response)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
+    else:
+        assert_proper_response(response)
+
+    # test that deleting a btc p2tr xpub works
+    json_data = {
+        'async_query': async_query,
+        'xpub': btc_xpub3,
+        'derivation_path': 'm/86/0/0',
+    }
+    response = requests.delete(api_url_for(
+        rotkehlchen_api_server,
+        'btcxpubresource',
+        blockchain='BTC',
+    ), json=json_data)
+    if async_query:
+        task_id = assert_ok_async_response(response)
+        wait_for_async_task(rotkehlchen_api_server, task_id, timeout=180)
+    else:
+        assert_proper_response(response)
 
     # Also make sure all mappings are gone from the DB
     cursor = rotki.data.db.conn.cursor()
     result = cursor.execute('SELECT object_reference from tag_mappings;').fetchall()
     assert len(result) == 0, 'all tag mappings should have been deleted'
-    result = cursor.execute('SELECT * from xpub_mappings WHERE xpub=?', (bch_xpub1,)).fetchall()
+    result = cursor.execute('SELECT * from xpub_mappings WHERE xpub=?', (btc_xpub3,)).fetchall()
     assert len(result) == 0, 'all xpub mappings should have been deleted'
 
 
@@ -311,7 +463,7 @@ def test_add_delete_xpub(rotkehlchen_api_server):
 def test_delete_nonexisting_xpub(rotkehlchen_api_server):
     # Disable caching of query results
     rotki = rotkehlchen_api_server.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
 
     xpub = 'xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk'  # noqa : E501
     json_data = {
@@ -352,7 +504,7 @@ def test_add_xpub_with_conversion_works(rotkehlchen_api_server):
     """Test that an xpub is being converted to ypub/zpub if the prefix does not match"""
     # Disable caching of query results
     rotki = rotkehlchen_api_server.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
 
     # Test xpub asking conversion to ypub
     xpub = 'xpub6CjniigyzMWgVDHvDpgvsroPkTJeqUbrHJaLHARHmAM8zuAbCjmHpp3QhKTcnnscd6iBDrqmABCJjnpwUW42cQjtvKjaEZRcShHKEVh35Y8'  # noqa : E501
@@ -365,9 +517,9 @@ def test_add_xpub_with_conversion_works(rotkehlchen_api_server):
         'btcxpubresource',
         blockchain='BTC',
     ), json=json_data)
-    assert_proper_response_with_result(response)
+    assert_proper_response(response)
     with rotki.data.db.conn.read_ctx() as cursor:
-        saved_xpubs = rotki.data.db.get_bitcoin_xpub_data(cursor)
+        saved_xpubs = rotki.data.db.get_bitcoin_xpub_data(cursor, SupportedBlockchain.BITCOIN)
         assert len(saved_xpubs) == 1
         assert saved_xpubs[0].xpub.hint == 'ypub'
         assert saved_xpubs[0].xpub.xpub == 'ypub6Xa42PMu934ALWV34BUZ5wttvRT6n6bMCR6Z4ZKB9Aj23zypTPvrSshYiXRCnhXY2jpyyLSKcqYrd5SWCCU3QeRVnfRzpUF6iRLxd55duzL'  # noqa: E501
@@ -379,8 +531,8 @@ def test_add_xpub_with_conversion_works(rotkehlchen_api_server):
             'btcxpubresource',
             blockchain='BTC',
         ), json=json_data)
-        assert_proper_response_with_result(response)
-        saved_xpubs = rotki.data.db.get_bitcoin_xpub_data(cursor)
+        assert_proper_response(response)
+        saved_xpubs = rotki.data.db.get_bitcoin_xpub_data(cursor, SupportedBlockchain.BITCOIN)
 
     assert len(saved_xpubs) == 2
     assert saved_xpubs[1].xpub.hint == 'zpub'
@@ -392,7 +544,7 @@ def test_xpub_addition_errors(rotkehlchen_api_server):
     """Test that errors at xpub addition are handled correctly"""
     # Disable caching of query results
     rotki = rotkehlchen_api_server.rest_api.rotkehlchen
-    rotki.chain_manager.cache_ttl_secs = 0
+    rotki.chains_aggregator.cache_ttl_secs = 0
 
     # illegal xpub type
     xpub = 'xpub6CjniigyzMWgVDHvDpgvsroPkTJeqUbrHJaLHARHmAM8zuAbCjmHpp3QhKTcnnscd6iBDrqmABCJjnpwUW42cQjtvKjaEZRcShHKEVh35Y8'  # noqa : E501
@@ -407,7 +559,7 @@ def test_xpub_addition_errors(rotkehlchen_api_server):
     ), json=json_data)
     assert_error_response(
         response=response,
-        contained_in_msg='"xpub_type": ["Must be one of: p2pkh, p2sh_p2wpkh, wpkh."]}',
+        contained_in_msg='Unknown xpub type whatever found at deserialization',
         status_code=HTTPStatus.BAD_REQUEST,
     )
 

@@ -9,7 +9,7 @@ from rotkehlchen.accounting.structures.types import (
     HistoryEventSubType,
     HistoryEventType,
 )
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.constants.assets import A_ETH2
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
@@ -140,16 +140,14 @@ class HistoryBaseEntry(AccountingEventMixin):
                 )
 
         try:
-            return HistoryBaseEntry(
+            return cls(
                 identifier=entry[0],
                 event_identifier=entry[1],
                 sequence_index=entry[2],
                 timestamp=TimestampMS(entry[3]),
                 location=Location.deserialize_from_db(entry[4]),
                 location_label=entry[5],
-                # Setting incomplete data to true since we save all history events,
-                # regardless of the type of token that it may involve
-                asset=Asset(entry[6], form_with_incomplete_data=True),
+                asset=Asset(entry[6]).check_existence(),
                 balance=Balance(
                     amount=FVal(entry[7]),
                     usd_value=FVal(entry[8]),
@@ -169,7 +167,7 @@ class HistoryBaseEntry(AccountingEventMixin):
     @property
     def serialized_event_identifier(self) -> str:
         """Take a HistoryBaseEntry's event_identifier and returns a string representation."""
-        if self.location == Location.KRAKEN:
+        if self.location == Location.KRAKEN or self.event_identifier.startswith('rotki_events'.encode()):  # noqa: E501
             return self.event_identifier.decode()
 
         hex_representation = self.event_identifier.hex()
@@ -178,17 +176,15 @@ class HistoryBaseEntry(AccountingEventMixin):
         return '0x' + hex_representation
 
     @classmethod
-    def deserialize_event_identifier_from_kraken(cls, val: str) -> bytes:
-        """Takes a `refid` from Kraken exchange and turns it into a bytes event_identifier."""
-        return val.encode()
-
-    @classmethod
     def deserialize_event_identifier(cls, val: str) -> bytes:
-        """Takes an abritrary string and turns it into a bytes event_identifier.
+        """Takes any arbitrary string and turns it into a bytes event_identifier.
+
         May raise:
         - DeserializationError if value is not valid transaction hash.
         """
-        return hexstring_to_bytes(val)
+        if is_valid_ethereum_tx_hash(val):
+            return hexstring_to_bytes(val)
+        return val.encode()
 
     def serialize(self) -> Dict[str, Any]:
         return {
@@ -214,12 +210,8 @@ class HistoryBaseEntry(AccountingEventMixin):
             - KeyError
             - UnknownAsset
         """
-        if is_valid_ethereum_tx_hash(data['event_identifier']):
-            event_identifier = cls.deserialize_event_identifier(data['event_identifier'])  # noqa: 501
-        else:
-            event_identifier = cls.deserialize_event_identifier_from_kraken(data['event_identifier'])  # noqa: 501
         return cls(
-            event_identifier=event_identifier,
+            event_identifier=cls.deserialize_event_identifier(data['event_identifier']),
             sequence_index=data['sequence_index'],
             timestamp=ts_sec_to_ms(deserialize_timestamp(data['timestamp'])),
             location=Location.deserialize(data['location']),
@@ -229,7 +221,7 @@ class HistoryBaseEntry(AccountingEventMixin):
             notes=deserialize_optional(data['notes'], str),
             identifier=deserialize_optional(data['identifier'], int),
             counterparty=deserialize_optional(data['counterparty'], str),
-            asset=Asset(data['asset']),
+            asset=Asset(data['asset']).check_existence(),
             balance=Balance(
                 amount=deserialize_fval(
                     value=data['balance']['amount'],
@@ -298,13 +290,13 @@ class HistoryBaseEntry(AccountingEventMixin):
 
             # This omits every acquisition event of `ETH2` if `eth_staking_taxable_after_withdrawal_enabled`  # noqa: 501
             # setting is set to `True` until ETH2 is merged.
-            if self.asset == A_ETH2  and accounting.settings.eth_staking_taxable_after_withdrawal_enabled is True:  # noqa: 501
+            if self.asset == A_ETH2 and accounting.settings.eth_staking_taxable_after_withdrawal_enabled is True:  # noqa: 501
                 return 1
 
             # otherwise it's kraken staking
             accounting.add_acquisition(
                 event_type=AccountingEventType.STAKING,
-                notes=f'Kraken {self.asset.symbol} staking',
+                notes=f'Kraken {self.asset.resolve_to_asset_with_symbol().symbol} staking',
                 location=self.location,
                 timestamp=self.get_timestamp_in_sec(),
                 asset=self.asset,
@@ -319,7 +311,7 @@ class HistoryBaseEntry(AccountingEventMixin):
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
 class StakingEvent:
     event_type: HistoryEventSubType
-    asset: Asset
+    asset: AssetWithOracles
     balance: Balance
     timestamp: Timestamp
     location: Location
@@ -333,7 +325,7 @@ class StakingEvent:
         """
         return StakingEvent(
             event_type=event.event_subtype,
-            asset=event.asset,
+            asset=event.asset.resolve_to_asset_with_oracles(),
             balance=event.balance,
             timestamp=ts_ms_to_sec(event.timestamp),
             location=event.location,

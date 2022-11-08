@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex align-center">
+  <div class="d-flex align-center text-left">
     <v-badge v-if="counterparty" avatar overlap color="white">
       <template #badge>
         <v-tooltip top>
@@ -45,52 +45,39 @@
         <v-chip small label color="primary accent-1">
           <v-icon x-small> mdi-file-document-edit </v-icon>
           <div class="pl-2 text-caption font-weight-bold">
-            {{ $t('transactions.events.customized_event') }}
+            {{ t('transactions.events.customized_event') }}
           </div>
         </v-chip>
       </div>
     </div>
   </div>
 </template>
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import { useTheme } from '@/composables/common';
 import { EthTransactionEventEntry } from '@/store/history/types';
 import { ActionDataEntry } from '@/store/types';
-import { getEventCounterpartyData, getEventTypeData } from '@/utils/history';
+import { getEventCounterpartyData, useEventTypeData } from '@/utils/history';
 
-export default defineComponent({
-  name: 'TransactionEventType',
-  props: {
-    event: {
-      required: true,
-      type: Object as PropType<EthTransactionEventEntry>
-    }
-  },
-  setup(props) {
-    const { event } = toRefs(props);
-
-    const { dark } = useTheme();
-
-    const attrs = computed<ActionDataEntry>(() => {
-      return getEventTypeData(get(event));
-    });
-
-    const counterparty = computed<ActionDataEntry | null>(() => {
-      return getEventCounterpartyData(get(event));
-    });
-
-    return {
-      dark,
-      attrs,
-      counterparty
-    };
+const props = defineProps({
+  event: {
+    required: true,
+    type: Object as PropType<EthTransactionEventEntry>
   }
 });
+
+const { event } = toRefs(props);
+
+const { dark } = useTheme();
+const { getEventTypeData } = useEventTypeData();
+
+const attrs = computed<ActionDataEntry>(() => {
+  return getEventTypeData(get(event));
+});
+
+const counterparty = computed<ActionDataEntry | null>(() => {
+  return getEventCounterpartyData(get(event));
+});
+
+const { t } = useI18n();
 </script>

@@ -2,111 +2,101 @@
   <v-text-field
     ref="textInput"
     v-model="currentValue"
-    v-bind="$attrs"
-    v-on="filteredListeners($listeners)"
+    v-bind="attrs"
+    v-on="filteredListeners(listeners)"
   >
     <!-- Pass on all named slots -->
-    <slot v-for="slot in Object.keys($slots)" :slot="slot" :name="slot" />
+    <slot v-for="slot in Object.keys(slots)" :slot="slot" :name="slot" />
     <!-- Pass on all scoped slots -->
     <template
       v-for="slot in Object.keys($scopedSlots)"
       :slot="slot"
       slot-scope="scope"
     >
-      <slot :name="slot" v-bind="scope" />
+      <slot
+        :name="slot"
+        v-bind="
+          // @ts-ignore
+          scope
+        "
+      />
     </template>
   </v-text-field>
 </template>
 
 <script lang="ts">
-import {
-  defineComponent,
-  onMounted,
-  ref,
-  toRefs,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+export default {
+  inheritAttrs: false
+};
+</script>
+
+<script setup lang="ts">
 import Cleave from 'cleave.js';
-import { storeToRefs } from 'pinia';
+import { useListeners } from 'vue';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 
+const props = defineProps({
+  integer: { required: false, type: Boolean, default: false },
+  value: { required: false, type: String, default: '' }
+});
+
+const emit = defineEmits<{ (e: 'input', value: string): void }>();
 /**
  * When this component is used, prop [type] shouldn't be passed,
  * because it will break the Cleave.js functionality.
  * It should only accept number, thousandSeparator, and decimalSeparator as input.
  */
-export default defineComponent({
-  name: 'AmountInput',
-  inheritAttrs: false,
-  props: {
-    integer: { required: false, type: Boolean, default: false },
-    value: { required: false, type: String, default: '' }
-  },
-  emits: ['input'],
-  setup(props, { emit }) {
-    const { integer, value } = toRefs(props);
-    const { thousandSeparator, decimalSeparator } = storeToRefs(
-      useFrontendSettingsStore()
-    );
+const attrs = useAttrs();
+const slots = useSlots();
+const listeners = useListeners();
 
-    const textInput = ref(null);
-    const cleave = ref<Cleave | null>(null);
-    const currentValue = ref(get(value)?.replace('.', get(decimalSeparator)));
+const { integer, value } = toRefs(props);
+const { thousandSeparator, decimalSeparator } = storeToRefs(
+  useFrontendSettingsStore()
+);
 
-    const onValueChanged = ({
-      target
-    }: {
-      target: { rawValue: string; value: string };
-    }) => {
-      let value = target.rawValue;
-      set(currentValue, target.value);
-      emit('input', value);
-    };
+const textInput = ref(null);
+const cleave = ref<Cleave | null>(null);
+const currentValue = ref(get(value)?.replace('.', get(decimalSeparator)));
 
-    onMounted(() => {
-      const inputWrapper = get(textInput) as any;
-      const input = inputWrapper.$el.querySelector('input') as HTMLElement;
+const onValueChanged = ({
+  target
+}: {
+  target: { rawValue: string; value: string };
+}) => {
+  const value = target.rawValue;
+  set(currentValue, target.value);
+  emit('input', value);
+};
 
-      set(
-        cleave,
-        new Cleave(input, {
-          numeral: true,
-          delimiter: get(thousandSeparator),
-          numeralDecimalMark: get(decimalSeparator),
-          numeralDecimalScale: get(integer) ? 0 : 100,
-          onValueChanged
-        })
-      );
-    });
+const filteredListeners = (listeners: any) => {
+  return { ...listeners, input: () => {} };
+};
 
-    watch(value, value => {
-      const rawValue = get(cleave)?.getRawValue();
-      const formattedValue = value.replace('.', get(decimalSeparator));
+watch(value, value => {
+  const clv = get(cleave);
+  const rawValue = clv?.getRawValue();
+  const formattedValue = value.replace('.', get(decimalSeparator));
 
-      if (rawValue !== value) {
-        set(currentValue, formattedValue);
-        get(cleave)?.setRawValue(formattedValue);
-      }
-    });
-
-    const focus = () => {
-      const inputWrapper = get(textInput) as any;
-      if (inputWrapper) {
-        inputWrapper.focus();
-      }
-    };
-
-    const filteredListeners = (listeners: any) => {
-      return { ...listeners, input: () => {} };
-    };
-
-    return {
-      focus,
-      currentValue,
-      textInput,
-      filteredListeners
-    };
+  if (rawValue !== value) {
+    set(currentValue, formattedValue);
+    clv?.setRawValue(formattedValue);
   }
+});
+
+onMounted(() => {
+  const inputWrapper = get(textInput) as any;
+  const input = inputWrapper.$el.querySelector('input') as HTMLElement;
+
+  set(
+    cleave,
+    new Cleave(input, {
+      numeral: true,
+      delimiter: get(thousandSeparator),
+      numeralDecimalMark: get(decimalSeparator),
+      numeralDecimalScale: get(integer) ? 0 : 100,
+      onValueChanged
+    })
+  );
 });
 </script>

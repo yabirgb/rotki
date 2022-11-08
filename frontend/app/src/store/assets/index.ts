@@ -1,19 +1,9 @@
-import { AssetBalanceWithPrice } from '@rotki/common';
-import { SupportedAsset } from '@rotki/common/lib/data';
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
 import { interop } from '@/electron-interop';
-import i18n from '@/i18n';
 import { AssetUpdatePayload } from '@/services/assets/types';
 import { api } from '@/services/rotkehlchen-api';
-import { SupportedAssets } from '@/services/types-api';
-import { AssetPriceInfo, NonFungibleBalance } from '@/store/balances/types';
 import { useNotifications } from '@/store/notifications';
-import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useTasks } from '@/store/tasks';
 import { ActionStatus } from '@/store/types';
-import { showMessage, useStore } from '@/store/utils';
 import {
   ApplyUpdateResult,
   AssetDBVersion,
@@ -23,12 +13,10 @@ import {
 } from '@/types/assets';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
-import { Zero } from '@/utils/bignumbers';
-import { uniqueStrings } from '@/utils/data';
-import { getNftBalance, isNft } from '@/utils/nft';
 
 export const useAssets = defineStore('assets', () => {
   const { awaitTask } = useTasks();
+  const { t } = useI18n();
 
   const checkForUpdate = async (): Promise<AssetUpdateCheckResult> => {
     try {
@@ -38,20 +26,20 @@ export const useAssets = defineStore('assets', () => {
         taskId,
         taskType,
         {
-          title: i18n.t('actions.assets.versions.task.title').toString(),
+          title: t('actions.assets.versions.task.title').toString(),
           numericKeys: []
         }
       );
 
       return {
-        updateAvailable: result.local < result.remote,
+        updateAvailable: result.local < result.remote && result.newChanges > 0,
         versions: result
       };
     } catch (e: any) {
-      const title = i18n.t('actions.assets.versions.task.title').toString();
-      const description = i18n
-        .t('actions.assets.versions.error.description', { message: e.message })
-        .toString();
+      const title = t('actions.assets.versions.task.title').toString();
+      const description = t('actions.assets.versions.error.description', {
+        message: e.message
+      }).toString();
       const { notify } = useNotifications();
       notify({
         title,
@@ -74,7 +62,7 @@ export const useAssets = defineStore('assets', () => {
         taskId,
         TaskType.ASSET_UPDATE_PERFORM,
         {
-          title: i18n.t('actions.assets.update.task.title').toString(),
+          title: t('actions.assets.update.task.title').toString(),
           numericKeys: []
         }
       );
@@ -89,10 +77,10 @@ export const useAssets = defineStore('assets', () => {
         conflicts: result
       };
     } catch (e: any) {
-      const title = i18n.t('actions.assets.update.task.title').toString();
-      const description = i18n
-        .t('actions.assets.update.error.description', { message: e.message })
-        .toString();
+      const title = t('actions.assets.update.task.title').toString();
+      const description = t('actions.assets.update.error.description', {
+        message: e.message
+      }).toString();
       const { notify } = useNotifications();
       notify({
         title,
@@ -144,12 +132,12 @@ export const useAssets = defineStore('assets', () => {
       let file: string | undefined = undefined;
       if (interop.appSession) {
         const directory = await interop.openDirectory(
-          i18n.t('profit_loss_report.select_directory').toString()
+          t('profit_loss_report.select_directory').toString()
         );
         if (!directory) {
           return {
             success: false,
-            message: i18n.t('assets.backup.missing_directory').toString()
+            message: t('assets.backup.missing_directory').toString()
           };
         }
         file = directory;
@@ -172,354 +160,6 @@ export const useAssets = defineStore('assets', () => {
   };
 });
 
-export const useAssetInfoRetrieval = defineStore(
-  'assets/infoRetrievals',
-  () => {
-    const store = useStore();
-    const supportedAssetsMap = ref<SupportedAssets>({});
-
-    const { treatEth2AsEth } = storeToRefs(useGeneralSettingsStore());
-
-    const assetAssociationMap = computed<{ [key: string]: string }>(() => {
-      const associationMap: { [key: string]: string } = {};
-      if (get(treatEth2AsEth)) {
-        associationMap['ETH2'] = 'ETH';
-      }
-      return associationMap;
-    });
-
-    const getAssociatedAssetIdentifier = (identifier: string) =>
-      computed<string>(() => {
-        return get(assetAssociationMap)[identifier] ?? identifier;
-      });
-
-    const getAssociatedAsset = (identifier: string) =>
-      computed(() => {
-        const associatedIdentifier = get(
-          getAssociatedAssetIdentifier(identifier)
-        );
-        return get(supportedAssetsMap)[associatedIdentifier];
-      });
-
-    const supportedAssets = computed<SupportedAsset[]>(() => {
-      const assets: SupportedAsset[] = [];
-      const supportedAssetsMapVal = get(supportedAssetsMap);
-      Object.keys(supportedAssetsMapVal).forEach(identifier => {
-        if (Object.keys(get(assetAssociationMap)).includes(identifier)) return;
-        assets.push({
-          identifier,
-          ...supportedAssetsMapVal[identifier]
-        });
-      });
-      return assets;
-    });
-
-    const allSupportedAssets = computed<SupportedAsset[]>(() => {
-      const assets: SupportedAsset[] = [];
-      const supportedAssetsMapVal = get(supportedAssetsMap);
-      Object.keys(supportedAssetsMapVal).forEach(identifier => {
-        assets.push({
-          identifier,
-          ...supportedAssetsMapVal[identifier]
-        });
-      });
-      return assets;
-    });
-
-    const fetchSupportedAssets = async (refresh: boolean = false) => {
-      if (get(supportedAssets).length > 0 && !refresh) {
-        return;
-      }
-      try {
-        const assets = await api.assets.allAssets();
-        set(supportedAssetsMap, assets);
-      } catch (e: any) {
-        const { notify } = useNotifications();
-        notify({
-          title: i18n
-            .t('actions.balances.supported_assets.error.title')
-            .toString(),
-          message: i18n
-            .t('actions.balances.supported_assets.error.message', {
-              message: e.message
-            })
-            .toString(),
-          display: true
-        });
-      }
-    };
-
-    const assetInfo = (
-      identifier: string,
-      enableAssociation: boolean = true
-    ) => {
-      return computed<SupportedAsset | undefined>(() => {
-        if (!identifier) return undefined;
-
-        if (isNft(identifier)) {
-          const nftBalance: NonFungibleBalance | null =
-            getNftBalance(identifier);
-
-          if (nftBalance) {
-            return {
-              identifier: nftBalance.id,
-              symbol: nftBalance.name,
-              name: nftBalance.name,
-              assetType: 'ethereum_token'
-            } as SupportedAsset;
-          }
-        }
-
-        const asset = enableAssociation
-          ? get(getAssociatedAsset(identifier))
-          : get(supportedAssetsMap)[identifier];
-
-        if (!asset) {
-          return undefined;
-        }
-
-        return {
-          ...asset,
-          identifier
-        };
-      });
-    };
-
-    const assetSymbol = (
-      identifier: string,
-      enableAssociation: boolean = true
-    ) => {
-      return computed<string>(() => {
-        if (!identifier) return '';
-
-        const symbol = get(assetInfo(identifier, enableAssociation))?.symbol;
-
-        if (symbol) return symbol;
-
-        if (identifier.startsWith('_ceth_')) {
-          const address = identifier.slice(6);
-          return `Ethereum Token: ${address}`;
-        }
-
-        return '';
-      });
-    };
-
-    const assetIdentifierForSymbol = (symbol: string) => {
-      return computed<string>(() => {
-        if (!symbol) return '';
-        return (
-          get(supportedAssets).find(asset => asset.symbol === symbol)
-            ?.identifier ?? ''
-        );
-      });
-    };
-
-    const assetName = (
-      identifier: string,
-      enableAssociation: boolean = true
-    ) => {
-      return computed<string>(() => {
-        if (!identifier) return '';
-
-        const name = get(assetInfo(identifier, enableAssociation))?.name;
-        if (name) return name;
-
-        if (identifier.startsWith('_ceth_')) {
-          const address = identifier.slice(5);
-          return `Ethereum Token: ${address}`;
-        }
-
-        return '';
-      });
-    };
-
-    const tokenAddress = (
-      identifier: string,
-      enableAssociation: boolean = true
-    ) => {
-      return computed<string>(() => {
-        if (!identifier) return '';
-        return (
-          get(assetInfo(identifier, enableAssociation))?.ethereumAddress ?? ''
-        );
-      });
-    };
-
-    const assetPriceInfo = (identifier: string) => {
-      return computed<AssetPriceInfo>(() => {
-        const assetValue = store.getters['balances/aggregatedBalances'].find(
-          (value: AssetBalanceWithPrice) => value.asset === identifier
-        );
-        return {
-          usdPrice: store.state.balances!.prices[identifier] ?? Zero,
-          amount: assetValue?.amount ?? Zero,
-          usdValue: assetValue?.usdValue ?? Zero
-        };
-      });
-    };
-
-    const supportedAssetsSymbol = computed<string[]>(() => {
-      const data = get(supportedAssets)
-        .map(value => get(assetSymbol(value.identifier)))
-        .filter(uniqueStrings);
-
-      if (get(treatEth2AsEth)) return data;
-      return [...data, 'ETH2'];
-    });
-
-    return {
-      allSupportedAssets,
-      supportedAssets,
-      supportedAssetsMap,
-      supportedAssetsSymbol,
-      fetchSupportedAssets,
-      getAssociatedAssetIdentifier,
-      getAssociatedAsset,
-      assetInfo,
-      assetSymbol,
-      assetIdentifierForSymbol,
-      assetName,
-      tokenAddress,
-      assetPriceInfo,
-      getAssetInfo: (identifier: string) => get(assetInfo(identifier)),
-      getAssetSymbol: (identifier: string) => get(assetSymbol(identifier)),
-      getAssetIdentifierForSymbol: (symbol: string) =>
-        get(assetIdentifierForSymbol(symbol)),
-      getAssetName: (identifier: string) => get(assetName(identifier)),
-      getTokenAddress: (identifier: string) => get(tokenAddress(identifier)),
-      getAssetPriceInfo: (identifier: string) => get(assetPriceInfo(identifier))
-    };
-  }
-);
-
-export const useIgnoredAssetsStore = defineStore('ignoredAssets', () => {
-  const ignoredAssets = ref<string[]>([]);
-
-  const { fetchSupportedAssets } = useAssetInfoRetrieval();
-
-  const fetchIgnoredAssets = async (): Promise<void> => {
-    try {
-      const ignored = await api.assets.ignoredAssets();
-      set(ignoredAssets, ignored);
-    } catch (e: any) {
-      const title = i18n.tc('actions.session.ignored_assets.error.title');
-      const message = i18n.tc(
-        'actions.session.ignored_assets.error.message',
-        0,
-        {
-          error: e.message
-        }
-      );
-      const { notify } = useNotifications();
-      notify({
-        title,
-        message,
-        display: true
-      });
-    }
-  };
-
-  const ignoreAsset = async (asset: string): Promise<ActionStatus> => {
-    try {
-      const ignored = await api.assets.modifyAsset(true, asset);
-      set(ignoredAssets, ignored);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, message: e.message };
-    }
-  };
-
-  const unignoreAsset = async (asset: string): Promise<ActionStatus> => {
-    try {
-      const ignored = await api.assets.modifyAsset(false, asset);
-      set(ignoredAssets, ignored);
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, message: e.message };
-    }
-  };
-
-  const updateIgnoredAssets = async (): Promise<void> => {
-    const { awaitTask } = useTasks();
-
-    try {
-      const taskType = TaskType.UPDATE_IGNORED_ASSETS;
-      const { taskId } = await api.assets.updateIgnoredAssets();
-      const taskMeta = {
-        title: i18n
-          .t('actions.session.update_ignored_assets.task.title')
-          .toString(),
-        numericKeys: []
-      };
-
-      const { result } = await awaitTask<number, TaskMeta>(
-        taskId,
-        taskType,
-        taskMeta
-      );
-
-      const title = i18n
-        .t('actions.session.update_ignored_assets.success.title')
-        .toString();
-      const message =
-        result > 0
-          ? i18n
-              .t('actions.session.update_ignored_assets.success.message', {
-                total: result
-              })
-              .toString()
-          : i18n
-              .t(
-                'actions.session.update_ignored_assets.success.empty_message',
-                { total: result }
-              )
-              .toString();
-
-      showMessage(message, title);
-      await fetchIgnoredAssets();
-      await fetchSupportedAssets();
-    } catch (e: any) {
-      const title = i18n.tc(
-        'actions.session.update_ignored_assets.error.title'
-      );
-      const message = i18n.tc(
-        'actions.session.update_ignored_assets.error.message',
-        0,
-        {
-          error: e.message
-        }
-      );
-      const { notify } = useNotifications();
-      notify({
-        title,
-        message,
-        display: true
-      });
-    }
-  };
-
-  const isAssetIgnored = (asset: string) =>
-    computed<boolean>(() => {
-      return get(ignoredAssets).includes(asset);
-    });
-
-  return {
-    ignoredAssets,
-    fetchIgnoredAssets,
-    ignoreAsset,
-    unignoreAsset,
-    updateIgnoredAssets,
-    isAssetIgnored
-  };
-});
-
 if (import.meta.hot) {
   import.meta.hot.accept(acceptHMRUpdate(useAssets, import.meta.hot));
-  import.meta.hot.accept(
-    acceptHMRUpdate(useAssetInfoRetrieval, import.meta.hot)
-  );
-  import.meta.hot.accept(
-    acceptHMRUpdate(useIgnoredAssetsStore, import.meta.hot)
-  );
 }

@@ -53,14 +53,14 @@
 
         <div>
           <v-btn v-if="step > 1" class="mr-4" text @click="previousStep()">
-            {{ $t('common.actions.back') }}
+            {{ t('common.actions.back') }}
           </v-btn>
           <v-btn
             v-if="step < modules.length"
             color="primary"
             @click="nextStep()"
           >
-            {{ $t('common.actions.next') }}
+            {{ t('common.actions.next') }}
           </v-btn>
         </div>
       </v-stepper-content>
@@ -69,18 +69,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from '@vue/composition-api';
-import { get, useCounter } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
-import { SUPPORTED_MODULES } from '@/components/defi/wizard/consts';
 import ModuleQueriedAddress from '@/components/defi/wizard/ModuleQueriedAddress.vue';
 import AdaptiveWrapper from '@/components/display/AdaptiveWrapper.vue';
 import { useQueriedAddressesStore } from '@/store/session/queried-addresses';
 import { useGeneralSettingsStore } from '@/store/settings/general';
+import { SUPPORTED_MODULES } from '@/types/modules';
 
 const { inc: nextStep, dec: previousStep, count: step } = useCounter(-1);
 const { fetchQueriedAddresses } = useQueriedAddressesStore();
 const { activeModules } = storeToRefs(useGeneralSettingsStore());
+
+const { t } = useI18n();
 
 const supportedModules = SUPPORTED_MODULES;
 
@@ -106,7 +105,7 @@ onMounted(async () => {
   box-shadow: none !important;
   background: transparent !important;
 
-  ::v-deep {
+  :deep() {
     .v-stepper {
       &__header {
         border: none !important;

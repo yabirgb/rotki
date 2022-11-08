@@ -4,11 +4,12 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from rotkehlchen.chain.ethereum.contracts import EthereumContract
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
+from rotkehlchen.chain.evm.contracts import EvmContract
+from rotkehlchen.types import ChainID
 
 MAX_BLOCKTIME_CACHE = 250  # 55 mins with 13 secs avg block time
-ETH_SPECIAL_ADDRESS = string_to_ethereum_address('0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE')
+ETH_SPECIAL_ADDRESS = string_to_evm_address('0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE')
 
 
 class EthereumConstants():
@@ -38,7 +39,7 @@ class EthereumConstants():
         return EthereumConstants().contracts
 
     @staticmethod
-    def contract_or_none(name: str) -> Optional[EthereumContract]:
+    def contract_or_none(name: str) -> Optional[EvmContract]:
         """Gets details of an ethereum contract from the contracts json file
 
         Returns None if missing
@@ -47,14 +48,14 @@ class EthereumConstants():
         if contract is None:
             return None
 
-        return EthereumContract(
+        return EvmContract(
             address=contract['address'],
             abi=contract['abi'],
             deployed_block=contract['deployed_block'],
         )
 
     @staticmethod
-    def contract(name: str) -> EthereumContract:
+    def contract(name: str) -> EvmContract:
         """Gets details of an ethereum contract from the contracts json file
 
         Missing contract is an error
@@ -150,10 +151,15 @@ YEARN_ASUSD_VAULT = EthereumConstants().contract('YEARN_ASUSD_VAULT')
 YEARN_USDP_3CRV_VAULT = EthereumConstants().contract('YEARN_USDP_3CRV_VAULT')
 YEARN_PSLP_VAULT = EthereumConstants().contract('YEARN_PSLP_VAULT')
 
-ETH_SCAN = EthereumConstants().contract('ETH_SCAN')
+ETH_SCAN = {}
+ETH_SCAN[ChainID.ETHEREUM] = EthereumConstants().contract('ETH_SCAN')
+ETH_SCAN[ChainID.MATIC] = EthereumConstants().contract('ETH_SCAN_MATIC')
+# BalanceScanner from mycrypto: https://github.com/MyCryptoHQ/eth-scan
+
+# Multicall from MakerDAO: https://github.com/makerdao/multicall/
 ETH_MULTICALL = EthereumConstants().contract('ETH_MULTICALL')
 ETH_MULTICALL_2 = EthereumConstants().contract('ETH_MULTICALL_2')
-
+# Multicall2 on Polygon from https://github.com/makerdao/multicall/pull/24
 
 AAVE_V1_LENDING_POOL = EthereumConstants().contract('AAVE_V1_LENDING_POOL')
 AAVE_V2_LENDING_POOL = EthereumConstants().contract('AAVE_V2_LENDING_POOL')
@@ -163,6 +169,7 @@ ATOKEN_V2_ABI = EthereumConstants.abi('ATOKEN_V2')
 ZERION_ABI = EthereumConstants.abi('ZERION_ADAPTER')
 CTOKEN_ABI = EthereumConstants.abi('CTOKEN')
 ERC20TOKEN_ABI = EthereumConstants.abi('ERC20_TOKEN')
+ERC721TOKEN_ABI = EthereumConstants.abi('ERC721_TOKEN')
 UNIV1_LP_ABI = EthereumConstants.abi('UNIV1_LP_ABI')
 FARM_ASSET_ABI = EthereumConstants.abi('FARM_ASSET')
 UNISWAP_V2_LP_ABI = EthereumConstants.abi('UNISWAP_V2_LP')
@@ -174,6 +181,7 @@ YEARN_VAULTS_PREFIX = 'yearn_vaults_events'
 YEARN_VAULTS_V2_PREFIX = 'yearn_vaults_v2_events'
 
 LIQUITY_TROVE_MANAGER = EthereumConstants().contract('TROVE_MANAGER')
+LIQUITY_STABILITY_POOL = EthereumConstants().contract('LIQUITY_STABILITY_POOL')
 
 PICKLE_DILL_REWARDS = EthereumConstants().contract('DILL_REWARDS')
 PICKLE_DILL = EthereumConstants().contract('DILL')
@@ -183,6 +191,14 @@ UNISWAP_V3_FACTORY = EthereumConstants().contract('UNISWAP_V3_FACTORY')
 UNISWAP_V3_NFT_MANAGER = EthereumConstants.contract('UNISWAP_V3_NFT_POSITIONS_MANAGER')
 
 SADDLE_ALETH_POOL = EthereumConstants().contract('SADDLE_ALETH_POOL')
+
+ENS_REVERSE_RECORDS = EthereumConstants.contract('ENS_REVERSE_RECORDS')
+ENS_REVERSE_RESOLVER = EthereumConstants().contract('ENS_REVERSE_RESOLVER')
+ENS_PUBLIC_RESOLVER_2 = EthereumConstants().contract('ENS_PUBLIC_RESOLVER_2')
+
+CURVE_ADDRESS_PROVIDER = EthereumConstants.contract('CURVE_ADDRESS_PROVIDER')
+CURVE_REGISTRY_ABI = EthereumConstants.abi('CURVE_REGISTRY')
+CURVE_METAPOOL_FACTORY_ABI = EthereumConstants.abi('CURVE_METAPOOL_FACTORY')
 
 RAY_DIGITS = 27
 # If an on-chain pool single-side asset liquidity is less than this, ignore the pool

@@ -24,7 +24,7 @@ from substrateinterface import SubstrateInterface
 from substrateinterface.exceptions import BlockNotFound, SubstrateRequestException
 from websocket import WebSocketException
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import CryptoAsset
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE
 from rotkehlchen.errors.asset import UnknownAsset
@@ -47,7 +47,7 @@ from .types import (
     SubstrateChain,
     SubstrateChainId,
 )
-from .utils import KUSAMA_NODE_CONNECTION_TIMEOUT
+from .utils import SUBSTRATE_NODE_CONNECTION_TIMEOUT
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -65,7 +65,7 @@ class SubstrateChainProperties(NamedTuple):
     https://github.com/paritytech/substrate/wiki/External-Address-Format-(SS58)
     """
     ss58_format: int
-    token: Asset  # from instantiating Asset with 'tokenSymbol'
+    token: CryptoAsset
     token_decimals: FVal
 
 
@@ -302,7 +302,7 @@ class SubstrateManager():
             account=account,
         )
         try:
-            with gevent.Timeout(KUSAMA_NODE_CONNECTION_TIMEOUT):
+            with gevent.Timeout(SUBSTRATE_NODE_CONNECTION_TIMEOUT):
                 result = node_interface.query(
                     module='System',
                     storage_function='Account',
@@ -388,7 +388,7 @@ class SubstrateManager():
         try:
             chain_properties = SubstrateChainProperties(
                 ss58_format=properties['ss58Format'],
-                token=Asset(properties['tokenSymbol']),
+                token=CryptoAsset(properties['tokenSymbol']),
                 token_decimals=FVal(properties['tokenDecimals']),
             )
         except (KeyError, UnknownAsset) as e:

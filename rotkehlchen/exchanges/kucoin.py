@@ -28,7 +28,7 @@ from requests.adapters import Response
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_kucoin
 from rotkehlchen.constants.misc import ZERO
 from rotkehlchen.constants.timing import DEFAULT_TIMEOUT_TUPLE, MONTH_IN_SECONDS, WEEK_IN_SECONDS
@@ -126,7 +126,7 @@ def _deserialize_ts(case: KucoinCase, time: int) -> Timestamp:
 DeserializationMethod = Callable[..., Union[Trade, AssetMovement]]
 
 
-def deserialize_trade_pair(trade_pair_symbol: str) -> Tuple[Asset, Asset]:
+def deserialize_trade_pair(trade_pair_symbol: str) -> Tuple[AssetWithOracles, AssetWithOracles]:
     """May raise:
     - UnprocessableTradePair
     - UnknownAsset
@@ -430,7 +430,7 @@ class Kucoin(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                     )
                     if isinstance(e, (UnknownAsset, UnsupportedAsset)):
                         asset_tag = 'unknown' if isinstance(e, UnknownAsset) else 'unsupported'
-                        error_msg = f'Found {asset_tag} kucoin asset {e.asset_name}'
+                        error_msg = f'Found {asset_tag} kucoin asset {e.identifier}'
 
                     self.msg_aggregator.add_error(
                         f'Failed to deserialize a kucoin {case} result. {error_msg}. Ignoring it. '
@@ -460,7 +460,7 @@ class Kucoin(ExchangeInterface):  # lgtm[py/missing-call-to-init]
     def _deserialize_accounts_balances(
             self,
             response_dict: Dict[str, List[Dict[str, Any]]],
-    ) -> Dict[Asset, Balance]:
+    ) -> Dict[AssetWithOracles, Balance]:
         """May raise RemoteError
         """
         try:
@@ -470,7 +470,7 @@ class Kucoin(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             log.error(msg, response_dict)
             raise RemoteError(msg) from e
 
-        assets_balance: DefaultDict[Asset, Balance] = defaultdict(Balance)
+        assets_balance: DefaultDict[AssetWithOracles, Balance] = defaultdict(Balance)
         for raw_result in accounts_data:
             try:
                 amount = deserialize_asset_amount(raw_result['balance'])
@@ -508,7 +508,7 @@ class Kucoin(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except (UnknownAsset, UnsupportedAsset) as e:
                 asset_tag = 'unknown' if isinstance(e, UnknownAsset) else 'unsupported'
                 self.msg_aggregator.add_warning(
-                    f'Found {asset_tag} kucoin asset {e.asset_name} while deserializing '
+                    f'Found {asset_tag} kucoin asset {e.identifier} while deserializing '
                     f'a balance. Ignoring it.',
                 )
                 continue

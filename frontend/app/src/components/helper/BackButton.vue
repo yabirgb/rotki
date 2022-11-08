@@ -11,30 +11,21 @@
         <v-icon>mdi-arrow-left</v-icon>
       </v-btn>
     </template>
-    <span>{{ $t('back_button.tooltip') }}</span>
+    <span>{{ t('back_button.tooltip') }}</span>
   </v-tooltip>
   <div v-else class="back-button__placeholder" />
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
-import { useRouter } from '@/composables/common';
-
-export default defineComponent({
-  name: 'BackButton',
-  props: {
-    canNavigateBack: { required: true, type: Boolean, default: false }
-  },
-  setup() {
-    const router = useRouter();
-    const goBack = () => {
-      router.go(-1);
-    };
-
-    return {
-      goBack
-    };
-  }
+<script setup lang="ts">
+defineProps({
+  canNavigateBack: { required: true, type: Boolean, default: false }
 });
+
+const router = useRouter();
+const goBack = () => {
+  router.go(-1);
+};
+
+const { t } = useI18n();
 </script>
 <style scoped lang="scss">
 .back-button {

@@ -11,7 +11,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.constants.assets import A_BTC
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.misc import RemoteError
@@ -45,10 +45,12 @@ BITMEX_PRIVATE_ENDPOINTS = (
 )
 
 
-def bitmex_to_world(symbol: str) -> Asset:
+def bitmex_to_world(symbol: str) -> AssetWithOracles:
     if symbol == 'XBt':
-        return A_BTC
-    return Asset(symbol)
+        return A_BTC.resolve_to_asset_with_oracles()
+    # This shouldn't happen since all the trades in bitmex are against BTC
+    # as for what @lefterisjp remembers in discord.
+    return Asset(symbol).resolve_to_asset_with_oracles()
 
 
 def trade_from_bitmex(bitmex_trade: Dict) -> MarginPosition:
@@ -107,6 +109,7 @@ class Bitmex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         self.uri = 'https://bitmex.com'
         self.session.headers.update({'api-key': api_key})
         self.msg_aggregator = msg_aggregator
+        self.btc = A_BTC.resolve_to_crypto_asset()
 
     def edit_exchange_credentials(
             self,
@@ -237,11 +240,11 @@ class Bitmex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
     @protect_with_lock()
     @cache_response_timewise()
     def query_balances(self) -> ExchangeQueryBalances:
-        returned_balances: Dict[Asset, Balance] = {}
+        returned_balances: Dict[AssetWithOracles, Balance] = {}
         try:
             resp = self._api_query_dict('get', 'user/wallet', {'currency': 'XBt'})
             # Bitmex shows only BTC balance
-            usd_price = Inquirer().find_usd_price(A_BTC)
+            usd_price = Inquirer().find_usd_price(self.btc)
         except RemoteError as e:
             msg = f'Bitmex API request failed due to: {str(e)}'
             log.error(msg)
@@ -256,7 +259,7 @@ class Bitmex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             return None, msg
 
         usd_value = amount * usd_price
-        returned_balances[A_BTC] = Balance(
+        returned_balances[self.btc] = Balance(
             amount=amount,
             usd_value=usd_value,
         )
@@ -345,7 +348,7 @@ class Bitmex(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found bitmex deposit/withdrawal with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:

@@ -46,7 +46,6 @@ def fixture_task_manager(
         cryptocompare,
         exchange_manager,
         evm_transaction_decoder,
-        eth_transactions,
         messages_aggregator,
 ) -> TaskManager:
     task_manager = TaskManager(
@@ -56,12 +55,12 @@ def fixture_task_manager(
         database=database,
         cryptocompare=cryptocompare,
         premium_sync_manager=MockPremiumSyncManager(),  # type: ignore
-        chain_manager=blockchain,
+        chains_aggregator=blockchain,
         exchange_manager=exchange_manager,
-        evm_tx_decoder=evm_transaction_decoder,
-        eth_transactions=eth_transactions,
+        eth_tx_decoder=evm_transaction_decoder,
         deactivate_premium=lambda: None,
         query_balances=lambda: None,
+        update_curve_pools_cache=lambda: None,
         activate_premium=lambda _: None,
         msg_aggregator=messages_aggregator,
     )
@@ -79,7 +78,7 @@ def test_maybe_query_ethereum_transactions(task_manager, ethereum_accounts):
         assert end_ts >= now
 
     tx_query_patch = patch.object(
-        task_manager.eth_transactions,
+        task_manager.eth_tx_decoder.transactions,
         'single_address_query_transactions',
         wraps=tx_query_mock,
     )
@@ -105,12 +104,19 @@ def test_maybe_query_ethereum_transactions(task_manager, ethereum_accounts):
 
 def test_maybe_schedule_xpub_derivation(task_manager, database):
     xpub = 'xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk'  # noqa: E501
-    xpub_data = XpubData(
+    xpub_data1 = XpubData(
         xpub=HDKey.from_xpub(xpub=xpub, path='m'),
+        blockchain=SupportedBlockchain.BITCOIN,
+        derivation_path='m/0/0',
+    )
+    xpub_data2 = XpubData(
+        xpub=HDKey.from_xpub(xpub=xpub, path='m'),
+        blockchain=SupportedBlockchain.BITCOIN_CASH,
         derivation_path='m/0/0',
     )
     with database.user_write() as cursor:
-        database.add_bitcoin_xpub(cursor, xpub_data, SupportedBlockchain.BITCOIN)
+        database.add_bitcoin_xpub(cursor, xpub_data1)
+        database.add_bitcoin_xpub(cursor, xpub_data2)
 
     task_manager.potential_tasks = [task_manager._maybe_schedule_xpub_derivation]
     xpub_derive_patch = patch(
@@ -294,3 +300,78 @@ def test_update_snapshot_balances(task_manager):
                 )
     except gevent.Timeout as e:
         raise AssertionError(f'Update snapshot balances was not completed within {timeout} seconds') from e  # noqa: E501
+
+
+def test_update_curve_pools(task_manager):
+    """Check that task for curve pools cache update is scheduled properly."""
+    task_manager.potential_tasks = [task_manager._maybe_update_curve_pools]
+    query_balances_patch = patch.object(
+        task_manager,
+        'update_curve_pools_cache',
+    )
+    timeout = 5
+    try:
+        with gevent.Timeout(timeout):
+            with query_balances_patch as query_mock:
+                task_manager.schedule()
+                while True:
+                    if query_mock.call_count == 1:
+                        break
+                    gevent.sleep(.2)
+    except gevent.Timeout as e:
+        raise AssertionError(f'Update curve pools was not completed within {timeout} seconds') from e  # noqa: E501
+
+
+def test_try_start_same_task(rotkehlchen_api_server):
+    """
+    1. Checks that it is not possible to start 2 same tasks
+    2. Checks that is possible to start second same task when the first one finishes
+    """
+    rotki = rotkehlchen_api_server.rest_api.rotkehlchen
+    # Using rotki.greenlet_manager instead of pure GreenletManager() since patch.object
+    # needs it for proper mocking
+    spawn_patch = patch.object(
+        rotki.greenlet_manager,
+        'spawn_and_track',
+        wraps=rotki.greenlet_manager.spawn_and_track,
+    )
+
+    def simple_task():
+        return rotki.greenlet_manager.spawn_and_track(
+            method=lambda: gevent.sleep(0.1),
+            after_seconds=None,
+            task_name='Lol kek',
+            exception_is_error=True,
+        )
+
+    with spawn_patch as patched:
+        rotki.task_manager.potential_tasks = [rotki.task_manager._maybe_update_snapshot_balances]
+        rotki.task_manager.schedule()
+        rotki.task_manager.schedule()
+        assert patched.call_count == 1
+        # Check that mapping in the task manager is correct
+        assert rotki.task_manager.running_greenlets.keys() == {
+            rotki.task_manager._maybe_update_snapshot_balances,
+        }
+        rotki.task_manager.potential_tasks = [simple_task]
+        rotki.task_manager.schedule()  # start a small greenlet
+        assert patched.call_count == 2
+        assert rotki.task_manager.running_greenlets.keys() == {
+            rotki.task_manager._maybe_update_snapshot_balances,
+            simple_task,  # check that mapping was updated
+        }
+        # Wait until our small greenlet finishes
+        gevent.wait([rotki.task_manager.running_greenlets[simple_task]])
+        rotki.task_manager.potential_tasks = []
+        rotki.task_manager.schedule()  # clear the mapping
+        assert rotki.task_manager.running_greenlets.keys() == {  # and check that it was removed
+            rotki.task_manager._maybe_update_snapshot_balances,
+        }
+        # And make sure that now we are able to start it again
+        rotki.task_manager.potential_tasks = [simple_task]
+        rotki.task_manager.schedule()
+        assert patched.call_count == 3
+        assert rotki.task_manager.running_greenlets.keys() == {
+            rotki.task_manager._maybe_update_snapshot_balances,
+            simple_task,
+        }

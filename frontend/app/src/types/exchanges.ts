@@ -1,6 +1,7 @@
 import { BigNumber } from '@rotki/common';
 import { z } from 'zod';
-import { AssetBalances } from '@/store/balances/types';
+import { Nullable } from '@/types';
+import { AssetBalances } from '@/types/balances';
 
 export const KrakenAccountType = z.enum(['starter', 'intermediate', 'pro']);
 export type KrakenAccountType = z.infer<typeof KrakenAccountType>;
@@ -26,8 +27,7 @@ export enum SupportedExchange {
   GEMINI = 'gemini'
 }
 
-export const SupportedExchangeType = z.nativeEnum(SupportedExchange);
-export type SupportedExchangeType = z.infer<typeof SupportedExchangeType>;
+const SupportedExchangeType = z.nativeEnum(SupportedExchange);
 
 export const SUPPORTED_EXCHANGES = Object.values(SupportedExchange);
 
@@ -50,4 +50,26 @@ export interface ExchangeInfo {
   readonly total: BigNumber;
 }
 
-export type ExchangeData = { [exchange: string]: AssetBalances };
+export type ExchangeData = Record<string, AssetBalances>;
+
+export interface EditExchange {
+  readonly exchange: Exchange;
+  readonly newName: Nullable<string>;
+}
+
+export interface ExchangeSetupPayload {
+  readonly edit: Boolean;
+  readonly exchange: ExchangePayload;
+}
+
+export interface ExchangePayload {
+  readonly name: string;
+  readonly newName: Nullable<string>;
+  readonly location: SupportedExchange;
+  readonly apiKey: Nullable<string>;
+  readonly apiSecret: Nullable<string>;
+  readonly passphrase: Nullable<string>;
+  readonly krakenAccountType: Nullable<KrakenAccountType>;
+  readonly binanceMarkets: Nullable<string[]>;
+  readonly ftxSubaccount: Nullable<string>;
+}

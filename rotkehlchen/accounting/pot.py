@@ -46,7 +46,7 @@ class AccountingPot(CustomizableDateMixin):
             msg_aggregator: MessagesAggregator,
     ) -> None:
         super().__init__(database=database)
-        self.profit_currency = self.settings.main_currency
+        self.profit_currency = self.settings.main_currency.resolve_to_asset_with_oracles()
         self.cost_basis = CostBasisCalculator(
             database=database,
             msg_aggregator=msg_aggregator,
@@ -105,7 +105,7 @@ class AccountingPot(CustomizableDateMixin):
     ) -> None:
         self.settings = settings
         self.report_id = report_id
-        self.profit_currency = self.settings.main_currency
+        self.profit_currency = self.settings.main_currency.resolve_to_asset_with_oracles()
         self.query_start_ts = start_ts
         self.query_end_ts = end_ts
         self.pnls.reset()
@@ -138,7 +138,13 @@ class AccountingPot(CustomizableDateMixin):
         else:
             try:
                 price = self.get_rate_in_profit_currency(asset=asset, timestamp=timestamp)
-            except (NoPriceForGivenTimestamp, PriceQueryUnsupportedAsset, RemoteError):
+            except (PriceQueryUnsupportedAsset, RemoteError):
+                price = Price(ZERO)
+            except NoPriceForGivenTimestamp as e:
+                # In the case of NoPriceForGivenTimestamp when we got rate limited we let
+                # it propagate so the user can take action after the report is made
+                if e.rate_limited is True:
+                    raise
                 price = Price(ZERO)
 
         prefork_events = handle_prefork_asset_acquisitions(
@@ -153,14 +159,20 @@ class AccountingPot(CustomizableDateMixin):
         for prefork_event in prefork_events:
             self._add_processed_event(prefork_event)
 
+        if taxable is True:
+            taxable_amount = amount
+            free_amount = ZERO
+        else:
+            taxable_amount = ZERO
+            free_amount = amount
         event = ProcessedAccountingEvent(
             type=event_type,
             notes=notes,
             location=location,
             timestamp=timestamp,
             asset=asset,
-            taxable_amount=amount,
-            free_amount=ZERO,
+            taxable_amount=taxable_amount,
+            free_amount=free_amount,
             price=price,
             pnl=PNL(),  # filled out later
             cost_basis=None,
@@ -212,8 +224,8 @@ class AccountingPot(CustomizableDateMixin):
         if amount == ZERO:  # do nothing for zero spends
             return ZERO, ZERO
 
-        if asset.is_fiat() and event_type != AccountingEventType.FEE:
-            taxable = False
+        if asset.is_fiat() and event_type == AccountingEventType.TRADE:
+            taxable = False  # for buys with fiat do not count it as taxable
 
         handle_prefork_asset_spends(
             cost_basis=self.cost_basis,
@@ -310,7 +322,8 @@ class AccountingPot(CustomizableDateMixin):
             fee: Optional[FVal],
             fee_asset: Optional[Asset],
     ) -> Optional[Tuple[Price, Price]]:
-        """Calculates the prices for assets going in and out of a swap/trade.
+        """
+        Calculates the prices for assets going in and out of a swap/trade.
 
         The rules are:
         - For the asset_in we get the equivalent rate from asset_out + fee if any.
@@ -353,8 +366,12 @@ class AccountingPot(CustomizableDateMixin):
                 asset=asset_in,
                 timestamp=timestamp,
             )
-        except (PriceQueryUnsupportedAsset, NoPriceForGivenTimestamp, RemoteError):
+        except (PriceQueryUnsupportedAsset, RemoteError):
             in_price = None
+        except NoPriceForGivenTimestamp as e:
+            in_price = None
+            if e.rate_limited is True and out_price is None:
+                raise  # in_price = out_price = None -> notify user
 
         if out_price is None and in_price is None:
             return None

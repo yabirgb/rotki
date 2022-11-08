@@ -1,23 +1,18 @@
 import { ProfitLossModel } from '@rotki/common/lib/defi';
 import { AaveBalances, AaveHistory } from '@rotki/common/lib/defi/aave';
-import { computed, ref, Ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import { getPremium, useModules } from '@/composables/session';
-import i18n from '@/i18n';
+import { Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
+import { useModules } from '@/composables/session/modules';
+import { useStatusUpdater } from '@/composables/status';
 import { balanceKeys } from '@/services/consts';
 import { aaveHistoryKeys } from '@/services/defi/consts';
 import { api } from '@/services/rotkehlchen-api';
-import { Section, Status } from '@/store/const';
 import { useNotifications } from '@/store/notifications';
+import { getStatus, setStatus } from '@/store/status';
 import { useTasks } from '@/store/tasks';
-import {
-  getStatus,
-  getStatusUpdater,
-  isLoading,
-  setStatus
-} from '@/store/utils';
+import { isLoading } from '@/store/utils';
 import { Module } from '@/types/modules';
+import { Section, Status } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
 import { balanceSum } from '@/utils/calculation';
@@ -29,7 +24,8 @@ export const useAaveStore = defineStore('defi/aave', () => {
   const { notify } = useNotifications();
   const { awaitTask } = useTasks();
   const { activeModules } = useModules();
-  const premium = getPremium();
+  const premium = usePremium();
+  const { tc } = useI18n();
 
   const aaveTotalEarned = (addresses: string[]) =>
     computed(() => {
@@ -84,20 +80,20 @@ export const useAaveStore = defineStore('defi/aave', () => {
         taskId,
         taskType,
         {
-          title: i18n.tc('actions.defi.aave_balances.task.title'),
+          title: tc('actions.defi.aave_balances.task.title'),
           numericKeys: balanceKeys
         }
       );
       set(balances, result);
     } catch (e: any) {
-      const message = i18n.tc(
+      const message = tc(
         'actions.defi.aave_balances.error.description',
         undefined,
         {
           error: e.message
         }
       );
-      const title = i18n.tc('actions.defi.aave_balances.error.title');
+      const title = tc('actions.defi.aave_balances.error.title');
       notify({
         title,
         message,
@@ -137,19 +133,19 @@ export const useAaveStore = defineStore('defi/aave', () => {
         taskId,
         taskType,
         {
-          title: i18n.tc('actions.defi.aave_history.task.title'),
+          title: tc('actions.defi.aave_history.task.title'),
           numericKeys: aaveHistoryKeys
         }
       );
 
       set(history, result);
     } catch (e: any) {
-      const message = i18n.tc(
+      const message = tc(
         'actions.defi.aave_history.error.description',
         undefined,
         { error: e.message }
       );
-      const title = i18n.tc('actions.defi.aave_history.error.title');
+      const title = tc('actions.defi.aave_history.error.title');
 
       notify({
         title,
@@ -162,7 +158,7 @@ export const useAaveStore = defineStore('defi/aave', () => {
   };
 
   const reset = () => {
-    const { resetStatus } = getStatusUpdater(Section.DEFI_AAVE_BALANCES);
+    const { resetStatus } = useStatusUpdater(Section.DEFI_AAVE_BALANCES);
     set(balances, {});
     set(history, {});
     resetStatus(Section.DEFI_AAVE_BALANCES);

@@ -12,7 +12,7 @@ def test_known_asset_has_usd_price(mock_uniswap, inquirer):  # pylint: disable=u
     """Test `known_asset_price` contains the known asset address and USD
     price when Inquirer returns a price gt ZERO.
     """
-    known_assets = {A_WETH}
+    known_assets = {A_WETH.resolve_to_evm_token()}
     unknown_assets = set()
 
     known_asset_price = mock_uniswap._get_known_asset_price(
@@ -20,7 +20,7 @@ def test_known_asset_has_usd_price(mock_uniswap, inquirer):  # pylint: disable=u
         unknown_assets=unknown_assets,
     )
 
-    assert known_asset_price == {A_WETH.ethereum_address: USD_PRICE_WETH}
+    assert known_asset_price == {A_WETH.resolve_to_evm_token().evm_address: USD_PRICE_WETH}
     assert unknown_assets == set()
 
 

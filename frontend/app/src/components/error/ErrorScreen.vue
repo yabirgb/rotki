@@ -16,7 +16,7 @@
         {{ title }}
         <v-spacer />
         <copy-button
-          :tooltip="$t('error_screen.copy_tooltip')"
+          :tooltip="tc('error_screen.copy_tooltip')"
           :value="errorText"
         />
       </v-card-title>
@@ -43,35 +43,26 @@
   </div>
 </template>
 
-<script lang="ts">
-import { computed, defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
 import CopyButton from '@/components/helper/CopyButton.vue';
 
-export default defineComponent({
-  name: 'ErrorScreen',
-  components: { CopyButton },
-  props: {
-    header: { required: false, type: String, default: '' },
-    title: { required: false, type: String, default: '' },
-    subtitle: { required: false, type: String, default: '' },
-    message: { required: false, type: String, default: '' },
-    error: { required: false, type: String, default: '' },
-    alternative: { required: false, type: String, default: '' }
-  },
-  setup(props) {
-    const { error, message } = toRefs(props);
+const props = defineProps({
+  header: { required: false, type: String, default: '' },
+  title: { required: false, type: String, default: '' },
+  subtitle: { required: false, type: String, default: '' },
+  message: { required: false, type: String, default: '' },
+  error: { required: false, type: String, default: '' },
+  alternative: { required: false, type: String, default: '' }
+});
 
-    const errorText = computed(() => {
-      const errorText = get(error);
-      const errorMessage = get(message);
-      return !errorText ? errorMessage : `${errorMessage}\n\n${errorText}`;
-    });
+const { error, message } = toRefs(props);
 
-    return {
-      errorText
-    };
-  }
+const { tc } = useI18n();
+
+const errorText = computed(() => {
+  const errorText = get(error);
+  const errorMessage = get(message);
+  return !errorText ? errorMessage : `${errorMessage}\n\n${errorText}`;
 });
 </script>
 

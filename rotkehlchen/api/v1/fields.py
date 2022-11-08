@@ -1,4 +1,5 @@
 import logging
+import urllib
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Type, Union
 
@@ -9,12 +10,19 @@ from marshmallow.exceptions import ValidationError
 from marshmallow.utils import is_iterable_but_not_string
 from werkzeug.datastructures import FileStorage
 
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import (
+    Asset,
+    AssetWithNameAndType,
+    AssetWithOracles,
+    CryptoAsset,
+    EvmToken,
+    Nft,
+)
 from rotkehlchen.assets.types import AssetType
 from rotkehlchen.chain.bitcoin.hdkey import HDKey
 from rotkehlchen.chain.bitcoin.utils import is_valid_derivation_path
-from rotkehlchen.constants.misc import ZERO
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.constants.misc import NFT_DIRECTIVE, ZERO
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import XPUBError
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
@@ -32,7 +40,7 @@ from rotkehlchen.types import (
     ApiKey,
     ApiSecret,
     AssetAmount,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     EVMTxHash,
     Fee,
     HexColorCode,
@@ -69,7 +77,7 @@ class DelimitedOrNormalList(webargs.fields.DelimitedList):
     def _deserialize(  # type: ignore  # we may get a list in value
             self,
             value: Union[List[str], str],
-            attr: str,
+            attr: Optional[str],
             data: Dict[str, Any],
             **kwargs: Any,
     ) -> List[Any]:
@@ -177,7 +185,7 @@ class AmountField(fields.Field):
     @staticmethod
     def _serialize(
             value: AssetAmount,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -219,7 +227,7 @@ class PriceField(fields.Field):
     @staticmethod
     def _serialize(
             value: FVal,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -248,7 +256,7 @@ class FeeField(fields.Field):
     @staticmethod
     def _serialize(
             value: Fee,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> Optional[str]:
@@ -275,7 +283,7 @@ class FloatingPercentageField(fields.Field):
     @staticmethod
     def _serialize(
             value: FVal,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -314,22 +322,10 @@ class BlockchainField(fields.Field):
             data: Optional[Mapping[str, Any]],  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> SupportedBlockchain:
-        if value in ('btc', 'BTC'):
-            chain_type = SupportedBlockchain.BITCOIN
-        elif value in ('bch', 'BCH'):
-            chain_type = SupportedBlockchain.BITCOIN_CASH
-        elif value in ('eth', 'ETH'):
-            chain_type = SupportedBlockchain.ETHEREUM
-        elif value in ('eth2', 'ETH2'):
-            chain_type = SupportedBlockchain.ETHEREUM_BEACONCHAIN
-        elif value in ('ksm', 'KSM'):
-            chain_type = SupportedBlockchain.KUSAMA
-        elif value in ('dot', 'DOT'):
-            chain_type = SupportedBlockchain.POLKADOT
-        elif value in ('avax', 'AVAX'):
-            chain_type = SupportedBlockchain.AVALANCHE
-        else:
-            raise ValidationError(f'Unrecognized value {value} given for blockchain name')
+        try:
+            chain_type = SupportedBlockchain.deserialize(value)
+        except DeserializationError as e:
+            raise ValidationError(str(e)) from e
 
         if self.exclude_types and chain_type in self.exclude_types:
             raise ValidationError(f'Blockchain name {str(value)} is not allowed in this endpoint')
@@ -345,7 +341,7 @@ class SerializableEnumField(fields.Field):
     @staticmethod
     def _serialize(
             value: SerializableEnumMixin,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -368,19 +364,32 @@ class SerializableEnumField(fields.Field):
 
 class AssetField(fields.Field):
 
-    def __init__(self, *, form_with_incomplete_data: bool = False, **kwargs: Any) -> None:  # noqa: E501
+    def __init__(
+            self,
+            *,
+            expected_type: Union[
+                Type[Asset],
+                Type[AssetWithNameAndType],
+                Type[AssetWithOracles],
+                Type[CryptoAsset],
+                Type[EvmToken],
+            ],
+            form_with_incomplete_data: bool = False,
+            **kwargs: Any,
+    ) -> None:
+        self.expected_type = expected_type
         self.form_with_incomplete_data = form_with_incomplete_data
         super().__init__(**kwargs)
 
     @staticmethod
     def _serialize(
             value: Asset,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> Optional[str]:
         # Asset can be missing so we need to handle None when serializing from schema
-        return str(value.identifier) if value else None
+        return value.identifier if value else None
 
     def _deserialize(
             self,
@@ -389,9 +398,26 @@ class AssetField(fields.Field):
             data: Optional[Mapping[str, Any]],  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> Asset:
+        if isinstance(value, str) is False:
+            raise ValidationError(f'Tried to initialize an asset out of a non-string identifier {value}')  # noqa: E501
+        # Since the identifier could be url encoded for evm tokens in urls we need to unquote it
+        real_value: str = urllib.parse.unquote(value)
+        asset: Asset
         try:
-            asset = Asset(value, form_with_incomplete_data=self.form_with_incomplete_data)
-        except (DeserializationError, UnknownAsset) as e:
+            if self.expected_type == Asset:
+                if real_value.startswith(NFT_DIRECTIVE):
+                    asset = Nft(identifier=real_value)
+                else:
+                    asset = Asset(identifier=real_value).check_existence()
+            elif self.expected_type == AssetWithNameAndType:
+                asset = Asset(identifier=real_value).resolve_to_asset_with_name_and_type()
+            elif self.expected_type == AssetWithOracles:
+                asset = Asset(identifier=real_value).resolve_to_asset_with_oracles()
+            elif self.expected_type == CryptoAsset:
+                asset = CryptoAsset(real_value)
+            else:  # EvmToken
+                asset = EvmToken(real_value)
+        except (DeserializationError, UnknownAsset, WrongAssetType) as e:
             raise ValidationError(str(e)) from e
 
         return asset
@@ -399,14 +425,21 @@ class AssetField(fields.Field):
 
 class MaybeAssetField(fields.Field):
 
-    def __init__(self, *, form_with_incomplete_data: bool = False, **kwargs: Any) -> None:  # noqa: E501
+    def __init__(
+            self,
+            *,
+            expected_type: Type[AssetWithOracles],  # the only possible type now
+            form_with_incomplete_data: bool = False,
+            **kwargs: Any,
+    ) -> None:
         self.form_with_incomplete_data = form_with_incomplete_data
+        self.expected_type = expected_type
         super().__init__(**kwargs)
 
     @staticmethod
     def _serialize(
             value: Asset,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> Optional[str]:
@@ -421,12 +454,13 @@ class MaybeAssetField(fields.Field):
             **_kwargs: Any,
     ) -> Optional[Asset]:
         try:
-            asset = Asset(value, form_with_incomplete_data=self.form_with_incomplete_data)
+            asset = Asset(identifier=value).resolve_to_asset_with_oracles()
         except DeserializationError as e:
             raise ValidationError(str(e)) from e
-        except UnknownAsset:
+        except (UnknownAsset, WrongAssetType):
             log.error(f'Failed to deserialize asset {value}')
             return None
+
         return asset
 
 
@@ -434,8 +468,8 @@ class EthereumAddressField(fields.Field):
 
     @staticmethod
     def _serialize(
-            value: ChecksumEthAddress,
-            attr: str,  # pylint: disable=unused-argument
+            value: ChecksumEvmAddress,
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -447,7 +481,7 @@ class EthereumAddressField(fields.Field):
             attr: Optional[str],  # pylint: disable=unused-argument
             data: Optional[Mapping[str, Any]],  # pylint: disable=unused-argument
             **_kwargs: Any,
-    ) -> ChecksumEthAddress:
+    ) -> ChecksumEvmAddress:
         # Make sure that given value is an ethereum address
         try:
             address = to_checksum_address(value)
@@ -465,7 +499,7 @@ class EVMTransactionHashField(fields.Field):
     @staticmethod
     def _serialize(
             value: EVMTxHash,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -503,7 +537,7 @@ class AssetTypeField(fields.Field):
     @staticmethod
     def _serialize(
             value: AssetType,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -536,7 +570,7 @@ class LocationField(fields.Field):
     @staticmethod
     def _serialize(
             value: Location,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -582,7 +616,7 @@ class ApiSecretField(fields.Field):
     @staticmethod
     def _serialize(
             value: ApiSecret,
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> str:
@@ -624,7 +658,7 @@ class AssetConflictsField(fields.Field):
     @staticmethod
     def _serialize(
             value: Dict[str, Any],
-            attr: str,  # pylint: disable=unused-argument
+            attr: Optional[str],  # pylint: disable=unused-argument
             obj: Any,  # pylint: disable=unused-argument
             **_kwargs: Any,
     ) -> Dict[str, Any]:
@@ -648,7 +682,7 @@ class AssetConflictsField(fields.Field):
         deserialized_dict = {}
         for asset_id, choice in value.items():
             try:
-                asset = Asset(asset_id)
+                asset = Asset(asset_id).check_existence()
             except UnknownAsset as e:
                 raise ValidationError(f'Unknown asset identifier {asset_id}') from e
 

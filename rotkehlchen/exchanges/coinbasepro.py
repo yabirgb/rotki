@@ -27,7 +27,7 @@ import requests
 
 from rotkehlchen.accounting.ledger_actions import LedgerAction
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_coinbasepro
 from rotkehlchen.assets.types import AssetType
 from rotkehlchen.constants.assets import A_ETH
@@ -72,7 +72,7 @@ log = RotkehlchenLogsAdapter(logger)
 COINBASEPRO_PAGINATION_LIMIT = 100  # default + max limit
 
 
-def coinbasepro_to_worldpair(product: str) -> Tuple[Asset, Asset]:
+def coinbasepro_to_worldpair(product: str) -> Tuple[AssetWithOracles, AssetWithOracles]:
     """Turns a coinbasepro product into our base/quote assets
 
     - Can raise UnprocessableTradePair if product is in unexpected format
@@ -126,7 +126,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
         )
         self.base_uri = 'https://api.pro.coinbase.com'
         self.msg_aggregator = msg_aggregator
-        self.account_to_currency: Optional[Dict[str, Asset]] = None
+        self.account_to_currency: Optional[Dict[str, AssetWithOracles]] = None
         self.available_products = {0}
 
         self.session.headers.update({
@@ -297,7 +297,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
 
         return json_ret, response.headers.get('cb-after', None)
 
-    def create_or_return_account_to_currency_map(self) -> Dict[str, Asset]:
+    def create_or_return_account_to_currency_map(self) -> Dict[str, AssetWithOracles]:
         if self.account_to_currency is not None:
             return self.account_to_currency
 
@@ -310,13 +310,13 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase pro account with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase pro account result with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except KeyError as e:
@@ -338,7 +338,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             log.error(msg)
             return None, msg
 
-        assets_balance: DefaultDict[Asset, Balance] = defaultdict(Balance)
+        assets_balance: DefaultDict[AssetWithOracles, Balance] = defaultdict(Balance)
         for account in accounts:
             try:
                 amount = deserialize_asset_amount(account['balance'])
@@ -364,13 +364,13 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase pro balance result with unknown asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except UnsupportedAsset as e:
                 self.msg_aggregator.add_warning(
                     f'Found coinbase pro balance result with unsupported asset '
-                    f'{e.asset_name}. Ignoring it.',
+                    f'{e.identifier}. Ignoring it.',
                 )
                 continue
             except (DeserializationError, KeyError) as e:
@@ -468,7 +468,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                     except KeyError:
                         pass
 
-                if transaction_id and (asset == A_ETH or asset.asset_type == AssetType.ETHEREUM_TOKEN):  # noqa: E501
+                if transaction_id and (asset == A_ETH or asset.asset_type == AssetType.EVM_TOKEN):  # noqa: E501
                     transaction_id = '0x' + transaction_id
 
                 movements.append(AssetMovement(
@@ -485,7 +485,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                 ))
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unknown Coinbasepro asset {e.asset_name}. '
+                    f'Found unknown Coinbasepro asset {e.identifier}. '
                     f'Ignoring its deposit/withdrawal.',
                 )
                 continue
@@ -562,7 +562,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                 continue
             except UnknownAsset as e:
                 self.msg_aggregator.add_warning(
-                    f'Found unknown Coinbasepro asset {e.asset_name}. '
+                    f'Found unknown Coinbasepro asset {e.identifier}. '
                     f'Ignoring the trade.',
                 )
                 continue
@@ -595,7 +595,7 @@ class Coinbasepro(ExchangeInterface):  # lgtm[py/missing-call-to-init]
                     continue
                 except UnknownAsset as e:
                     self.msg_aggregator.add_warning(
-                        f'Found unknown Coinbasepro asset {e.asset_name}. '
+                        f'Found unknown Coinbasepro asset {e.identifier}. '
                         f'Ignoring the trade.',
                     )
                     continue

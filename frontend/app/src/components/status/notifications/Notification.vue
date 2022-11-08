@@ -31,94 +31,77 @@
               <v-icon>mdi-close</v-icon>
             </v-btn>
           </template>
-          <span>{{ $t('notification.dismiss_tooltip') }}</span>
+          <span>{{ t('notification.dismiss_tooltip') }}</span>
         </v-tooltip>
         <v-tooltip bottom open-delay="400">
           <template #activator="{ on }">
-            <v-btn :class="$style.copy" text icon v-on="on" @click="copy">
+            <v-btn :class="$style.copy" text icon v-on="on" @click="copy()">
               <v-icon>mdi-content-copy</v-icon>
             </v-btn>
           </template>
-          <span> {{ $t('notification.copy_tooltip') }}</span>
+          <span> {{ t('notification.copy_tooltip') }}</span>
         </v-tooltip>
       </div>
     </v-list-item>
   </v-card>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { NotificationData, Severity } from '@rotki/common/lib/messages';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
 import dayjs from 'dayjs';
+import { PropType } from 'vue';
 import { useTheme } from '@/composables/common';
 
-const Notification = defineComponent({
-  name: 'Notification',
-  props: {
-    popup: { required: false, type: Boolean, default: false },
-    notification: {
-      required: true,
-      type: Object as PropType<NotificationData>
-    }
-  },
-  emits: ['dismiss'],
-  setup(props, { emit }) {
-    const { notification } = toRefs(props);
-    const dismiss = (id: number) => {
-      emit('dismiss', id);
-    };
-
-    const icon = computed(() => {
-      switch (get(notification).severity) {
-        case Severity.ERROR:
-          return 'mdi-alert-circle';
-        case Severity.INFO:
-          return 'mdi-information-outline';
-        case Severity.WARNING:
-          return 'mdi-alert';
-      }
-      return '';
-    });
-
-    const color = computed(() => {
-      switch (get(notification).severity) {
-        case Severity.ERROR:
-          return 'error';
-        case Severity.INFO:
-          return 'info';
-        case Severity.WARNING:
-          return 'warning';
-      }
-      return '';
-    });
-
-    const date = computed(() => {
-      return dayjs(get(notification).date).format('LLL');
-    });
-
-    const copy = () => {
-      navigator.clipboard.writeText(get(notification).message);
-    };
-
-    const { fontStyle } = useTheme();
-
-    return {
-      icon,
-      color,
-      date,
-      fontStyle,
-      copy,
-      dismiss
-    };
+const props = defineProps({
+  popup: { required: false, type: Boolean, default: false },
+  notification: {
+    required: true,
+    type: Object as PropType<NotificationData>
   }
 });
-export default Notification;
+
+const emit = defineEmits(['dismiss']);
+
+const { t } = useI18n();
+
+const { notification } = toRefs(props);
+const dismiss = (id: number) => {
+  emit('dismiss', id);
+};
+
+const icon = computed(() => {
+  switch (get(notification).severity) {
+    case Severity.ERROR:
+      return 'mdi-alert-circle';
+    case Severity.INFO:
+      return 'mdi-information-outline';
+    case Severity.WARNING:
+      return 'mdi-alert';
+  }
+  return '';
+});
+
+const color = computed(() => {
+  switch (get(notification).severity) {
+    case Severity.ERROR:
+      return 'error';
+    case Severity.INFO:
+      return 'info';
+    case Severity.WARNING:
+      return 'warning';
+  }
+  return '';
+});
+
+const date = computed(() => {
+  return dayjs(get(notification).date).format('LLL');
+});
+
+const copy = async () => {
+  await navigator.clipboard.writeText(get(notification).message);
+};
+
+const { fontStyle } = useTheme();
 </script>
 
 <style module lang="scss">
@@ -138,6 +121,7 @@ export default Notification;
   min-height: 60px;
   max-height: 60px;
   overflow-y: auto;
+  white-space: pre-line;
 }
 
 .dismiss {

@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
-from rotkehlchen.assets.utils import symbol_to_asset_or_token
+from rotkehlchen.assets.converters import asset_from_blockfi
 from rotkehlchen.constants import ZERO
 from rotkehlchen.data_import.utils import BaseExchangeImporter
 from rotkehlchen.db.drivers.gevent import DBCursor
@@ -42,9 +42,9 @@ class BlockfiTradesImporter(BaseExchangeImporter):
             location='BlockFi',
         )
 
-        buy_asset = symbol_to_asset_or_token(csv_row['Buy Currency'])
+        buy_asset = asset_from_blockfi(csv_row['Buy Currency'])
         buy_amount = deserialize_asset_amount(csv_row['Buy Quantity'])
-        sold_asset = symbol_to_asset_or_token(csv_row['Sold Currency'])
+        sold_asset = asset_from_blockfi(csv_row['Sold Currency'])
         sold_amount = deserialize_asset_amount(csv_row['Sold Quantity'])
         if sold_amount == ZERO:
             log.debug(f'Ignoring BlockFi trade with sold_amount equal to zero. {csv_row}')
@@ -80,7 +80,7 @@ class BlockfiTradesImporter(BaseExchangeImporter):
                 except UnknownAsset as e:
                     self.db.msg_aggregator.add_warning(
                         f'During BlockFi CSV import found action with unknown '
-                        f'asset {e.asset_name}. Ignoring entry',
+                        f'asset {e.identifier}. Ignoring entry',
                     )
                     continue
                 except DeserializationError as e:

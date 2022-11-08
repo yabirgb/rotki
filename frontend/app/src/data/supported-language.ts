@@ -1,13 +1,24 @@
-import { ActionDataEntry } from '@/store/types';
 import { SupportedLanguage } from '@/types/frontend-settings';
 
-export const supportedLanguages: ActionDataEntry<SupportedLanguage>[] = [
+export const supportedLanguages = [
   {
     identifier: SupportedLanguage.EN,
-    label: 'English'
+    label: 'English',
+    countries: ['gb', 'us']
   },
   {
     identifier: SupportedLanguage.ES,
-    label: 'Spanish'
+    label: 'Spanish',
+    countries: ['es']
+  },
+  {
+    identifier: SupportedLanguage.GR,
+    label: 'Greek',
+    countries: ['gr']
+  },
+  {
+    identifier: SupportedLanguage.DE,
+    label: 'German',
+    countries: ['de']
   }
 ];

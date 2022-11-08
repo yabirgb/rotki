@@ -1,7 +1,4 @@
-import { ref, watch } from '@vue/composition-api';
-import { promiseTimeout, set, useTimeoutFn } from '@vueuse/core';
-import { BaseMessage } from '@/components/settings/utils';
-import i18n from '@/i18n';
+import { promiseTimeout } from '@vueuse/core';
 import { useSettingsStore } from '@/store/settings';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import {
@@ -10,6 +7,7 @@ import {
 } from '@/store/settings/session';
 import { ActionStatus } from '@/store/types';
 import { FrontendSettingsPayload } from '@/types/frontend-settings';
+import { BaseMessage } from '@/types/messages';
 import { SettingsUpdate } from '@/types/user';
 import { logger } from '@/utils/logging';
 
@@ -71,7 +69,7 @@ export const useSettings = () => {
       {
         [SettingLocation.GENERAL]: () => updateSettings(payload),
         [SettingLocation.FRONTEND]: () => updateFrontendSettings(payload),
-        [SettingLocation.SESSION]: () => updateSessionSettings(payload)
+        [SettingLocation.SESSION]: async () => updateSessionSettings(payload)
       };
 
     return await getActionStatus(updateMethods[settingLocation], message);
@@ -85,6 +83,7 @@ export const useSettings = () => {
 export const useClearableMessages = () => {
   const error = ref('');
   const success = ref('');
+  const { tc } = useI18n();
 
   const clear = () => {
     set(error, '');
@@ -102,17 +101,11 @@ export const useClearableMessages = () => {
   };
 
   const setSuccess = (message: string, useBase: boolean = true) => {
-    set(
-      success,
-      formatMessage(useBase ? i18n.tc('settings.saved') : '', message)
-    );
+    set(success, formatMessage(useBase ? tc('settings.saved') : '', message));
   };
 
   const setError = (message: string, useBase: boolean = true) => {
-    set(
-      error,
-      formatMessage(useBase ? i18n.tc('settings.not_saved') : '', message)
-    );
+    set(error, formatMessage(useBase ? tc('settings.not_saved') : '', message));
   };
 
   const wait = async () => await promiseTimeout(200);

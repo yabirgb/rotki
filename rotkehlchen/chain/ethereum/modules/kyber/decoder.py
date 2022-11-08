@@ -1,16 +1,19 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import CryptoAsset
 from rotkehlchen.chain.ethereum.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.ethereum.decoding.structures import ActionItem
 from rotkehlchen.chain.ethereum.decoding.utils import maybe_reshuffle_events
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceiptLog
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value, ethaddress_to_asset
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.fval import FVal
-from rotkehlchen.types import ChecksumEthAddress, EthereumTransaction
+from rotkehlchen.logging import RotkehlchenLogsAdapter
+from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import hex_or_bytes_to_address, hex_or_bytes_to_int
 
@@ -21,12 +24,15 @@ if TYPE_CHECKING:
     from rotkehlchen.chain.ethereum.manager import EthereumManager
 
 KYBER_TRADE_LEGACY = b'\xf7$\xb4\xdff\x17G6\x12\xb5=\x7f\x88\xec\xc6\xea\x980t\xb3\t`\xa0I\xfc\xd0e\x7f\xfe\x80\x80\x83'  # noqa: E501
-KYBER_LEGACY_CONTRACT = string_to_ethereum_address('0x9ae49C0d7F8F9EF4B864e004FE86Ac8294E20950')
-KYBER_LEGACY_CONTRACT_MIGRATED = string_to_ethereum_address('0x65bF64Ff5f51272f729BDcD7AcFB00677ced86Cd')  # noqa: E501
-KYBER_LEGACY_CONTRACT_UPGRADED = string_to_ethereum_address('0x9AAb3f75489902f3a48495025729a0AF77d4b11e')  # noqa: E501
+KYBER_LEGACY_CONTRACT = string_to_evm_address('0x9ae49C0d7F8F9EF4B864e004FE86Ac8294E20950')
+KYBER_LEGACY_CONTRACT_MIGRATED = string_to_evm_address('0x65bF64Ff5f51272f729BDcD7AcFB00677ced86Cd')  # noqa: E501
+KYBER_LEGACY_CONTRACT_UPGRADED = string_to_evm_address('0x9AAb3f75489902f3a48495025729a0AF77d4b11e')  # noqa: E501
+
+logger = logging.getLogger(__name__)
+log = RotkehlchenLogsAdapter(logger)
 
 
-def _legacy_contracts_basic_info(tx_log: EthereumTxReceiptLog) -> Tuple[ChecksumEthAddress, Optional[Asset], Optional[Asset]]:  # noqa: E501
+def _legacy_contracts_basic_info(tx_log: EthereumTxReceiptLog) -> Tuple[ChecksumEvmAddress, Optional[CryptoAsset], Optional[CryptoAsset]]:  # noqa: E501
     """
     Returns:
     - address of the sender
@@ -46,11 +52,12 @@ def _legacy_contracts_basic_info(tx_log: EthereumTxReceiptLog) -> Tuple[Checksum
 
 def _maybe_update_events_legacy_contrats(
     decoded_events: List[HistoryBaseEntry],
-    sender: ChecksumEthAddress,
-    source_token: Asset,
-    destination_token: Asset,
+    sender: ChecksumEvmAddress,
+    source_asset: CryptoAsset,
+    destination_asset: CryptoAsset,
     spent_amount: FVal,
     return_amount: FVal,
+    notify_user: Callable[[HistoryBaseEntry, str], None],
 ) -> None:
     """
     Use the information from a trade transaction to modify the HistoryEvents from receive/send to
@@ -58,96 +65,105 @@ def _maybe_update_events_legacy_contrats(
     """
     in_event = out_event = None
     for event in decoded_events:
-        if event.event_type == HistoryEventType.SPEND and event.location_label == sender and event.asset == source_token and event.balance.amount == spent_amount:  # noqa: E501
+        try:
+            crypto_asset = event.asset.resolve_to_crypto_asset()
+        except (UnknownAsset, WrongAssetType):
+            notify_user(event, CPT_KYBER)
+            continue
+        if event.event_type == HistoryEventType.SPEND and event.location_label == sender and event.asset == source_asset and event.balance.amount == spent_amount:  # noqa: E501
             event.event_type = HistoryEventType.TRADE
             event.event_subtype = HistoryEventSubType.SPEND
             event.counterparty = CPT_KYBER
-            event.notes = f'Swap {event.balance.amount} {event.asset.symbol} in kyber'
+            event.notes = f'Swap {event.balance.amount} {crypto_asset.symbol} in kyber'
             out_event = event
-        elif event.event_type == HistoryEventType.RECEIVE and event.location_label == sender and event.balance.amount == return_amount and destination_token == event.asset:  # noqa: E501
+        elif event.event_type == HistoryEventType.RECEIVE and event.location_label == sender and event.balance.amount == return_amount and destination_asset == event.asset:  # noqa: E501
             event.event_type = HistoryEventType.TRADE
             event.event_subtype = HistoryEventSubType.RECEIVE
             event.counterparty = CPT_KYBER
-            event.notes = f'Receive {event.balance.amount} {event.asset.symbol} from kyber swap'  # noqa: E501
+            event.notes = f'Receive {event.balance.amount} {crypto_asset.symbol} from kyber swap'  # noqa: E501
             in_event = event
 
         maybe_reshuffle_events(out_event=out_event, in_event=in_event)
 
 
-class KyberDecoder(DecoderInterface):  # lgtm[py/missing-call-to-init]
-    def __init__(  # pylint: disable=super-init-not-called
+class KyberDecoder(DecoderInterface):
+    def __init__(
             self,
             ethereum_manager: 'EthereumManager',
             base_tools: 'BaseDecoderTools',
             msg_aggregator: MessagesAggregator,
     ) -> None:
-        self.ethereum_manager = ethereum_manager
-        self.base = base_tools
-        self.msg_aggregator = msg_aggregator
+        super().__init__(
+            ethereum_manager=ethereum_manager,
+            base_tools=base_tools,
+            msg_aggregator=msg_aggregator,
+        )
 
     def _decode_legacy_trade(  # pylint: disable=no-self-use
         self,
         tx_log: EthereumTxReceiptLog,
-        transaction: EthereumTransaction,  # pylint: disable=unused-argument
+        transaction: EvmTransaction,  # pylint: disable=unused-argument
         decoded_events: List[HistoryBaseEntry],
         all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
         action_items: Optional[List[ActionItem]],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         if tx_log.topics[0] == KYBER_TRADE_LEGACY:
-            return None, None
+            return None, []
 
-        sender, source_token, destination_token = _legacy_contracts_basic_info(tx_log)
-        if source_token is None or destination_token is None:
-            return None, None
+        sender, source_asset, destination_asset = _legacy_contracts_basic_info(tx_log)
+        if source_asset is None or destination_asset is None:
+            return None, []
 
         spent_amount_raw = hex_or_bytes_to_int(tx_log.data[64:96])
         return_amount_raw = hex_or_bytes_to_int(tx_log.data[96:128])
-        spent_amount = asset_normalized_value(amount=spent_amount_raw, asset=source_token)
-        return_amount = asset_normalized_value(amount=return_amount_raw, asset=destination_token)
+        spent_amount = asset_normalized_value(amount=spent_amount_raw, asset=source_asset)
+        return_amount = asset_normalized_value(amount=return_amount_raw, asset=destination_asset)
         _maybe_update_events_legacy_contrats(
             decoded_events=decoded_events,
             sender=sender,
-            source_token=source_token,
-            destination_token=destination_token,
+            source_asset=source_asset,
+            destination_asset=destination_asset,
             spent_amount=spent_amount,
             return_amount=return_amount,
+            notify_user=self.notify_user,
         )
 
-        return None, None
+        return None, []
 
     def _decode_legacy_upgraded_trade(  # pylint: disable=no-self-use
         self,
         tx_log: EthereumTxReceiptLog,
-        transaction: EthereumTransaction,  # pylint: disable=unused-argument
+        transaction: EvmTransaction,  # pylint: disable=unused-argument
         decoded_events: List[HistoryBaseEntry],
         all_logs: List[EthereumTxReceiptLog],  # pylint: disable=unused-argument
         action_items: Optional[List[ActionItem]],  # pylint: disable=unused-argument
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         if tx_log.topics[0] != KYBER_TRADE_LEGACY:
-            return None, None
+            return None, []
 
-        sender, source_token, destination_token = _legacy_contracts_basic_info(tx_log)
-        if source_token is None or destination_token is None:
-            return None, None
+        sender, source_asset, destination_asset = _legacy_contracts_basic_info(tx_log)
+        if source_asset is None or destination_asset is None:
+            return None, []
 
         spent_amount_raw = hex_or_bytes_to_int(tx_log.data[96:128])
         return_amount_raw = hex_or_bytes_to_int(tx_log.data[128:160])
-        spent_amount = asset_normalized_value(amount=spent_amount_raw, asset=source_token)
-        return_amount = asset_normalized_value(amount=return_amount_raw, asset=destination_token)
+        spent_amount = asset_normalized_value(amount=spent_amount_raw, asset=source_asset)
+        return_amount = asset_normalized_value(amount=return_amount_raw, asset=destination_asset)
         _maybe_update_events_legacy_contrats(
             decoded_events=decoded_events,
             sender=sender,
-            source_token=source_token,
-            destination_token=destination_token,
+            source_asset=source_asset,
+            destination_asset=destination_asset,
             spent_amount=spent_amount,
             return_amount=return_amount,
+            notify_user=self.notify_user,
         )
 
-        return None, None
+        return None, []
 
     # -- DecoderInterface methods
 
-    def addresses_to_decoders(self) -> Dict[ChecksumEthAddress, Tuple[Any, ...]]:
+    def addresses_to_decoders(self) -> Dict[ChecksumEvmAddress, Tuple[Any, ...]]:
         return {
             KYBER_LEGACY_CONTRACT: (self._decode_legacy_trade,),
             KYBER_LEGACY_CONTRACT_MIGRATED: (self._decode_legacy_trade,),

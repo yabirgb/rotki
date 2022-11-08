@@ -38,20 +38,15 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
+<script setup lang="ts">
 import PremiumLock from '@/components/premium/PremiumLock.vue';
 
-export default defineComponent({
-  name: 'StatCard',
-  components: { PremiumLock },
-  props: {
-    title: { required: false, type: String, default: '' },
-    locked: { required: false, type: Boolean, default: false },
-    loading: { required: false, type: Boolean, default: false },
-    protocolIcon: { required: false, type: String, default: '' },
-    bordered: { required: false, type: Boolean, default: false }
-  }
+defineProps({
+  title: { required: false, type: String, default: '' },
+  locked: { required: false, type: Boolean, default: false },
+  loading: { required: false, type: Boolean, default: false },
+  protocolIcon: { required: false, type: String, default: '' },
+  bordered: { required: false, type: Boolean, default: false }
 });
 </script>
 
@@ -64,7 +59,7 @@ export default defineComponent({
     z-index: 1;
   }
 
-  ::v-deep {
+  :deep() {
     .v-card {
       &__text {
         font-size: 1em;

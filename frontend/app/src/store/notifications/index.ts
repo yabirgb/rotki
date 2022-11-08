@@ -4,20 +4,16 @@ import {
   NotificationPayload,
   Severity
 } from '@rotki/common/lib/messages';
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { defineStore } from 'pinia';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
+import { useSessionApi } from '@/services/session';
+import { SocketMessageType } from '@/types/websocket-messages';
+import { backoff } from '@/utils/backoff';
+import { uniqueStrings } from '@/utils/data';
+import { logger } from '@/utils/logging';
 import {
   handleEthereumTransactionStatus,
   handleLegacyMessage,
   handleSnapshotError
-} from '@/services/websocket/message-handling';
-import { SocketMessageType } from '@/services/websocket/messages';
-import { backoff } from '@/utils/backoff';
-import { uniqueStrings } from '@/utils/data';
-import { logger } from '@/utils/logging';
+} from '@/utils/message-handling';
 
 const notificationDefaults = (): NotificationPayload => ({
   title: '',
@@ -25,25 +21,6 @@ const notificationDefaults = (): NotificationPayload => ({
   severity: Severity.ERROR,
   display: false
 });
-
-const handleNotification = async (message: string, isWarning: boolean) => {
-  try {
-    const object = JSON.parse(message);
-    if (!object.type) {
-      await handleLegacyMessage(message, isWarning);
-    }
-
-    if (object.type === SocketMessageType.BALANCES_SNAPSHOT_ERROR) {
-      await handleSnapshotError(object);
-    } else if (object.type === SocketMessageType.ETHEREUM_TRANSACTION_STATUS) {
-      await handleEthereumTransactionStatus(object);
-    } else {
-      logger.error('unsupported message:', message);
-    }
-  } catch (e: any) {
-    await handleLegacyMessage(message, isWarning);
-  }
-};
 
 const createNotification = (
   id: number = 0,
@@ -66,6 +43,8 @@ export const emptyNotification = () => createNotification();
 
 export const useNotifications = defineStore('notifications', () => {
   const data = ref<NotificationData[]>([]);
+  const { tc } = useI18n();
+  const { consumeMessages } = useSessionApi();
   let isRunning = false;
 
   const count = computed(() => get(data).length);
@@ -133,18 +112,37 @@ export const useNotifications = defineStore('notifications', () => {
     setNotifications(notifications);
   };
 
+  const handleNotification = async (message: string, isWarning: boolean) => {
+    try {
+      const object = JSON.parse(message);
+      if (!object.type) {
+        notify(handleLegacyMessage(message, isWarning, tc));
+      }
+
+      if (object.type === SocketMessageType.BALANCES_SNAPSHOT_ERROR) {
+        notify(handleSnapshotError(object, tc));
+      } else if (
+        object.type === SocketMessageType.ETHEREUM_TRANSACTION_STATUS
+      ) {
+        await handleEthereumTransactionStatus(object);
+      } else {
+        logger.error('unsupported message:', message);
+      }
+    } catch (e: any) {
+      notify(handleLegacyMessage(message, isWarning, tc));
+    }
+  };
+
   const consume = async (): Promise<void> => {
     if (isRunning) {
       return;
     }
 
     isRunning = true;
-    const title = i18n
-      .t('actions.notifications.consume.message_title')
-      .toString();
+    const title = tc('actions.notifications.consume.message_title');
 
     try {
-      const messages = await backoff(3, () => api.consumeMessages(), 10000);
+      const messages = await backoff(3, () => consumeMessages(), 10000);
       const existing = get(data).map(({ message }) => message);
       messages.errors
         .filter(uniqueStrings)
@@ -166,10 +164,6 @@ export const useNotifications = defineStore('notifications', () => {
     }
   };
 
-  const reset = () => {
-    set(data, []);
-  };
-
   return {
     data,
     count,
@@ -178,7 +172,6 @@ export const useNotifications = defineStore('notifications', () => {
     notify,
     displayed,
     remove,
-    consume,
-    reset
+    consume
   };
 });

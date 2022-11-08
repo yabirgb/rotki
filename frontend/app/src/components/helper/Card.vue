@@ -1,17 +1,17 @@
 <template>
   <v-card
-    v-bind="$attrs"
+    v-bind="rootAttrs"
     :class="{
       [$style['no-radius-bottom']]: noRadiusBottom,
       [$style['full-height']]: fullHeight
     }"
-    v-on="$listeners"
+    v-on="rootListeners"
   >
-    <v-card-title v-if="$slots.title">
+    <v-card-title v-if="$slots.title" :class="{ 'pt-6': $slots.icon }">
       <slot v-if="$slots.icon" name="icon" />
       <card-title
         :class="{
-          'ps-1': $slots.icon,
+          'ps-3': $slots.icon,
           [$style.title]: $slots.icon
         }"
       >
@@ -20,10 +20,10 @@
       <v-spacer v-if="$slots.details" />
       <slot name="details" />
     </v-card-title>
-    <v-card-subtitle v-if="$slots.subtitle">
+    <v-card-subtitle v-if="$slots.subtitle" :class="{ 'ms-14': $slots.icon }">
       <div
         :class="{
-          'ps-13': $slots.icon,
+          'pt-2': $slots.icon,
           [$style.subtitle]: $slots.icon
         }"
       >
@@ -58,60 +58,43 @@
   </v-card>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  ref,
-  toRefs
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+<script setup lang="ts">
+import { useListeners } from 'vue';
 import CardTitle from '@/components/typography/CardTitle.vue';
 
-const Card = defineComponent({
-  name: 'Card',
-  components: { CardTitle },
-  props: {
-    outlinedBody: { required: false, type: Boolean, default: false },
-    contained: { required: false, type: Boolean, default: false },
-    noRadiusBottom: { required: false, type: Boolean, default: false },
-    fullHeight: { required: false, type: Boolean, default: false }
-  },
-  setup(props) {
-    const { contained } = toRefs(props);
-    const body = ref<HTMLDivElement | null>(null);
-    const actions = ref<HTMLDivElement | null>(null);
-    const top = ref(206);
-
-    onMounted(() => {
-      setTimeout(() => {
-        set(top, get(body)?.getBoundingClientRect().top ?? 0);
-      }, 1000);
-    });
-
-    const bodyStyle = computed(() => {
-      if (!get(contained)) {
-        return null;
-      }
-      const bodyTop = get(top);
-      const actionsHeight = get(actions)?.getBoundingClientRect().height ?? 0;
-      const diff = bodyTop + actionsHeight;
-
-      return {
-        height: `calc(100vh - ${diff}px)`
-      };
-    });
-
-    return {
-      actions,
-      body,
-      bodyStyle
-    };
-  }
+const props = defineProps({
+  outlinedBody: { required: false, type: Boolean, default: false },
+  contained: { required: false, type: Boolean, default: false },
+  noRadiusBottom: { required: false, type: Boolean, default: false },
+  fullHeight: { required: false, type: Boolean, default: false }
 });
 
-export default Card;
+const rootAttrs = useAttrs();
+const rootListeners = useListeners();
+
+const { contained } = toRefs(props);
+const body = ref<HTMLDivElement | null>(null);
+const actions = ref<HTMLDivElement | null>(null);
+const top = ref(206);
+
+onMounted(() => {
+  setTimeout(() => {
+    set(top, get(body)?.getBoundingClientRect().top ?? 0);
+  }, 1000);
+});
+
+const bodyStyle = computed(() => {
+  if (!get(contained)) {
+    return null;
+  }
+  const bodyTop = get(top);
+  const actionsHeight = get(actions)?.getBoundingClientRect().height ?? 0;
+  const diff = bodyTop + actionsHeight;
+
+  return {
+    height: `calc(100vh - ${diff}px)`
+  };
+});
 </script>
 
 <style module lang="scss">
@@ -121,6 +104,7 @@ export default Card;
 
 .subtitle {
   margin-top: -40px;
+  margin-left: 18px;
 }
 
 .options {

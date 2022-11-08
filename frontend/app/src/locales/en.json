@@ -4,7 +4,14 @@
     "history": "Aave History"
   },
   "about": {
-    "copy_tooltip": "Copy the application information",
+    "app_version": "App Version:",
+    "components": {
+      "build": "Build:",
+      "title": "Premium Components",
+      "version": "Premium Version:"
+    },
+    "copy_data_directory_tooltip": "Copy data directory",
+    "copy_information_tooltip": "Copy the application information",
     "data_directory": "Data Directory:",
     "electron": "Electron:",
     "frontend_version": "Frontend Version:",
@@ -27,9 +34,17 @@
       "loading": "Please wait while rotki queries the blockchain..."
     },
     "delete_tooltip": "Delete selected account(s)",
+    "detect_tokens": {
+      "tooltip": {
+        "last_detected": "Last detected: {time}",
+        "redetect": "Re-detect tokens",
+        "redetect_all": "Re-detect tokens for all addreses"
+      }
+    },
     "edit_tooltip": "Edit account",
     "headers": {
       "actions": "Actions",
+      "num_of_detected_tokens": "Num. of detected tokens",
       "ownership": "Ownership",
       "usd_value": "{symbol} value",
       "usd_value_eth": "Total {symbol} value of account's assets",
@@ -75,15 +90,6 @@
     }
   },
   "account_settings": {
-    "asset_settings": {
-      "ignore_tags_hint": "Click to see all assets and select one to ignore",
-      "labels": {
-        "ignore": "Select asset to ignore",
-        "unignore": "Select asset to remove from ignored assets",
-        "unignore_hint": "Click to see all ignored assets and select one for removal"
-      },
-      "title": "Asset Settings"
-    },
     "cost_basis_method_settings": {
       "labels": {
         "fifo": "First In First Out",
@@ -117,12 +123,8 @@
       "export_csv_formulas": "Error setting the option to include formulas in CSV export: {message}",
       "gas_costs": "Error setting Ethereum gas costs: {message}",
       "have_csv_summary": "Error setting the option to include summary in CSV export: {message}",
-      "ignored_failure": "{asset} could not be added to ignored assets: {message}",
-      "ignored_success": "{asset} added to ignored assets",
       "tax_free": "Tax free period {enabled}",
-      "tax_free_period": "Tax free period set to {period} days",
-      "unignored_failure": "{asset} could not be removed from ignored assets: {message}",
-      "unignored_success": "{asset} removed from ignored assets"
+      "tax_free_period": "Tax free period set to {period} days"
     },
     "validation": {
       "tax_free_days": "Please enter the number of days",
@@ -143,8 +145,6 @@
     "title": "Accounting Settings"
   },
   "accounting_settings": {
-    "fetch_from_cryptoscamdb": "Sync the list of ignored assets",
-    "ignored_assets": "Total number of ignored assets",
     "labels": {
       "account_for_assets_movements": "Take into account assets movements fees",
       "calculate_past_cost_basis": "Calculate past cost basis when creating the report",
@@ -220,16 +220,9 @@
         "error": {
           "description": "Error at querying blockchain balances: {error}",
           "title": "Querying blockchain balances"
-        }
-      },
-      "blockchain_account_add": {
-        "error": {
-          "description": "Failed to add the account: {error}",
-          "title": "Adding {blockchain} account {address}"
         },
         "task": {
-          "description": "{address} is being added",
-          "title": "Adding {blockchain} account"
+          "title": "Query {chain} balances"
         }
       },
       "blockchain_account_removal": {
@@ -245,6 +238,7 @@
       "blockchain_accounts_add": {
         "error": {
           "description": "Failed to add {addresses} new {blockchain} accounts: {error}",
+          "failed_list_description": "Failed to add {addresses} new {blockchain} accounts. Please check again if these account(s) are valid:\n {list}",
           "title": "Adding {blockchain} accounts"
         },
         "no_new": {
@@ -260,6 +254,12 @@
         "already_running": "Task is already running",
         "failed": "Failed while creating a cache entry from {fromAsset} to {toAsset} on source: {error}",
         "task": "Creating cache entry from {fromAsset} to {toAsset} on {source}"
+      },
+      "detect_tokens": {
+        "task": {
+          "description": "Fetch detected tokens for {address}",
+          "title": "Fetch detected tokens"
+        }
       },
       "exchange_balances": {
         "error": {
@@ -311,18 +311,6 @@
       "manual_delete": {
         "error": {
           "title": "Deleting Manual Balance"
-        }
-      },
-      "net_value": {
-        "error": {
-          "message": "Failed to fetch net value data: {message}",
-          "title": "Retrieving net value data"
-        }
-      },
-      "supported_assets": {
-        "error": {
-          "message": "Failed to retrieve supported assets: {message}",
-          "title": "Fetching supported assets"
         }
       },
       "xpub_removal": {
@@ -380,15 +368,6 @@
         },
         "task": {
           "title": "Querying Balancer events"
-        }
-      },
-      "balancer_trades": {
-        "error": {
-          "description": "Failed to query Balancer trades: {message}",
-          "title": "Querying Balancer trades"
-        },
-        "task": {
-          "title": "Querying Balancer trades"
         }
       },
       "balances": {
@@ -510,15 +489,6 @@
           "title": "Querying Sushiswap events"
         }
       },
-      "sushiswap_trades": {
-        "error": {
-          "description": "Failed to query Sushiswap trades: {message}",
-          "title": "Sushiswap trades"
-        },
-        "task": {
-          "title": "Querying Sushiswap trades"
-        }
-      },
       "uniswap": {
         "error": {
           "description": "Failed to retrieve Uniswap V{v} balances: {error}",
@@ -535,15 +505,6 @@
         },
         "task": {
           "title": "Querying Uniswap events"
-        }
-      },
-      "uniswap_trades": {
-        "error": {
-          "description": "Failed to retrieve Uniswap trades: {error}",
-          "title": "Querying Uniswap trades"
-        },
-        "task": {
-          "title": "Querying Uniswap trades"
         }
       },
       "yearn_vaults": {
@@ -634,8 +595,26 @@
       }
     },
     "manual_balances": {
-      "task": {
-        "title": "Retrieving manual balances"
+      "add": {
+        "error": {
+          "description": "Failed to add manual balance: {message}"
+        },
+        "task": {
+          "title": "Adding manual balances"
+        }
+      },
+      "edit": {
+        "error": {
+          "description": "Failed to edit manual balance: {message}"
+        },
+        "task": {
+          "title": "Editing manual balances"
+        }
+      },
+      "fetch": {
+        "task": {
+          "title": "Retrieving manual balances"
+        }
       }
     },
     "nft_balances": {
@@ -886,7 +865,8 @@
   },
   "amount_display": {
     "click_to_copy": "Click to copy",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "manual_tooltip": "Manually defined price"
   },
   "app": {
     "moto": "the opensource portfolio manager that protects your privacy",
@@ -910,19 +890,24 @@
     "identifier_copy": "Copy the identifier",
     "labels": {
       "asset_type": "Asset Type",
+      "chain": "Chain",
       "coingecko": "CoinGecko",
       "coingecko_hint": "The identifier of the asset on CoinGecko. If not set rotki will not be able to retrieve prices for the asset from CoinGecko.",
       "cryptocompare": "CryptoCompare",
       "cryptocompare_hint": "The identifier of the asset on CryptoCompare. If not given, the symbol is assumed as default. If that does not work and if not otherwise set rotki will not be able to retrieve prices for the asset from CryptoCompare",
       "decimals": "Decimals",
       "forked": "Forked",
+      "notes": "Notes",
       "started": "Started",
       "swapped_for": "Swapped for",
-      "symbol": "Symbol"
+      "symbol": "Symbol",
+      "token_kind": "Token Kind"
     },
+    "name_non_empty": "The name of the asset cannot be empty",
     "optional": "Optional Fields",
     "oracle_disable": "Disable/Enable the price fetching from the price oracle. If the oracle is not disabled, and there is no value specified, rotki will attempt to fetch a price using the asset symbol.",
     "replaced": "This icon will be replaced with {name} on save.",
+    "type_non_empty": "The type of the asset cannot be empty",
     "types": {
       "error": "We could not load the asset types: {message}"
     },
@@ -940,27 +925,50 @@
     "title": "Asset Locations"
   },
   "asset_management": {
+    "add_error": "Could not add asset: {message}",
     "add_title": "Add a new asset",
     "confirm_delete": {
       "message": "Are you sure you want to delete {asset} from the asset database?",
       "title": "Delete asset"
     },
+    "custom": {
+      "title": "Custom Assets"
+    },
     "delete_error": "Could not delete {address}: {message}",
+    "edit_error": "Could not edit asset: {message}",
     "edit_title": "Edit an asset",
+    "managed": {
+      "title": "Managed Assets"
+    },
     "merge_assets": "Merge Assets",
     "merge_assets_tooltip": "Merge two assets into one (can be used to migrate custom assets to officially supported ones)",
-    "title": "Asset Management"
+    "sync_ignored_assets_list": "Sync the list of ignored assets"
+  },
+  "asset_select": {
+    "no_results": "No assets matching your search"
   },
   "asset_table": {
     "copy_identifier": {
       "tooltip": "Copy the asset identifier to clipboard"
     },
+    "custom": {
+      "subtitle": "Add, edit, remove custom assets. Changes in the assets will be reflected across all your accounts"
+    },
     "delete_tooltip": "Delete the asset",
     "edit_tooltip": "Edit the asset",
+    "filter_by_ignored_status": "Filter by ignored status",
     "headers": {
       "started": "Started"
     },
-    "subtitle": "Add, edit, remove tokens and assets. Changes in the assets will be reflected across all your accounts",
+    "managed": {
+      "subtitle": "Add, edit, remove tokens and assets. Changes in the assets will be reflected across all your accounts"
+    },
+    "notes": "Notes",
+    "only_show_ignored": "Only show ignored assets",
+    "only_show_owned": "Only show owned assets",
+    "only_show_unignored": "Only show un-ignored assets",
+    "selected": "{count} asset(s) selected",
+    "show_all": "Show all",
     "underlying_tokens": "Underlying Tokens"
   },
   "asset_update": {
@@ -1002,12 +1010,21 @@
     },
     "title": "A supported asset update is available",
     "total_changes": "This update contains {changes} asset changes.",
+    "up_to_date": "Your asset database is up to date.",
     "up_to_version": "Only update up to version"
   },
   "assets": {
     "amount": "Total Owned",
     "backup": {
       "missing_directory": "Please select a directory"
+    },
+    "filter": {
+      "name": "Filter by the name of the asset",
+      "name_hint": "Search using the asset name",
+      "symbol": "Filter by the symbol of the asset",
+      "symbol_hint": "Search using the asset symbol",
+      "type": "Filter by the type of the custom asset",
+      "type_hint": "Search using the asset type"
     },
     "ignore": "Ignore Asset",
     "value": "Value"
@@ -1156,9 +1173,9 @@
     }
   },
   "closed_trades": {
-    "clear_selection": "Clear Selection",
     "confirmation": {
       "message": "Are you sure you want to delete the following trade: {action} of {amount} {pair}",
+      "multiple_message": "Are you sure you want to delete these {length} trades?",
       "title": "Delete Trade"
     },
     "delete_tooltip": "Delete trade",
@@ -1209,9 +1226,9 @@
   "common": {
     "account": "Account",
     "actions": {
-      "add": "Add",
       "back": "Back",
       "cancel": "Cancel",
+      "clear_selection": "Clear Selection",
       "close": "Close",
       "confirm": "Confirm",
       "continue": "Continue",
@@ -1231,10 +1248,10 @@
       "ok": "Ok",
       "pull": "Pull",
       "push": "Push",
-      "remove": "Remove",
       "save": "Save",
       "search": "Search",
       "skip": "Skip",
+      "terminate": "Terminate",
       "update": "Update",
       "upgrade": "Upgrade",
       "yes": "Yes"
@@ -1252,16 +1269,13 @@
     "event": "Event",
     "events": "Events",
     "ignored_in_accounting": "Ignored in Accounting",
-    "loading": {
-      "getting_loaded": "getting loaded...",
-      "please_wait": "Please wait while your"
-    },
     "location": "Location",
     "name": "Name",
     "no_premium": "No premium subscription detected. ",
     "price": "Price",
     "price_in_symbol": "Price in {symbol}",
     "protocol": "Protocol",
+    "select_address": "Select address(es)",
     "total": "Total",
     "tx": "Tx",
     "tx_hash": "Tx Hash",
@@ -1301,7 +1315,6 @@
     "default": "Connect to default",
     "message": "A connection to the rotki backend was not possible, would you like to retry again?",
     "retry": "Retry",
-    "terminate": "Terminate",
     "title": "Connection failure"
   },
   "connection_loading": {
@@ -1389,9 +1402,9 @@
     "liabilities": {
       "title": "Liabilities"
     },
-    "liquidity_provider": {
-      "short": "LP Tokens",
-      "title": "Liqudity Provider Tokens"
+    "liquidity_position": {
+      "refresh_tooltip": "Refresh LP Tokens",
+      "title": "LP Tokens"
     },
     "manual_balances": {
       "add": "Add a manual balance",
@@ -1646,7 +1659,6 @@
     }
   },
   "deposits_withdrawals": {
-    "clear_selection": "Clear Selection",
     "details": {
       "no_details": "No details found.",
       "title": "Details"
@@ -1662,12 +1674,6 @@
     "selected": "{count} item(s) selected",
     "title": "Deposits & Withdrawals"
   },
-  "dex_trade": {
-    "title": "DEX Trades"
-  },
-  "dex_trades": {
-    "loading": "@:common.loading.please_wait DEX Trades are @:common.loading.getting_loaded"
-  },
   "ens_names": {
     "task": {
       "title": "Querying ENS names"
@@ -1680,8 +1686,7 @@
     "backend_error": "There is a problem with the backend.",
     "copy_tooltip": "Copy the error text to the clipboard",
     "message": "Open an issue in Github and include rotki_electron.log and rotkehlchen.log. The backend's output follows below:",
-    "start_failure": "rotki failed to start",
-    "terminate": "Terminate"
+    "start_failure": "rotki failed to start"
   },
   "eth2_input": {
     "ownership": {
@@ -1751,7 +1756,8 @@
       "no_suggestions_available": "No Suggestions Available",
       "validation": {
         "address": "The ETH address field cannot be empty",
-        "name": "The name field cannot be empty"
+        "name": "The name field cannot be empty",
+        "valid": "Please input valid ETH address"
       }
     },
     "hint": {
@@ -2035,7 +2041,7 @@
     "date_input_format": {
       "hint": "Use this if date format in your file is: {format}",
       "placeholder": "Input custom date format",
-      "switch_label": "Use custom date format to parsing your file"
+      "switch_label": "Use custom date format to parse your file"
     },
     "drop_area": "Drop the file or",
     "import_complete": "Import was completed successfully.",
@@ -2145,14 +2151,16 @@
       "btc_derivation_gap": "BTC derivation gap limit",
       "date_display_format": "Date display format",
       "date_input_format": "Date input format",
-      "display_date_in_localtime": "Display date in localtime and not in UTC in CSV export, backend logs and other locations",
+      "display_date_in_localtime": "Display date in localtime and not in UTC for CSV export and backend logs.",
       "dot_rpc_endpoint": "Polkadot Node RPC Endpoint",
+      "force_saved_language_setting_in_machine_hint": "This setting is saved on your user settings. Activate this to keep this setting when you logged out.",
       "ksm_rpc_endpoint": "Kusama Node RPC Endpoint",
       "language": "Selected language",
       "treat_eth2_as_eth": "Should treat ETH2 (Staked ETH) as ETH",
       "version_update_check": "Set the version update check period while in app",
       "version_update_check_enabled": "Enabled"
     },
+    "language_contribution_tooltip": "This feature is experimental and may not work as expected for some languages. This is because all static sentences in the app have to be manually translated and that is a long and ongoing process. Therefore, we need your contribution to speed it up. Click here for more information.",
     "local_nodes": {
       "title": "Local Nodes"
     },
@@ -2253,7 +2261,7 @@
     "search_placeholder": "Search anything..."
   },
   "hash_link": {
-    "open_link": "Open in external block explorer: {url}"
+    "open_link": "Open in external block explorer"
   },
   "help_sidebar": {
     "about": {
@@ -2299,6 +2307,12 @@
     }
   },
   "ignore": {
+    "failed": {
+      "ignore_message": "{length} asset(s) could not be added to ignored assets: {message}",
+      "ignore_title": "Failed to ignore assets",
+      "unignore_message": "{length} asset(s) could not be removed from ignored assets: {message}",
+      "unignore_title": "Failed to unignore assets"
+    },
     "no_items": {
       "description": "All the selected entries are already ignored | All the selected entries are already included",
       "title": "No entries to ignore | No entries to unignore"
@@ -2357,6 +2371,11 @@
       "name": "Crypto.com",
       "note": "Important notes for importing data from {0}'s CSV exports.",
       "source_name": "crypto.com mobile app"
+    },
+    "custom": {
+      "import_events": "Import events",
+      "import_trades": "Import trades",
+      "name": "Custom Import"
     },
     "description": "You can manually import data from the services below by dragging the file on the respective area or clicking the select button.",
     "nexo": {
@@ -2519,9 +2538,9 @@
       "income": "Income",
       "loss": "Loss"
     },
-    "clear_selection": "Clear Selection",
     "delete": {
       "message": "Are you sure wou want to delete this ledger action?",
+      "multiple_message": "Are you sure you want to delete these {length} ledger actions?",
       "title": "Delete Ledger Action"
     },
     "delete_tooltip": "Delete the ledger action",
@@ -2676,6 +2695,7 @@
       "title": "User action required for DB sync"
     },
     "title": "Sign In",
+    "upgrading_db_warning": "A database upgrade might be in progress. Please wait and don't close the app until it's finished.",
     "validation": {
       "non_empty_password": "Please provide a password",
       "non_empty_username": "Please provide a user name",
@@ -2684,8 +2704,7 @@
   },
   "macos_unsupported": {
     "header": "Unsupported macOS Version",
-    "message": "rotki's minimum supported macOs version is High Sierra(10.13)",
-    "terminate": "Terminate"
+    "message": "rotki's minimum supported macOs version is High Sierra(10.13)"
   },
   "maker_dao_vault_loan": {
     "borrowing_history": "Borrowing History",
@@ -2695,17 +2714,17 @@
     "stability_fee": "Stability fee",
     "total_lost": "Total lost due to interest"
   },
-  "manage_custom_assets": {
+  "manage_user_assets": {
     "export": {
       "button": "Export",
-      "subtitle": "Create a zip archive of your custom assets",
+      "subtitle": "Create a zip archive of your assets",
       "success": "The archive was created successfully",
       "title": "Export"
     },
     "import": {
-      "subtitle": "Restore custom assets from a zip archive"
+      "subtitle": "Restore user assets from a zip archive"
     },
-    "title": "Export/Import Custom Assets",
+    "title": "Export/Import User Assets",
     "warning": "This functionality is designed to allow you to easily move your assets from one instance of rotki to another. It requires both instances to be of the same version. Using this functionality across different versions might result in errors."
   },
   "manual_balances": {
@@ -2725,7 +2744,11 @@
   "manual_balances_form": {
     "fields": {
       "balance_type": "Balance Type",
+      "create_a_custom_asset": "Create a custom asset",
+      "input_manual_price": "Add and use manual price",
       "label": "Label",
+      "price_asset": "Asset Price",
+      "select_available_asset": "Select available assets",
       "tags": "Tags"
     },
     "type": {
@@ -2778,6 +2801,10 @@
       "title": "Success"
     }
   },
+  "missing_exchange_rate": {
+    "message": "This session of rotki may have errors if you use this currency.",
+    "title": "Missing exchange rate"
+  },
   "module_activator": {
     "hint": "* Modules that are activated for all addresses will not appear here",
     "subtitle": "Select which modules should be queried for this account",
@@ -2787,9 +2814,6 @@
     "at_least_one": "You need to activate at least one of them.",
     "not_active": "{module} module(s) not active. Please visit the {link}. {text}",
     "settings_link": "Module settings"
-  },
-  "module_queried_address": {
-    "label": "Select address(es)"
   },
   "module_selector": {
     "label": "Select module(s)"
@@ -2830,7 +2854,6 @@
         },
         "protocols": "Protocols"
       },
-      "dex_trades": "DEX Trades",
       "liabilities": "Liabilities",
       "overview": "Overview"
     },
@@ -2844,8 +2867,16 @@
     "import_data": "Import Data",
     "locations": "Locations",
     "manage_assets": "Manage Assets",
+    "manage_assets_sub": {
+      "custom_assets": "Custom Assets",
+      "managed_assets": "Managed Assets"
+    },
     "manage_eth_address_book": "Manage ETH Address Book",
     "manage_prices": "Manage Prices",
+    "manage_prices_sub": {
+      "historic_prices": "Historic Prices",
+      "latest_prices": "Latest Prices"
+    },
     "nfts": "NFTs",
     "profit_loss_report": "Profit and Loss Report",
     "settings": "Settings",
@@ -2863,7 +2894,10 @@
       "percentage": "% of net Value",
       "price_in_asset": "Price in asset"
     },
-    "title": "NFT Balances"
+    "contract_address": "Contract address",
+    "refresh": "Refresh the NFT balances",
+    "title": "NFT Balances",
+    "token_id": "Token ID"
   },
   "nft_gallery": {
     "empty_filter": "No NFTs matching the filter parameters",
@@ -2885,6 +2919,7 @@
       "example": "start: 26/05/2022"
     },
     "hint_filter": "The combined filters will be applied at the same time",
+    "no_suggestions": "No suggestions found for {search}",
     "title": "Available filters",
     "unsupported_filter": "Unsupported filter:"
   },
@@ -2909,8 +2944,8 @@
   "non_fungible_balances": {
     "delete": {
       "error": {
-        "message": "Could not delete the current price for {asset}",
-        "title": "Deleting custom current price"
+        "message": "Could not delete the latest price for {asset}",
+        "title": "Deleting custom latest price"
       },
       "message": "Are you sure wou want to delete the custom price for {asset}?",
       "title": "Delete custom price"
@@ -2947,7 +2982,8 @@
     "search": "Search",
     "tabs": {
       "general": "General",
-      "in_this_page": "In \"{page}\" "
+      "in_this_page": "In \"{page}\" ",
+      "in_this_page_tooltip": "Notes specialize for  \"{page}\" section"
     },
     "tooltip": "Notes"
   },
@@ -2992,16 +3028,6 @@
     "no_messages": "No messages!",
     "title": "Notifications"
   },
-  "open_trades": {
-    "header": {
-      "action": "Action",
-      "fee": "Fee",
-      "fee_currency": "Fee Currency",
-      "pair": "Pair",
-      "rate": "Rate"
-    },
-    "title": "Open Orders"
-  },
   "oracle_cache_management": {
     "clear_error": "Clearing the cache for {fromAsset} to {toAsset} failed: {error}",
     "create_cache": "Cache Pair prices",
@@ -3029,6 +3055,7 @@
     "to_asset": "To Asset"
   },
   "oracles": {
+    "manual_latest": "Manual latest",
     "uniswap_v2": "Uniswap V2",
     "uniswap_v3": "Uniswap V3"
   },
@@ -3066,17 +3093,34 @@
     "title": "Claimable POAP Delivery NFTs"
   },
   "premium_components": {
+    "aave_borrowing": {
+      "total_earned": "Total Earned",
+      "total_earned_hint": "By debt repayment from liquidation",
+      "total_lost": "Total Lost",
+      "total_lost_hint": "By debt interest and liquidation"
+    },
+    "aave_earned": {
+      "total": "Aave: Total earned",
+      "total_hint": "From deposit interest"
+    },
     "common": {
+      "after": "After",
       "apr": "APR",
+      "asset": "Asset",
+      "before": "Before",
+      "collateral": "Collateral",
+      "debt": "Debt",
       "no_entries_found": "No {title} entries found",
       "pool": "Pool",
-      "profit_loss": "Profit/Loss"
+      "profit_loss": "Profit/Loss",
+      "select_address": "@:common.select_address",
+      "stake": "Stake"
     },
-    "dex_trades": {
-      "headers": {
-        "in": "In",
-        "out": "Out"
-      }
+    "compound": {
+      "debt_loss": "Debt Loss",
+      "interest_profit": "Interest Profit",
+      "liquidation_profit": "Liquidation profit",
+      "rewards": "Rewards"
     },
     "eth2_staking": {
       "based_of_performance": "Based of performance of",
@@ -3163,6 +3207,11 @@
       "unclaimed_rewards": "Unclaimed rewards"
     },
     "statistics": {
+      "asset_amount_and_value_over_time": "Asset amount and value over time",
+      "max_visible": "Maximum assets to show",
+      "max_visible_required": "You cannot show more than {availableAssets} assets",
+      "min_visible_required": "You have to show at least one asset.",
+      "netvalue_over_time": "Netvalue over time",
       "no_balance_snapshot_data_available": "No balance snapshot data available.",
       "range_selector": {
         "clear": "Clear",
@@ -3172,7 +3221,10 @@
         "no_entries_available_before": "There are no entries available before"
       },
       "refresh_the_net_value_data": "Refresh the net value data",
-      "show_graph_for_selected_range": "Show the graph for the selected range"
+      "show_graph_for_selected_range": "Show the graph for the selected range",
+      "value_distribution_by_asset": "Value distribution by asset",
+      "value_distribution_by_location": "Value distribution by location",
+      "visible_percentage": "% of visible items only:"
     },
     "theme_manager": {
       "dark_theme": "Dark Theme",
@@ -3184,6 +3236,12 @@
       "select_color": "Select Color",
       "subtitle": "Manage colors for the app theme",
       "title": "Theme"
+    },
+    "theme_switch": {
+      "auto": "Auto (Detect Device Theme)",
+      "dark": "Dark",
+      "light": "Light",
+      "tooltip": "Switch to {mode} mode"
     },
     "unsupported_app_version": {
       "minimum_supported": "The minimum supported version is v{v}",
@@ -3248,7 +3306,12 @@
     "date_non_empty": "The date of the price cannot be empty",
     "from_asset": "From Asset",
     "from_non_empty": "The from asset cannot be empty",
-    "hint": "1 {fromAsset} was worth {price} {toAsset}",
+    "historic": {
+      "hint": "1 {fromAsset} was worth {price} {toAsset}"
+    },
+    "latest": {
+      "hint": "1 {fromAsset} is worth {price} {toAsset}"
+    },
     "price_non_empty": "The price cannot be empty",
     "to_asset": "To Asset",
     "to_non_empty": "The to asset cannot be empty"
@@ -3272,7 +3335,14 @@
     },
     "filter_title": "Filter Prices",
     "from_asset": "From Asset",
-    "title": "Price Management",
+    "historic": {
+      "add_title": "Add a manual historical price",
+      "title": "Manage Historic Prices"
+    },
+    "latest": {
+      "add_title": "Add a manual latest price",
+      "title": "Manage Latest Prices"
+    },
     "to_asset": "To Asset"
   },
   "price_oracle_selection": {
@@ -3288,8 +3358,8 @@
     }
   },
   "price_oracle_settings": {
-    "current_prices": "Current Prices",
     "historic_prices": "Historic Prices",
+    "latest_prices": "Latest Prices",
     "subtitle": "Manage which price oracles are used, in which order.",
     "title": "Price oracle settings"
   },
@@ -3325,8 +3395,15 @@
       "from_asset": "From Asset",
       "to_asset": "To Asset"
     },
+    "historic": {
+      "title": "Manual Historic Prices"
+    },
+    "is_worth": "is worth",
+    "latest": {
+      "title": "Manual Latest Prices"
+    },
     "on": "on",
-    "title": "Manual Prices",
+    "refresh_tooltip": "Refresh prices",
     "was_worth": "was worth"
   },
   "privacy_notice": {
@@ -3392,8 +3469,11 @@
         },
         "hint": "Some events are skipped because we cannot find prices for the related assets. You can help rotki by manually inputting the prices. The entries that you don't fill will keep being skipped.",
         "if_sure": "If you are sure, ",
+        "input_price": "Input price",
         "no_filled_prices": "No prices are filled",
         "price_is_saved": "Price is saved",
+        "price_not_found": "Price not found",
+        "refresh_price_hint": "Rate limiting detected when rokti tried to fetch the historical price. You can either fetch the historical price again manually, or input manual price.",
         "regenerate_report_nudge": "click button below to re-generate the report.",
         "skipped_all_events_confirmation": "Are you sure you want to skip all events whose asset price is missing?",
         "title": "Missing Prices ({total})",
@@ -3440,7 +3520,7 @@
         "title": "Import PnL report debug data"
       },
       "import_message": {
-        "failure": "Import PnL report debug data failed",
+        "failure": "Import PnL report debug data failed: {message}",
         "success": "PnL report debug data imported successfully",
         "title": "Import PnL report debug data"
       },
@@ -3509,8 +3589,8 @@
   },
   "sorting_selector": {
     "desc": {
-      "sort_asc_tooltip": "Sort ascending",
-      "sort_desc_tooltip": "Sort descending"
+      "sort_asc_tooltip": "Change sort to ascending",
+      "sort_desc_tooltip": "Change sort to descending"
     }
   },
   "staking": {
@@ -3847,6 +3927,7 @@
       "weight": "Weight"
     },
     "tokens": {
+      "token_kind": "Token Kind",
       "weight": "Weight",
       "weight_percentage": "{weight} %"
     },
@@ -3861,7 +3942,6 @@
     "assets_non_premium": "Upgrade to {0} to see assets information",
     "loading": "Please wait while your liquidity pools are getting loaded...",
     "loading_non_premium": "Loading the liquidity pool balances might take a while... Consider upgrading to {0} for faster load times.",
-    "pool_header": "UNI_v{version} {asset1}/{asset2}",
     "premium": "premium",
     "price_range": "Price Range",
     "title": "Uniswap v{v} Pools"
@@ -3944,6 +4024,10 @@
     "types": {
       "make_collateralization_ratio": "Collateralization Ratio Watcher (Maker)"
     }
+  },
+  "win_unsupported": {
+    "header": "Unsupported Windows Version",
+    "message": "rotki's minimum supported Windows version is Windows 8(6.2)"
   },
   "yearn_asset_table": {
     "headers": {

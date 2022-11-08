@@ -1,7 +1,7 @@
 <template>
   <menu-tooltip-button
     v-if="pinned"
-    :tooltip="$t('pinned.tooltip')"
+    :tooltip="tc('pinned.tooltip')"
     class-name="secondary--text text--lighten-4"
     @click="toggleVisibility"
   >
@@ -13,35 +13,23 @@
   </menu-tooltip-button>
 </template>
 
-<script lang="ts">
-import { defineComponent, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
 import MenuTooltipButton from '@/components/helper/MenuTooltipButton.vue';
-import { useSessionStore } from '@/store/session';
+import { useAreaVisibilityStore } from '@/store/session/visibility';
 
-export default defineComponent({
-  name: 'PinnedIndicator',
-  components: { MenuTooltipButton },
-  props: {
-    visible: { required: true, type: Boolean }
-  },
-  emits: ['visible:update'],
-  setup(props, { emit }) {
-    const { visible } = toRefs(props);
-
-    const { pinned } = storeToRefs(useSessionStore());
-
-    const toggleVisibility = () => {
-      emit('visible:update', !get(visible));
-    };
-
-    return {
-      pinned,
-      toggleVisibility
-    };
-  }
+const props = defineProps({
+  visible: { required: true, type: Boolean }
 });
+
+const emit = defineEmits<{ (e: 'visible:update', visible: boolean): void }>();
+
+const { visible } = toRefs(props);
+const { pinned } = storeToRefs(useAreaVisibilityStore());
+const { tc } = useI18n();
+
+const toggleVisibility = () => {
+  emit('visible:update', !get(visible));
+};
 </script>
 
 <style scoped lang="scss">

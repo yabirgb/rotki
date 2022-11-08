@@ -20,6 +20,12 @@ body {
   }
 }
 
+.v-btn {
+  &--fixed {
+    z-index: 4;
+  }
+}
+
 .theme {
   &--light {
     /* stylelint-disable */
@@ -69,4 +75,14 @@ aside {
       }
     }
   }
+}
+
+.table-inside-dialog {
+  scroll-behavior: smooth;
+  max-height: calc(100vh - 340px);
+  overflow: auto;
+}
+
+.fill-width {
+  width: 100%;
 }

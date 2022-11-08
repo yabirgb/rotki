@@ -54,108 +54,87 @@
         color="primary"
         :disabled="(editMode && currentValue === '') || loading"
         @click="saveHandler()"
-        v-text="
-          editMode ? $t('common.actions.save') : $t('common.actions.edit')
-        "
-      />
+      >
+        {{ editMode ? t('common.actions.save') : t('common.actions.edit') }}
+      </v-btn>
       <v-btn
         v-if="editMode && cancellable"
         class="service-key__buttons__cancel"
         depressed
         color="primary"
         @click="cancel()"
-        v-text="$t('common.actions.cancel')"
-      />
+      >
+        {{ t('common.actions.cancel') }}
+      </v-btn>
     </v-card-actions>
   </v-card>
 </template>
 
-<script lang="ts">
-import {
-  defineComponent,
-  onMounted,
-  ref,
-  toRefs,
-  watch
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+<script setup lang="ts">
 import RevealableInput from '@/components/inputs/RevealableInput.vue';
 import { trimOnPaste } from '@/utils/event';
 
-export default defineComponent({
-  name: 'ServiceKey',
-  components: { RevealableInput },
-  props: {
-    value: { required: true, type: String },
-    title: { required: true, type: String },
-    description: { required: false, type: String, default: '' },
-    loading: { required: false, type: Boolean, default: false },
-    tooltip: { required: false, type: String, default: '' },
-    hint: { required: false, type: String, default: '' },
-    label: { required: false, type: String, default: '' }
-  },
-  emits: ['input', 'delete-key', 'save'],
-  setup(props, { emit }) {
-    const { value } = toRefs(props);
+const props = defineProps({
+  value: { required: true, type: String },
+  title: { required: true, type: String },
+  description: { required: false, type: String, default: '' },
+  loading: { required: false, type: Boolean, default: false },
+  tooltip: { required: false, type: String, default: '' },
+  hint: { required: false, type: String, default: '' },
+  label: { required: false, type: String, default: '' }
+});
 
-    const deleteKey = () => emit('delete-key');
-    const save = (value: string) => emit('save', value);
+const emit = defineEmits(['input', 'delete-key', 'save']);
 
-    const currentValue = ref<string>('');
-    const editMode = ref<boolean>(false);
-    const cancellable = ref<boolean>(false);
+const { t } = useI18n();
+const { value } = toRefs(props);
 
-    const onPaste = (event: ClipboardEvent) => {
-      const paste = trimOnPaste(event);
-      if (paste) {
-        set(currentValue, paste);
-      }
-    };
+const deleteKey = () => emit('delete-key');
+const save = (value: string) => emit('save', value);
 
-    const updateStatus = () => {
-      if (get(value) === '') {
-        set(cancellable, false);
-        set(editMode, true);
-      } else {
-        set(cancellable, true);
-        set(editMode, false);
-      }
-      set(currentValue, get(value));
-    };
+const currentValue = ref<string | null>(null);
+const editMode = ref<boolean>(false);
+const cancellable = ref<boolean>(false);
 
-    const saveHandler = () => {
-      if (get(editMode)) {
-        save(get(currentValue));
-        set(editMode, false);
-        set(cancellable, true);
-      } else {
-        set(editMode, true);
-      }
-    };
-
-    const cancel = () => {
-      set(editMode, false);
-      set(currentValue, get(value));
-    };
-
-    onMounted(() => {
-      updateStatus();
-    });
-
-    watch(value, () => {
-      updateStatus();
-    });
-
-    return {
-      editMode,
-      currentValue,
-      onPaste,
-      deleteKey,
-      saveHandler,
-      cancellable,
-      cancel
-    };
+const onPaste = (event: ClipboardEvent) => {
+  const paste = trimOnPaste(event);
+  if (paste) {
+    set(currentValue, paste);
   }
+};
+
+const updateStatus = () => {
+  if (!get(value)) {
+    set(cancellable, false);
+    set(editMode, true);
+  } else {
+    set(cancellable, true);
+    set(editMode, false);
+  }
+  set(currentValue, get(value));
+};
+
+const saveHandler = () => {
+  if (get(editMode)) {
+    save(get(currentValue)!);
+    set(editMode, false);
+    set(cancellable, true);
+  } else {
+    set(editMode, true);
+  }
+};
+
+const cancel = () => {
+  set(editMode, false);
+  set(currentValue, get(value));
+};
+
+onMounted(() => {
+  updateStatus();
+});
+
+watch(value, () => {
+  updateStatus();
 });
 </script>
 
@@ -170,7 +149,7 @@ export default defineComponent({
       margin-top: 10px;
     }
 
-    ::v-deep {
+    :deep() {
       .v-input {
         &--is-disabled {
           .v-icon,

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from rotkehlchen.accounting.export.csv import CSVWriteError, _dict_to_csv_file
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import AssetWithOracles
 from rotkehlchen.constants.misc import NFT_DIRECTIVE
 from rotkehlchen.db.dbhandler import DBHandler
 from rotkehlchen.db.utils import DBAssetBalance, LocationData
@@ -88,7 +88,7 @@ class DBSnapshot:
             self,
             timed_balances: List[DBAssetBalance],
             timed_location_data: List[LocationData],
-            main_currency: Asset,
+            main_currency: AssetWithOracles,
             main_currency_price: Price,
     ) -> Tuple[bool, str]:
         """Creates a zip file of csv files containing timed_balances and timed_location_data."""
@@ -170,15 +170,15 @@ class DBSnapshot:
             timed_balances: List[DBAssetBalance],
             timed_location_data: List[LocationData],
             directory: Path,
-            main_currency: Asset,
+            main_currency: AssetWithOracles,
             main_currency_price: Price,
     ) -> Tuple[bool, str]:
         """Serializes the balances and location_data snapshots into a dictionary.
         It then writes the serialized data to a csv file.
         """
-        serialized_timed_balances = [balance.serialize(export_data=(main_currency, main_currency_price)) for balance in timed_balances]  # noqa: E501
+        serialized_timed_balances = [balance.serialize(currency_and_price=(main_currency, main_currency_price)) for balance in timed_balances]  # noqa: E501
         serialized_timed_balances_for_import = [balance.serialize() for balance in timed_balances]
-        serialized_timed_location_data = [loc_data.serialize(export_data=(main_currency, main_currency_price)) for loc_data in timed_location_data]  # noqa: E501
+        serialized_timed_location_data = [loc_data.serialize(currency_and_price=(main_currency, main_currency_price)) for loc_data in timed_location_data]  # noqa: E501
         serialized_timed_location_data_for_import = [loc_data.serialize() for loc_data in timed_location_data]  # noqa: E501
 
         try:

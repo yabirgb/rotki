@@ -1,12 +1,15 @@
-LINT_PATHS = rotkehlchen/ tools/ setup.py conftest.py package.py
-ISORT_PARAMS = --ignore-whitespace --settings-path ./ --skip-glob '*/node_modules/*' $(LINT_PATHS)
+COMMON_LINT_PATHS = rotkehlchen/ setup.py package.py
+TOOLS_LINT_PATH = tools/
+ALL_LINT_PATHS = $(COMMON_LINT_PATHS) $(TOOLS_LINT_PATH)
+ISORT_PARAMS = --ignore-whitespace --skip-glob '*/node_modules/*' $(ALL_LINT_PATHS)
 ISORT_CHECK_PARAMS = --diff --check-only
 
 lint:
 	isort $(ISORT_PARAMS) $(ISORT_CHECK_PARAMS)
-	flake8 rotkehlchen/ tools/data_faker package.py
-	mypy rotkehlchen/ tools/data_faker package.py --install-types --non-interactive
-	pylint --rcfile .pylint.rc rotkehlchen/ tools/data_faker package.py
+	flake8 $(ALL_LINT_PATHS)
+	ruff $(ALL_LINT_PATHS)
+	mypy $(COMMON_LINT_PATHS) --install-types --non-interactive
+	pylint --rcfile .pylint.rc $(ALL_LINT_PATHS)
 
 
 format:
@@ -21,6 +24,8 @@ docker-image:
 
 test-assets:
 	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_binance.py::test_binance_assets_are_known
+	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_binance_us.py::test_binance_assets_are_known
+	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_bitpanda.py::test_bitpanda_exchange_assets_are_known
 	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_bitfinex.py::test_assets_are_known
 	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_bittrex.py::test_bittrex_assets_are_known
 	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_bitstamp.py::test_bitstamp_exchange_assets_are_known

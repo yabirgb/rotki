@@ -9,8 +9,8 @@
           v-if="mode === 'icon' || mode === 'both'"
           contain
           v-bind="attrs"
-          max-width="24px"
-          max-height="24"
+          max-width="32px"
+          max-height="32px"
           :class="{
             'mr-2': mode !== 'icon',
             [$style.icon]: true
@@ -32,54 +32,44 @@
     </v-tooltip>
   </div>
 </template>
-<script lang="ts">
+<script setup lang="ts">
 import { DefiProtocol } from '@rotki/common/lib/blockchain';
-import { computed, defineComponent, PropType } from '@vue/composition-api';
+import { PropType } from 'vue';
 import { toSentenceCase } from '@/utils/text';
 
-export default defineComponent({
-  name: 'DefiProtocolIcon',
-  props: {
-    protocol: {
-      required: true,
-      type: String as PropType<DefiProtocol>
-    },
-    mode: {
-      required: false,
-      default: 'both',
-      type: String as PropType<'icon' | 'label' | 'both'>
-    }
+defineProps({
+  protocol: {
+    required: true,
+    type: String as PropType<DefiProtocol>
   },
-  setup() {
-    const icon = computed(({ protocol }) => {
-      if (protocol.endsWith('_v2')) {
-        return protocol.replace('_v2', '');
-      }
-      if (protocol.startsWith('makerdao')) {
-        return 'makerdao';
-      }
-      return protocol;
-    });
-
-    const name = computed(({ protocol }) => {
-      if (protocol === DefiProtocol.MAKERDAO_DSR) {
-        return 'MakerDAO DSR';
-      } else if (protocol === DefiProtocol.MAKERDAO_VAULTS) {
-        return 'MakerDAO Vaults';
-      } else if (protocol === DefiProtocol.YEARN_VAULTS) {
-        return 'yearn.finance Vaults';
-      } else if (protocol === DefiProtocol.YEARN_VAULTS_V2) {
-        return 'yearn.finance Vaults v2';
-      }
-      return protocol;
-    });
-
-    return {
-      icon,
-      name,
-      toSentenceCase
-    };
+  mode: {
+    required: false,
+    default: 'both',
+    type: String as PropType<'icon' | 'label' | 'both'>
   }
+});
+
+const icon = computed(({ protocol }) => {
+  if (protocol.endsWith('_v2')) {
+    return protocol.replace('_v2', '');
+  }
+  if (protocol.startsWith('makerdao')) {
+    return 'makerdao';
+  }
+  return protocol;
+});
+
+const name = computed(({ protocol }) => {
+  if (protocol === DefiProtocol.MAKERDAO_DSR) {
+    return 'MakerDAO DSR';
+  } else if (protocol === DefiProtocol.MAKERDAO_VAULTS) {
+    return 'MakerDAO Vaults';
+  } else if (protocol === DefiProtocol.YEARN_VAULTS) {
+    return 'yearn.finance Vaults';
+  } else if (protocol === DefiProtocol.YEARN_VAULTS_V2) {
+    return 'yearn.finance Vaults v2';
+  }
+  return protocol;
 });
 </script>
 

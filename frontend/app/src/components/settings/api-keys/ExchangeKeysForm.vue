@@ -6,7 +6,7 @@
           outlined
           :value="exchange.location"
           :items="exchanges"
-          :label="$t('exchange_keys_form.exchange')"
+          :label="tc('exchange_keys_form.exchange')"
           data-cy="exchange"
           :disabled="edit"
           auto-select-first
@@ -37,7 +37,7 @@
           :value="exchange.newName"
           :rules="nameRules"
           data-cy="name"
-          :label="$t('common.name')"
+          :label="tc('common.name')"
           @input="onUpdateExchange({ ...exchange, newName: $event })"
         />
         <v-text-field
@@ -46,7 +46,7 @@
           :value="exchange.name"
           :rules="nameRules"
           data-cy="name"
-          :label="$t('common.name')"
+          :label="tc('common.name')"
           @input="onUpdateExchange({ ...exchange, name: $event })"
         />
       </v-col>
@@ -58,12 +58,12 @@
       :value="exchange.krakenAccountType"
       data-cy="account-type"
       :items="krakenAccountTypes"
-      :label="$t('exchange_settings.inputs.kraken_account')"
+      :label="tc('exchange_settings.inputs.kraken_account')"
       @change="onUpdateExchange({ ...exchange, krakenAccountType: $event })"
     />
 
     <div class="text-subtitle-2 mt-2 pb-4">
-      {{ $t('exchange_settings.keys') }}
+      {{ tc('exchange_settings.keys') }}
       <v-tooltip top open-delay="400">
         <template #activator="{ on, attrs }">
           <v-btn icon v-bind="attrs" class="ml-4" v-on="on" @click="toggleEdit">
@@ -74,8 +74,8 @@
         <span>
           {{
             !editKeys
-              ? $t('exchange_keys_form.edit.activate_tooltip')
-              : $t('exchange_keys_form.edit.deactivate_tooltip')
+              ? tc('exchange_keys_form.edit.activate_tooltip')
+              : tc('exchange_keys_form.edit.deactivate_tooltip')
           }}
         </span>
       </v-tooltip>
@@ -88,7 +88,7 @@
         :value="exchange.apiKey"
         :rules="!edit || editKeys ? apiKeyRules : []"
         data-cy="api-key"
-        :label="$t('exchange_settings.inputs.api_key')"
+        :label="tc('exchange_settings.inputs.api_key')"
         @input="onUpdateExchange({ ...exchange, apiKey: $event })"
         @paste="onApiKeyPaste"
       />
@@ -101,7 +101,7 @@
         :rules="!edit || editKeys ? apiSecretRules : []"
         data-cy="api-secret"
         prepend-icon="mdi-lock"
-        :label="$t('exchange_settings.inputs.api_secret')"
+        :label="tc('exchange_settings.inputs.api_secret')"
         @input="onUpdateExchange({ ...exchange, apiSecret: $event })"
         @paste="onApiSecretPaste"
       />
@@ -114,7 +114,7 @@
         :rules="!edit || editKeys ? passphraseRules : []"
         prepend-icon="mdi-key-plus"
         data-cy="passphrase"
-        :label="$t('exchange_settings.inputs.passphrase')"
+        :label="tc('exchange_settings.inputs.passphrase')"
         @input="onUpdateExchange({ ...exchange, passphrase: $event })"
       />
     </div>
@@ -125,7 +125,7 @@
         outlined
         :value="exchange.ftxSubaccount"
         data-cy="ftxSubaccount"
-        :label="$t('exchange_settings.inputs.ftx_subaccount')"
+        :label="tc('exchange_settings.inputs.ftx_subaccount')"
         @input="onUpdateExchange({ ...exchange, ftxSubaccount: $event })"
       />
       <v-text-field
@@ -133,7 +133,7 @@
         outlined
         :value="exchange.ftxSubaccount"
         data-cy="ftxSubaccount"
-        :label="$t('exchange_settings.inputs.ftx_subaccount')"
+        :label="tc('exchange_settings.inputs.ftx_subaccount')"
         @input="onUpdateExchange({ ...exchange, ftxSubaccount: $event })"
       />
     </div>
@@ -148,174 +148,143 @@
   </v-form>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  onMounted,
-  PropType,
-  ref,
-  toRefs
-} from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import ExchangeDisplay from '@/components/display/ExchangeDisplay.vue';
 import BinancePairsSelector from '@/components/helper/BinancePairsSelector.vue';
-import { tradeLocations } from '@/components/history/consts';
 import RevealableInput from '@/components/inputs/RevealableInput.vue';
-import i18n from '@/i18n';
 import { useExchangeBalancesStore } from '@/store/balances/exchanges';
-import { ExchangePayload } from '@/store/balances/types';
 import {
+  ExchangePayload,
   KrakenAccountType,
   SUPPORTED_EXCHANGES,
   SupportedExchange
 } from '@/types/exchanges';
+import { useTradeLocations } from '@/types/trades';
 import { trimOnPaste } from '@/utils/event';
 
-export default defineComponent({
-  name: 'ExchangeKeysForm',
-  components: { RevealableInput, ExchangeDisplay, BinancePairsSelector },
-  props: {
-    value: { required: true, type: Boolean },
-    exchange: { required: true, type: Object as PropType<ExchangePayload> },
-    edit: { required: true, type: Boolean }
-  },
-  emits: ['input', 'update:exchange'],
-  setup(props, { emit }) {
-    const { edit, exchange } = toRefs(props);
-    const editKeys = ref(false);
-    const form = ref();
-
-    const { getExchangeNonce } = useExchangeBalancesStore();
-
-    const requiresPassphrase = computed(() => {
-      const { location } = get(exchange);
-      return (
-        location === SupportedExchange.COINBASEPRO ||
-        location === SupportedExchange.KUCOIN
-      );
-    });
-
-    const isBinance = computed(() => {
-      const { location } = get(exchange);
-      return (
-        location === SupportedExchange.BINANCE ||
-        location === SupportedExchange.BINANCEUS
-      );
-    });
-
-    const nameRules = computed(() => [
-      (v: string) =>
-        !!v || i18n.t('exchange_keys_form.name.non_empty').toString()
-    ]);
-
-    const apiKeyRules = computed(() => [
-      (v: string) =>
-        !!v || i18n.t('exchange_keys_form.api_key.non_empty').toString()
-    ]);
-
-    const apiSecretRules = computed(() => [
-      (v: string) =>
-        !!v || i18n.t('exchange_keys_form.api_secret.non_empty').toString()
-    ]);
-
-    const passphraseRules = computed(() => [
-      (v: string) =>
-        !!v || i18n.t('exchange_keys_form.passphrase.non_empty').toString()
-    ]);
-
-    const suggestedName = function (exchange: SupportedExchange): string {
-      const location = tradeLocations.find(
-        ({ identifier }) => identifier === exchange
-      );
-      const nonce = get(getExchangeNonce(exchange));
-      return location ? `${location.name} ${nonce}` : '';
-    };
-
-    const toggleEdit = () => {
-      set(editKeys, !get(editKeys));
-
-      if (!get(editKeys)) {
-        onUpdateExchange({
-          ...get(exchange),
-          apiSecret: null,
-          apiKey: null
-        });
-      }
-    };
-
-    const onExchangeChange = (exchange: SupportedExchange) => {
-      get(form).reset();
-      onUpdateExchange({
-        name: suggestedName(exchange),
-        newName: null,
-        location: exchange,
-        apiKey: null,
-        apiSecret: exchange === SupportedExchange.BITPANDA ? '' : null,
-        passphrase: null,
-        krakenAccountType:
-          exchange === SupportedExchange.KRAKEN ? 'starter' : null,
-        binanceMarkets: null,
-        ftxSubaccount: null
-      });
-    };
-
-    const onApiKeyPaste = function (event: ClipboardEvent) {
-      const paste = trimOnPaste(event);
-      if (paste) {
-        onUpdateExchange({ ...get(exchange), apiKey: paste });
-      }
-    };
-
-    const onApiSecretPaste = function (event: ClipboardEvent) {
-      const paste = trimOnPaste(event);
-      if (paste) {
-        onUpdateExchange({ ...get(exchange), apiSecret: paste });
-      }
-    };
-
-    const input = (value: boolean) => {
-      emit('input', value);
-    };
-
-    const onUpdateExchange = (payload: ExchangePayload) => {
-      emit('update:exchange', payload);
-    };
-
-    onMounted(() => {
-      if (get(edit)) {
-        return;
-      }
-      onUpdateExchange({
-        ...get(exchange),
-        name: suggestedName(get(exchange).location)
-      });
-    });
-
-    return {
-      krakenAccountTypes: KrakenAccountType.options,
-      exchanges: SUPPORTED_EXCHANGES,
-      editKeys,
-      form,
-      requiresPassphrase,
-      isBinance,
-      nameRules,
-      apiKeyRules,
-      apiSecretRules,
-      passphraseRules,
-      input,
-      onUpdateExchange,
-      onExchangeChange,
-      toggleEdit,
-      onApiKeyPaste,
-      onApiSecretPaste
-    };
-  }
+const props = defineProps({
+  value: { required: true, type: Boolean },
+  exchange: { required: true, type: Object as PropType<ExchangePayload> },
+  edit: { required: true, type: Boolean }
 });
+
+const emit = defineEmits(['input', 'update:exchange']);
+
+const { edit, exchange } = toRefs(props);
+const editKeys = ref(false);
+const form = ref();
+
+const { getExchangeNonce } = useExchangeBalancesStore();
+const { tc } = useI18n();
+
+const requiresPassphrase = computed(() => {
+  const { location } = get(exchange);
+  return (
+    location === SupportedExchange.COINBASEPRO ||
+    location === SupportedExchange.KUCOIN
+  );
+});
+
+const isBinance = computed(() => {
+  const { location } = get(exchange);
+  return (
+    location === SupportedExchange.BINANCE ||
+    location === SupportedExchange.BINANCEUS
+  );
+});
+
+const nameRules = computed(() => [
+  (v: string) => !!v || tc('exchange_keys_form.name.non_empty')
+]);
+
+const apiKeyRules = computed(() => [
+  (v: string) => !!v || tc('exchange_keys_form.api_key.non_empty')
+]);
+
+const apiSecretRules = computed(() => [
+  (v: string) => !!v || tc('exchange_keys_form.api_secret.non_empty')
+]);
+
+const passphraseRules = computed(() => [
+  (v: string) => !!v || tc('exchange_keys_form.passphrase.non_empty')
+]);
+
+const { tradeLocations } = useTradeLocations();
+
+const suggestedName = function (exchange: SupportedExchange): string {
+  const location = get(tradeLocations).find(
+    ({ identifier }) => identifier === exchange
+  );
+  const nonce = get(getExchangeNonce(exchange));
+  return location ? `${location.name} ${nonce}` : '';
+};
+
+const toggleEdit = () => {
+  set(editKeys, !get(editKeys));
+
+  if (!get(editKeys)) {
+    onUpdateExchange({
+      ...get(exchange),
+      apiSecret: null,
+      apiKey: null
+    });
+  }
+};
+
+const onExchangeChange = (exchange: SupportedExchange) => {
+  get(form).reset();
+  onUpdateExchange({
+    name: suggestedName(exchange),
+    newName: null,
+    location: exchange,
+    apiKey: null,
+    apiSecret: exchange === SupportedExchange.BITPANDA ? '' : null,
+    passphrase: null,
+    krakenAccountType: exchange === SupportedExchange.KRAKEN ? 'starter' : null,
+    binanceMarkets: null,
+    ftxSubaccount: null
+  });
+};
+
+const onApiKeyPaste = function (event: ClipboardEvent) {
+  const paste = trimOnPaste(event);
+  if (paste) {
+    onUpdateExchange({ ...get(exchange), apiKey: paste });
+  }
+};
+
+const onApiSecretPaste = function (event: ClipboardEvent) {
+  const paste = trimOnPaste(event);
+  if (paste) {
+    onUpdateExchange({ ...get(exchange), apiSecret: paste });
+  }
+};
+
+const input = (value: boolean) => {
+  emit('input', value);
+};
+
+const onUpdateExchange = (payload: ExchangePayload) => {
+  emit('update:exchange', payload);
+};
+
+onMounted(() => {
+  if (get(edit)) {
+    return;
+  }
+  onUpdateExchange({
+    ...get(exchange),
+    name: suggestedName(get(exchange).location)
+  });
+});
+
+const krakenAccountTypes = KrakenAccountType.options;
+const exchanges = SUPPORTED_EXCHANGES;
 </script>
 
 <style lang="scss" scoped>
-::v-deep {
+:deep() {
   .exchange-keys-form {
     &__keys {
       .v-input {

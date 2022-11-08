@@ -4,18 +4,17 @@ import {
   LiquityStakingEvents,
   TroveEvents
 } from '@rotki/common/lib/liquity';
-import { Ref, ref } from '@vue/composition-api';
-import { set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore } from 'pinia';
-import { getPremium, useModules } from '@/composables/session';
-import i18n from '@/i18n';
+import { Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
+import { useModules } from '@/composables/session/modules';
+import { useStatusUpdater } from '@/composables/status';
 import { api } from '@/services/rotkehlchen-api';
-import { Section } from '@/store/const';
 import { OnError } from '@/store/typing';
-import { fetchDataAsync, getStatusUpdater } from '@/store/utils';
 import { Module } from '@/types/modules';
+import { Section } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
+import { fetchDataAsync } from '@/utils/fetch-async';
 
 export const useLiquityStore = defineStore('defi/liquity', () => {
   const balances = ref<LiquityBalances>({}) as Ref<LiquityBalances>;
@@ -25,23 +24,22 @@ export const useLiquityStore = defineStore('defi/liquity', () => {
     {}
   ) as Ref<LiquityStakingEvents>;
 
-  const isPremium = getPremium();
+  const isPremium = usePremium();
   const { activeModules } = useModules();
+  const { t } = useI18n();
 
   async function fetchBalances(refresh: boolean = false) {
     const meta: TaskMeta = {
-      title: i18n.t('actions.defi.liquity.task.title').toString(),
+      title: t('actions.defi.liquity.task.title').toString(),
       numericKeys: []
     };
 
     const onError: OnError = {
-      title: i18n.t('actions.defi.liquity_balances.error.title').toString(),
+      title: t('actions.defi.liquity_balances.error.title').toString(),
       error: message =>
-        i18n
-          .t('actions.defi.liquity_balances.error.description', {
-            message
-          })
-          .toString()
+        t('actions.defi.liquity_balances.error.description', {
+          message
+        }).toString()
     };
 
     await fetchDataAsync(
@@ -71,18 +69,16 @@ export const useLiquityStore = defineStore('defi/liquity', () => {
 
   async function fetchEvents(refresh: boolean = false) {
     const meta: TaskMeta = {
-      title: i18n.t('actions.defi.liquity_events.task.title').toString(),
+      title: t('actions.defi.liquity_events.task.title').toString(),
       numericKeys: []
     };
 
     const onError: OnError = {
-      title: i18n.t('actions.defi.liquity_events.error.title').toString(),
+      title: t('actions.defi.liquity_events.error.title').toString(),
       error: message =>
-        i18n
-          .t('actions.defi.liquity_events.error.description', {
-            message
-          })
-          .toString()
+        t('actions.defi.liquity_events.error.description', {
+          message
+        }).toString()
     };
 
     await fetchDataAsync(
@@ -112,18 +108,16 @@ export const useLiquityStore = defineStore('defi/liquity', () => {
 
   async function fetchStaking(refresh: boolean = false) {
     const meta: TaskMeta = {
-      title: i18n.t('actions.defi.liquity_staking.task.title').toString(),
+      title: t('actions.defi.liquity_staking.task.title').toString(),
       numericKeys: []
     };
 
     const onError: OnError = {
-      title: i18n.t('actions.defi.liquity_staking.error.title').toString(),
+      title: t('actions.defi.liquity_staking.error.title').toString(),
       error: message =>
-        i18n
-          .t('actions.defi.liquity_staking.error.description', {
-            message
-          })
-          .toString()
+        t('actions.defi.liquity_staking.error.description', {
+          message
+        }).toString()
     };
 
     await fetchDataAsync(
@@ -152,22 +146,16 @@ export const useLiquityStore = defineStore('defi/liquity', () => {
 
   async function fetchStakingEvents(refresh: boolean = false) {
     const meta: TaskMeta = {
-      title: i18n
-        .t('actions.defi.liquity_staking_events.task.title')
-        .toString(),
+      title: t('actions.defi.liquity_staking_events.task.title').toString(),
       numericKeys: []
     };
 
     const onError: OnError = {
-      title: i18n
-        .t('actions.defi.liquity_staking_events.error.title')
-        .toString(),
+      title: t('actions.defi.liquity_staking_events.error.title').toString(),
       error: message =>
-        i18n
-          .t('actions.defi.liquity_staking_events.error.description', {
-            message
-          })
-          .toString()
+        t('actions.defi.liquity_staking_events.error.description', {
+          message
+        }).toString()
     };
 
     await fetchDataAsync(
@@ -195,7 +183,7 @@ export const useLiquityStore = defineStore('defi/liquity', () => {
   }
 
   const reset = () => {
-    const { resetStatus } = getStatusUpdater(Section.DEFI_LIQUITY_BALANCES);
+    const { resetStatus } = useStatusUpdater(Section.DEFI_LIQUITY_BALANCES);
 
     set(balances, {});
     set(events, {});

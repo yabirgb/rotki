@@ -1,6 +1,7 @@
 import { NumericString } from '@rotki/common';
 import { z } from 'zod';
 import { Entries } from '@/types/common';
+import { Quarter } from '@/types/frontend-settings';
 import { BaseAccountingSettings } from '@/types/user';
 
 export enum ProfitLossEventTypeEnum {
@@ -145,7 +146,8 @@ export type MissingAcquisition = z.infer<typeof MissingAcquisition>;
 export const MissingPrice = z.object({
   fromAsset: z.string(),
   toAsset: z.string(),
-  time: z.number()
+  time: z.number(),
+  rateLimited: z.boolean()
 });
 
 export type MissingPrice = z.infer<typeof MissingPrice>;
@@ -156,3 +158,13 @@ export const ReportActionableItem = z.object({
 });
 
 export type ReportActionableItem = z.infer<typeof ReportActionableItem>;
+
+export type PeriodChangedEvent = {
+  start: string;
+  end: string;
+};
+
+export type SelectionChangedEvent = {
+  readonly year: string | 'custom';
+  readonly quarter: Quarter;
+};

@@ -3,17 +3,20 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, NamedTuple, Optional
 
 from gevent.lock import Semaphore
 
+from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.chain.bitcoin import have_bitcoin_transactions
 from rotkehlchen.chain.bitcoin.bch import have_bch_transactions
 from rotkehlchen.chain.bitcoin.hdkey import HDKey
+from rotkehlchen.constants.assets import A_BCH, A_BTC
 from rotkehlchen.db.utils import insert_tag_mappings
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.fval import FVal
+from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import BlockchainAccountData, BTCAddress, SupportedBlockchain
 
 if TYPE_CHECKING:
-    from rotkehlchen.chain.manager import BlockchainBalancesUpdate, ChainManager
+    from rotkehlchen.chain.aggregator import ChainsAggregator
     from rotkehlchen.db.drivers.gevent import DBCursor
 
 
@@ -23,6 +26,7 @@ log = RotkehlchenLogsAdapter(logger)
 
 class XpubData(NamedTuple):
     xpub: HDKey
+    blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH]
     derivation_path: Optional[str] = None
     label: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -37,14 +41,15 @@ class XpubData(NamedTuple):
     def serialize(self) -> Dict[str, Any]:
         return {
             'xpub': self.xpub.xpub,
+            'blockchain': self.blockchain.value,
             'derivation_path': self.derivation_path,
             'label': self.label,
             'tags': self.tags,
         }
 
     def __hash__(self) -> int:
-        """For uniqueness of an xpub we consider xpub + derivation path"""
-        return hash(self.xpub.xpub + (self.derivation_path if self.derivation_path else ''))  # type: ignore  # noqa: E501
+        """For uniqueness of an xpub we consider xpub + derivation path + blockchain"""
+        return hash(self.xpub.xpub + (self.derivation_path if self.derivation_path else '') + self.blockchain.value)  # type: ignore  # noqa: E501
 
     def __eq__(self, other: Any) -> bool:
         """For uniqueness of an xpub we consider xpub + derivation path"""
@@ -125,7 +130,6 @@ def _derive_addresses_from_xpub_data(
         start_receiving_index: int,
         start_change_index: int,
         gap_limit: int,
-        blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
 ) -> List[XpubDerivedAddressData]:
     """Derive all addresses from the xpub that have had transactions. Also includes
     any addresses until the biggest index derived addresses that have had no transactions.
@@ -147,7 +151,7 @@ def _derive_addresses_from_xpub_data(
             start_index=start_receiving_index,
             root=receiving_xpub,
             gap_limit=gap_limit,
-            blockchain=blockchain,
+            blockchain=xpub_data.blockchain,
         ),
     )
     change_xpub = account_xpub.derive_child(1)
@@ -157,7 +161,7 @@ def _derive_addresses_from_xpub_data(
             start_index=start_change_index,
             root=change_xpub,
             gap_limit=gap_limit,
-            blockchain=blockchain,
+            blockchain=xpub_data.blockchain,
         ),
     )
     return addresses
@@ -165,16 +169,15 @@ def _derive_addresses_from_xpub_data(
 
 class XpubManager():
 
-    def __init__(self, chain_manager: 'ChainManager'):
-        self.chain_manager = chain_manager
-        self.db = chain_manager.database
+    def __init__(self, chains_aggregator: 'ChainsAggregator'):
+        self.chains_aggregator = chains_aggregator
+        self.db = chains_aggregator.database
         self.lock = Semaphore()
 
     def _derive_xpub_addresses(
         self,
         xpub_data: XpubData,
         new_xpub: bool,
-        blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
     ) -> None:
         """Derives new xpub addresses, and adds all those until the addresses that
         have not had any transactions to the tracked bitcoin addresses
@@ -190,18 +193,15 @@ class XpubManager():
                 xpub_data=xpub_data,
                 start_receiving_index=last_receiving_idx,
                 start_change_index=last_change_idx,
-                gap_limit=self.chain_manager.btc_derivation_gap_limit,
-                blockchain=blockchain,
+                gap_limit=self.chains_aggregator.btc_derivation_gap_limit,
             )
-            known_addresses = getattr(self.db.get_blockchain_accounts(cursor), blockchain.value.lower())  # noqa: E501
+            known_addresses = getattr(self.db.get_blockchain_accounts(cursor), xpub_data.blockchain.value.lower())  # noqa: E501
 
         new_addresses = []
-        new_balances = []
         existing_address_data = []
         for entry in derived_addresses_data:
             if entry.address not in known_addresses:
                 new_addresses.append(entry.address)
-                new_balances.append(entry.balance)
             elif new_xpub:
                 existing_address_data.append(BlockchainAccountData(
                     address=entry.address,
@@ -224,14 +224,13 @@ class XpubManager():
                 )
 
             if len(new_addresses) != 0:
-                self.chain_manager.add_blockchain_accounts(
-                    blockchain=blockchain,
+                self.chains_aggregator.add_blockchain_accounts(
+                    blockchain=xpub_data.blockchain,
                     accounts=new_addresses,
-                    already_queried_balances=new_balances,
                 )
                 self.db.add_blockchain_accounts(
                     write_cursor=cursor,
-                    blockchain=blockchain,
+                    blockchain=xpub_data.blockchain,
                     account_data=[BlockchainAccountData(
                         address=x,
                         label=None,
@@ -240,17 +239,30 @@ class XpubManager():
                 )
             self.db.ensure_xpub_mappings_exist(
                 write_cursor=cursor,
-                xpub=xpub_data.xpub.xpub,  # type: ignore
-                derivation_path=xpub_data.derivation_path,
+                xpub_data=xpub_data,
                 derived_addresses_data=derived_addresses_data,
-                blockchain=blockchain,
             )
+
+        # also add queried balances
+        if xpub_data.blockchain == SupportedBlockchain.BITCOIN:
+            balances = self.chains_aggregator.balances.btc
+            asset_usd_price = Inquirer.find_usd_price(A_BTC)
+        else:  # BCH
+            balances = self.chains_aggregator.balances.bch
+            asset_usd_price = Inquirer.find_usd_price(A_BCH)
+
+        for entry in derived_addresses_data:
+            new_balance = Balance(
+                amount=entry.balance,
+                usd_value=entry.balance * asset_usd_price,
+            )
+            balances[entry.address] = new_balance
+        self.chains_aggregator.totals = self.chains_aggregator.balances.recalculate_totals()
 
     def add_bitcoin_xpub(
         self,
         xpub_data: XpubData,
-        blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
-    ) -> 'BlockchainBalancesUpdate':
+    ) -> None:
         """
         May raise:
         - InputError: If the xpub already exists in the DB
@@ -261,26 +273,21 @@ class XpubManager():
         with self.lock:
             with self.db.user_write() as cursor:
                 # First try to add the xpub, and if it already exists raise
-                self.db.add_bitcoin_xpub(cursor, xpub_data=xpub_data, blockchain=blockchain)
+                self.db.add_bitcoin_xpub(cursor, xpub_data=xpub_data)
                 # Then add tags if not existing
                 self.db.ensure_tags_exist(
                     cursor,
                     given_data=[xpub_data],
                     action='adding',
-                    data_type='bitcoin xpub' if blockchain == SupportedBlockchain.BITCOIN else 'bitcoin cash xpub',  # noqa: 501
+                    data_type='bitcoin xpub' if xpub_data.blockchain == SupportedBlockchain.BITCOIN else 'bitcoin cash xpub',  # noqa: 501
                 )
-                self._derive_xpub_addresses(xpub_data, new_xpub=True, blockchain=blockchain)
-
-        if not self.chain_manager.balances.is_queried(blockchain):
-            self.chain_manager.query_balances(blockchain, ignore_cache=True)
-        return self.chain_manager.get_balances_update()
+                self._derive_xpub_addresses(xpub_data, new_xpub=True)
 
     def delete_bitcoin_xpub(
             self,
             write_cursor: 'DBCursor',
             xpub_data: XpubData,
-            blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
-    ) -> 'BlockchainBalancesUpdate':
+    ) -> None:
         """
         Deletes an xpub from the DB, along with all derived addresses, xpub and tag mappings
         May raise:
@@ -288,25 +295,23 @@ class XpubManager():
         """
         with self.lock:
             # First try to delete the xpub, and if it does not exist raise InputError
-            self.db.delete_bitcoin_xpub(write_cursor, xpub_data, blockchain)
-            self.chain_manager.sync_bitcoin_accounts_with_db(write_cursor, blockchain)
-
-        return self.chain_manager.get_balances_update()
+            self.db.delete_bitcoin_xpub(write_cursor, xpub_data)
+            self.chains_aggregator.sync_bitcoin_accounts_with_db(write_cursor, xpub_data.blockchain)  # noqa: E501
 
     def check_for_new_xpub_addresses(
         self,
         blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
     ) -> None:
-        """Checks all xpub addresseses and sees if new addresses got used.
+        """Checks all xpub addresses and sees if new addresses got used.
         If they did it adds them for tracking.
         """
-        log.debug('Starting task for derivation of new xpub addresses')
+        log.debug(f'Starting task for derivation of new {blockchain.value} xpub addresses')
         with self.db.conn.read_ctx() as cursor:
-            xpubs = self.db.get_bitcoin_xpub_data(cursor)
+            xpubs = self.db.get_bitcoin_xpub_data(cursor, blockchain)
         with self.lock:
             for xpub_data in xpubs:
                 try:
-                    self._derive_xpub_addresses(xpub_data, new_xpub=False, blockchain=blockchain)
+                    self._derive_xpub_addresses(xpub_data, new_xpub=False)
                 except RemoteError as e:
                     log.warning(
                         f'Failed to derive new xpub addresses from xpub: {xpub_data.xpub.xpub} '
@@ -323,7 +328,6 @@ class XpubManager():
             self,
             write_cursor: 'DBCursor',
             xpub_data: 'XpubData',
-            blockchain: Literal[SupportedBlockchain.BITCOIN, SupportedBlockchain.BITCOIN_CASH],
     ) -> None:
         with self.lock:
             # Update the xpub label
@@ -333,5 +337,5 @@ class XpubManager():
                 write_cursor,
                 given_data=[xpub_data],
                 action='editing',
-                data_type='bitcoin xpub' if blockchain == SupportedBlockchain.BITCOIN else 'bitcoin cash xpub',  # noqa: 501
+                data_type='bitcoin xpub' if xpub_data.blockchain == SupportedBlockchain.BITCOIN else 'bitcoin cash xpub',  # noqa: 501
             )

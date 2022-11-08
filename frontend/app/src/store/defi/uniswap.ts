@@ -1,59 +1,47 @@
-import { AssetBalance, Balance } from '@rotki/common';
-import { XswapBalances, XswapEvents } from '@rotki/common/lib/defi/xswap';
-import { computed, Ref, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import { getPremium } from '@/composables/session';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
-import { useAssetInfoRetrieval, useIgnoredAssetsStore } from '@/store/assets';
-import { Section, Status } from '@/store/const';
 import {
-  dexTradeNumericKeys,
-  uniswapEventsNumericKeys
-} from '@/store/defi/const';
-import { DexTrades } from '@/store/defi/types';
+  XswapBalance,
+  XswapBalances,
+  XswapEvents
+} from '@rotki/common/lib/defi/xswap';
+import { ComputedRef, Ref } from 'vue';
+import { usePremium } from '@/composables/premium';
+import { useStatusUpdater } from '@/composables/status';
+import { api } from '@/services/rotkehlchen-api';
 import {
   getBalances,
   getEventDetails,
   getPoolProfit,
   getPools
 } from '@/store/defi/xswap-utils';
-import { useNotifications } from '@/store/notifications';
-import { usePremiumStore } from '@/store/session/premium';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { useTasks } from '@/store/tasks';
-import {
-  getStatus,
-  getStatusUpdater,
-  isLoading,
-  setStatus
-} from '@/store/utils';
+import { OnError } from '@/store/typing';
+import { uniswapEventsNumericKeys } from '@/types/defi/protocols';
 import { Module } from '@/types/modules';
+import { Section } from '@/types/status';
 import { TaskMeta } from '@/types/task';
 import { TaskType } from '@/types/task-type';
-import { sortDesc } from '@/utils/bignumbers';
-import { balanceSum } from '@/utils/calculation';
 import { uniqueStrings } from '@/utils/data';
+import { fetchDataAsync } from '@/utils/fetch-async';
 
 export const useUniswapStore = defineStore('defi/uniswap', () => {
   const v2Balances = ref<XswapBalances>({}) as Ref<XswapBalances>;
   const v3Balances = ref<XswapBalances>({}) as Ref<XswapBalances>;
-  const trades = ref<DexTrades>({}) as Ref<DexTrades>;
   const events = ref<XswapEvents>({}) as Ref<XswapEvents>;
 
-  const { fetchSupportedAssets } = useAssetInfoRetrieval();
-  const { notify } = useNotifications();
-  const { awaitTask, isTaskRunning } = useTasks();
   const { activeModules } = storeToRefs(useGeneralSettingsStore());
-  const { premium } = storeToRefs(usePremiumStore());
+  const isPremium = usePremium();
+  const { t, tc } = useI18n();
 
-  const uniswapV2Balances = (addresses: string[]) =>
+  const uniswapV2Balances = (
+    addresses: string[]
+  ): ComputedRef<XswapBalance[]> =>
     computed(() => {
-      return getBalances(get(v2Balances), addresses, false);
+      return getBalances(get(v2Balances), addresses);
     });
 
-  const uniswapV3Balances = (addresses: string[]) =>
+  const uniswapV3Balances = (
+    addresses: string[]
+  ): ComputedRef<XswapBalance[]> =>
     computed(() => {
       return getBalances(get(v3Balances), addresses, false);
     });
@@ -95,263 +83,137 @@ export const useUniswapStore = defineStore('defi/uniswap', () => {
     return getPools(uniswapBalances, {});
   });
 
-  const { getAssociatedAssetIdentifier } = useAssetInfoRetrieval();
-  const { isAssetIgnored } = useIgnoredAssetsStore();
-
-  const uniswapV3AggregatedBalances = (address: string | string[] = []) =>
-    computed<AssetBalance[]>(() => {
-      const ownedAssets: Record<string, Balance> = {};
-
-      const addToOwned = (value: AssetBalance) => {
-        const associatedAsset: string = get(
-          getAssociatedAssetIdentifier(value.asset)
-        );
-
-        const ownedAsset = ownedAssets[associatedAsset];
-
-        ownedAssets[associatedAsset] = !ownedAsset
-          ? {
-              ...value
-            }
-          : {
-              ...balanceSum(ownedAsset, value)
-            };
-      };
-
-      const balances = get(
-        uniswapV3Balances(Array.isArray(address) ? address : [address])
-      );
-
-      balances.forEach(balance => {
-        const assets = balance.assets;
-        assets.forEach(asset => {
-          addToOwned({
-            ...asset.userBalance,
-            asset: asset.asset
-          });
-        });
-      });
-
-      return Object.keys(ownedAssets)
-        .filter(asset => !get(isAssetIgnored(asset)))
-        .map(asset => ({
-          asset,
-          amount: ownedAssets[asset].amount,
-          usdValue: ownedAssets[asset].usdValue
-        }))
-        .sort((a, b) => sortDesc(a.usdValue, b.usdValue));
-    });
-
   const fetchV2Balances = async (refresh: boolean = false) => {
-    if (!get(activeModules).includes(Module.UNISWAP)) {
-      return;
-    }
+    const meta: TaskMeta = {
+      title: t('actions.defi.uniswap.task.title', { v: 2 }).toString(),
+      numericKeys: []
+    };
 
-    const section = Section.DEFI_UNISWAP_V2_BALANCES;
-    const currentStatus = getStatus(section);
+    const onError: OnError = {
+      title: t('actions.defi.uniswap.error.title', { v: 2 }).toString(),
+      error: message =>
+        t('actions.defi.uniswap.error.description', {
+          error: message,
+          v: 2
+        }).toString()
+    };
 
-    if (
-      isLoading(currentStatus) ||
-      (currentStatus === Status.LOADED && !refresh)
-    ) {
-      return;
-    }
-
-    const newStatus = refresh ? Status.REFRESHING : Status.LOADING;
-    setStatus(newStatus, section);
-    try {
-      const taskType = TaskType.DEFI_UNISWAP_V2_BALANCES;
-      const { taskId } = await api.defi.fetchUniswapV2Balances();
-      const { result } = await awaitTask<XswapBalances, TaskMeta>(
-        taskId,
-        taskType,
-        {
-          title: i18n.t('actions.defi.uniswap.task.title', { v: 2 }).toString(),
-          numericKeys: []
-        }
-      );
-
-      set(v2Balances, XswapBalances.parse(result));
-    } catch (e: any) {
-      notify({
-        title: i18n.t('actions.defi.uniswap.error.title', { v: 2 }).toString(),
-        message: i18n
-          .t('actions.defi.uniswap.error.description', {
-            error: e.message,
-            v: 2
-          })
-          .toString(),
-        display: true
-      });
-    }
-    setStatus(Status.LOADED, section);
-
-    await fetchSupportedAssets(true);
+    await fetchDataAsync(
+      {
+        task: {
+          type: TaskType.DEFI_UNISWAP_V2_BALANCES,
+          section: Section.DEFI_UNISWAP_V2_BALANCES,
+          meta,
+          query: async () => await api.defi.fetchUniswapV2Balances(),
+          parser: data => XswapBalances.parse(data),
+          onError
+        },
+        state: {
+          isPremium,
+          activeModules
+        },
+        requires: {
+          premium: false,
+          module: Module.UNISWAP
+        },
+        refresh
+      },
+      v2Balances
+    );
   };
 
   const fetchV3Balances = async (refresh: boolean = false) => {
-    if (!get(activeModules).includes(Module.UNISWAP)) {
-      return;
-    }
+    const meta = {
+      title: t('actions.defi.uniswap.task.title', { v: 3 }).toString(),
+      numericKeys: [],
+      premium: get(isPremium)
+    };
 
-    const taskType = TaskType.DEFI_UNISWAP_V3_BALANCES;
-    const section = Section.DEFI_UNISWAP_V3_BALANCES;
-    const currentStatus = getStatus(section);
+    const onError: OnError = {
+      title: t('actions.defi.uniswap.error.title', { v: 3 }).toString(),
+      error: message =>
+        t('actions.defi.uniswap.error.description', {
+          error: message,
+          v: 3
+        }).toString()
+    };
 
-    if (
-      get(isTaskRunning(taskType, { premium: get(getPremium()) })) ||
-      (currentStatus === Status.LOADED && !refresh)
-    ) {
-      return;
-    }
-
-    const newStatus = refresh ? Status.REFRESHING : Status.LOADING;
-    setStatus(newStatus, section);
-    try {
-      const { taskId } = await api.defi.fetchUniswapV3Balances();
-      const taskMeta = {
-        title: i18n.t('actions.defi.uniswap.task.title', { v: 3 }).toString(),
-        numericKeys: [],
-        premium: get(getPremium())
-      };
-
-      const { result } = await awaitTask<XswapBalances, TaskMeta>(
-        taskId,
-        taskType,
-        taskMeta
-      );
-
-      set(v3Balances, XswapBalances.parse(result));
-    } catch (e: any) {
-      notify({
-        title: i18n.t('actions.defi.uniswap.error.title', { v: 3 }).toString(),
-        message: i18n
-          .t('actions.defi.uniswap.error.description', {
-            error: e.message,
-            v: 3
-          })
-          .toString(),
-        display: true
-      });
-    }
-    setStatus(Status.LOADED, section);
-
-    await fetchSupportedAssets(true);
-  };
-
-  const fetchTrades = async (refresh: boolean = false) => {
-    if (!get(activeModules).includes(Module.UNISWAP) || !get(premium)) {
-      return;
-    }
-
-    const section = Section.DEFI_UNISWAP_TRADES;
-    const currentStatus = getStatus(section);
-
-    if (
-      isLoading(currentStatus) ||
-      (currentStatus === Status.LOADED && !refresh)
-    ) {
-      return;
-    }
-
-    const newStatus = refresh ? Status.REFRESHING : Status.LOADING;
-    setStatus(newStatus, section);
-    try {
-      const taskType = TaskType.DEFI_UNISWAP_TRADES;
-      const { taskId } = await api.defi.fetchUniswapTrades();
-      const { result } = await awaitTask<DexTrades, TaskMeta>(
-        taskId,
-        taskType,
-        {
-          title: i18n.tc('actions.defi.uniswap_trades.task.title'),
-          numericKeys: dexTradeNumericKeys
-        }
-      );
-
-      set(trades, result);
-    } catch (e: any) {
-      notify({
-        title: i18n.tc('actions.defi.uniswap_trades.error.title'),
-        message: i18n.tc(
-          'actions.defi.uniswap_trades.error.description',
-          undefined,
-          {
-            error: e.message
-          }
-        ),
-        display: true
-      });
-    }
-    setStatus(Status.LOADED, section);
-
-    await fetchSupportedAssets(true);
+    await fetchDataAsync(
+      {
+        task: {
+          type: TaskType.DEFI_UNISWAP_V3_BALANCES,
+          section: Section.DEFI_UNISWAP_V3_BALANCES,
+          meta,
+          query: async () => await api.defi.fetchUniswapV3Balances(),
+          parser: data => XswapBalances.parse(data),
+          onError,
+          checkLoading: { premium: get(isPremium) }
+        },
+        state: {
+          isPremium,
+          activeModules
+        },
+        requires: {
+          premium: false,
+          module: Module.UNISWAP
+        },
+        refresh
+      },
+      v3Balances
+    );
   };
 
   const fetchEvents = async (refresh: boolean = false) => {
-    if (!get(activeModules).includes(Module.UNISWAP) || !get(premium)) {
-      return;
-    }
+    const meta: TaskMeta = {
+      title: tc('actions.defi.uniswap_events.task.title'),
+      numericKeys: uniswapEventsNumericKeys
+    };
 
-    const section = Section.DEFI_UNISWAP_EVENTS;
-    const currentStatus = getStatus(section);
+    const onError: OnError = {
+      title: tc('actions.defi.uniswap_events.error.title'),
+      error: message =>
+        tc('actions.defi.uniswap_events.error.description', undefined, {
+          error: message
+        })
+    };
 
-    if (
-      isLoading(currentStatus) ||
-      (currentStatus === Status.LOADED && !refresh)
-    ) {
-      return;
-    }
-
-    const newStatus = refresh ? Status.REFRESHING : Status.LOADING;
-    setStatus(newStatus, section);
-    try {
-      const taskType = TaskType.DEFI_UNISWAP_EVENTS;
-      const { taskId } = await api.defi.fetchUniswapEvents();
-      const { result } = await awaitTask<XswapEvents, TaskMeta>(
-        taskId,
-        taskType,
-        {
-          title: i18n.tc('actions.defi.uniswap_events.task.title'),
-          numericKeys: uniswapEventsNumericKeys
-        }
-      );
-
-      set(events, result);
-    } catch (e: any) {
-      notify({
-        title: i18n.tc('actions.defi.uniswap_events.error.title'),
-        message: i18n.tc(
-          'actions.defi.uniswap_events.error.description',
-          undefined,
-          {
-            error: e.message
-          }
-        ),
-        display: true
-      });
-    }
-    setStatus(Status.LOADED, section);
-
-    await fetchSupportedAssets(true);
+    await fetchDataAsync(
+      {
+        task: {
+          type: TaskType.DEFI_UNISWAP_EVENTS,
+          section: Section.DEFI_UNISWAP_EVENTS,
+          meta,
+          query: async () => await api.defi.fetchUniswapEvents(),
+          onError
+        },
+        state: {
+          isPremium,
+          activeModules
+        },
+        requires: {
+          premium: true,
+          module: Module.UNISWAP
+        },
+        refresh
+      },
+      events
+    );
   };
 
   const reset = () => {
-    const { resetStatus } = getStatusUpdater(Section.DEFI_UNISWAP_V3_BALANCES);
+    const { resetStatus } = useStatusUpdater(Section.DEFI_UNISWAP_V3_BALANCES);
     set(v2Balances, {});
     set(v3Balances, {});
-    set(trades, {});
     set(events, {});
 
     resetStatus(Section.DEFI_UNISWAP_V2_BALANCES);
     resetStatus(Section.DEFI_UNISWAP_V3_BALANCES);
-    resetStatus(Section.DEFI_UNISWAP_TRADES);
     resetStatus(Section.DEFI_UNISWAP_EVENTS);
   };
 
   return {
     v2Balances,
     v3Balances,
-    trades,
     events,
     uniswapV2Addresses,
     uniswapV3Addresses,
@@ -359,12 +221,10 @@ export const useUniswapStore = defineStore('defi/uniswap', () => {
     uniswapV3PoolAssets,
     uniswapV2Balances,
     uniswapV3Balances,
-    uniswapV3AggregatedBalances,
     uniswapEvents,
     uniswapPoolProfit,
     fetchV2Balances,
     fetchV3Balances,
-    fetchTrades,
     fetchEvents,
     reset
   };

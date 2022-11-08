@@ -7,6 +7,7 @@ from rotkehlchen.accounting.mixins.event import AccountingEventType
 from rotkehlchen.accounting.pnl import PNL
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.constants.misc import ZERO
+from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.history.deserialization import deserialize_price
@@ -44,7 +45,7 @@ class ProcessedAccountingEvent:
     count_cost_basis_pnl: bool = field(init=False, default=False)
 
     def to_string(self, ts_converter: Callable[[Timestamp], str]) -> str:
-        desc = f'{self.type.name} for {self.free_amount}/{self.taxable_amount} {self.asset.symbol} with price: {self.price} and PNL: {self.pnl}.'  # noqa: E501
+        desc = f'{self.type.name} for {self.free_amount}/{self.taxable_amount} {self.asset.symbol_or_name()} with price: {self.price} and PNL: {self.pnl}.'  # noqa: E501
         if self.cost_basis:
             taxable, free = self.cost_basis.to_string(ts_converter)
             desc += f'Cost basis. Taxable {taxable}. Free: {free}'
@@ -191,7 +192,7 @@ class ProcessedAccountingEvent:
                 notes=data['notes'],
                 location=Location.deserialize(data['location']),
                 timestamp=timestamp,
-                asset=Asset(data['asset']),
+                asset=Asset(data['asset']).check_existence(),
                 free_amount=deserialize_fval(data['free_amount'], name='free_amount', location='processed event decoding'),  # noqa: E501
                 taxable_amount=deserialize_fval(data['taxable_amount'], name='taxable_amount', location='processed event decoding'),  # noqa: E501
                 price=deserialize_price(data['price']),
@@ -205,3 +206,5 @@ class ProcessedAccountingEvent:
             return event
         except KeyError as e:
             raise DeserializationError(f'Could not decode processed accounting event json from the DB due to missing key {str(e)}') from e  # noqa: E501
+        except UnknownAsset as e:
+            raise DeserializationError(f'Couldnt deserialize processed accounting event due to unkown asset {e.identifier}') from e  # noqa: E501

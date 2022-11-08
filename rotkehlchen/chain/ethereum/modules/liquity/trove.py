@@ -1,23 +1,24 @@
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, DefaultDict, Dict, List, Literal, NamedTuple, Optional
 
 from eth_utils import to_checksum_address
 from gevent.lock import Semaphore
 
 from rotkehlchen.accounting.structures.balance import AssetBalance, Balance
-from rotkehlchen.chain.ethereum.contracts import EthereumContract
 from rotkehlchen.chain.ethereum.defi.defisaver_proxy import HasDSProxy
 from rotkehlchen.chain.ethereum.graph import (
     SUBGRAPH_REMOTE_ERROR_MSG,
     Graph,
     format_query_indentation,
 )
-from rotkehlchen.chain.ethereum.utils import multicall_2, token_normalized_value_decimals
+from rotkehlchen.chain.ethereum.utils import token_normalized_value_decimals
+from rotkehlchen.chain.evm.contracts import EvmContract
 from rotkehlchen.constants.assets import A_ETH, A_LQTY, A_LUSD, A_USD
-from rotkehlchen.constants.ethereum import LIQUITY_TROVE_MANAGER
-from rotkehlchen.errors.misc import ModuleInitializationFailure, RemoteError
+from rotkehlchen.constants.ethereum import LIQUITY_STABILITY_POOL, LIQUITY_TROVE_MANAGER
+from rotkehlchen.errors.misc import BlockchainQueryError, ModuleInitializationFailure, RemoteError
+from rotkehlchen.errors.price import NoPriceForGivenTimestamp
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.history.price import PriceHistorian
@@ -28,7 +29,7 @@ from rotkehlchen.serialization.deserialize import (
     deserialize_asset_amount,
     deserialize_optional_to_fval,
 )
-from rotkehlchen.types import ChecksumEthAddress, Timestamp
+from rotkehlchen.types import ChecksumEvmAddress, Timestamp
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
 
@@ -201,39 +202,45 @@ class Liquity(HasDSProxy):
             )
             raise ModuleInitializationFailure('Liquity Subgraph remote error') from e
 
-    def get_positions(
-        self,
-        addresses_list: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, Trove]:
-        contract = EthereumContract(
+        self.trove_manager_contract = EvmContract(
             address=LIQUITY_TROVE_MANAGER.address,
             abi=LIQUITY_TROVE_MANAGER.abi,
             deployed_block=LIQUITY_TROVE_MANAGER.deployed_block,
         )
+        self.stability_pool_contract = EvmContract(
+            address=LIQUITY_STABILITY_POOL.address,
+            abi=LIQUITY_STABILITY_POOL.abi,
+            deployed_block=LIQUITY_STABILITY_POOL.deployed_block,
+        )
+
+    def get_positions(
+            self,
+            addresses_list: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, Trove]:
+        """Query liquity contract to detect open troves"""
         # make a copy of the list to avoid modifications in the list that is passed as argument
-        addresses = list(addresses_list)
+        addresses = addresses_list.copy()
         proxied_addresses = self._get_accounts_having_proxy()
         proxies_to_address = {v: k for k, v in proxied_addresses.items()}
         addresses += proxied_addresses.values()
 
         calls = [
-            (LIQUITY_TROVE_MANAGER.address, contract.encode(method_name='Troves', arguments=[x]))
+            (LIQUITY_TROVE_MANAGER.address, self.trove_manager_contract.encode(method_name='Troves', arguments=[x]))  # noqa: E501
             for x in addresses
         ]
-        outputs = multicall_2(
-            ethereum=self.ethereum,
+        outputs = self.ethereum.multicall_2(
             require_success=False,
             calls=calls,
         )
 
-        data: Dict[ChecksumEthAddress, Trove] = {}
+        data: Dict[ChecksumEvmAddress, Trove] = {}
         eth_price = Inquirer().find_usd_price(A_ETH)
         lusd_price = Inquirer().find_usd_price(A_LUSD)
         for idx, output in enumerate(outputs):
             status, result = output
             if status is True:
                 try:
-                    trove_info = contract.decode(result, 'Troves', arguments=[addresses[idx]])
+                    trove_info = self.trove_manager_contract.decode(result, 'Troves', arguments=[addresses[idx]])  # noqa: E501
                     trove_is_active = bool(trove_info[3])  # pylint: disable=unsubscriptable-object
                     if not trove_is_active:
                         continue
@@ -287,10 +294,67 @@ class Liquity(HasDSProxy):
                     )
         return data
 
+    def get_stability_pool_positions(
+            self,
+            addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, Dict[str, FVal]]:
+        """Get current deposit in the stability pool and current ETH/LQTY gains"""
+        # make a copy of the list to avoid modifications in the list that is passed as argument
+        addresses = addresses.copy()
+        proxied_addresses = self._get_accounts_having_proxy()
+        addresses += proxied_addresses.values()
+
+        # Build the calls that need to be made in order to get the status in the SP
+        calls = []
+        for address in addresses:
+            calls.append(
+                (LIQUITY_STABILITY_POOL.address, self.stability_pool_contract.encode(method_name='getDepositorETHGain', arguments=[address])),  # noqa: E501
+            )
+            calls.append(
+                (LIQUITY_STABILITY_POOL.address, self.stability_pool_contract.encode(method_name='getDepositorLQTYGain', arguments=[address])),  # noqa: E501
+            )
+            calls.append(
+                (LIQUITY_STABILITY_POOL.address, self.stability_pool_contract.encode(method_name='getCompoundedLUSDDeposit', arguments=[address])),  # noqa: E501
+            )
+
+        try:
+            outputs = self.ethereum.multicall_2(
+                require_success=False,
+                calls=calls,
+            )
+        except (RemoteError, BlockchainQueryError) as e:
+            self.msg_aggregator.add_error(
+                f'Failed to query information about stability pool {str(e)}',
+            )
+            return {}
+
+        data: DefaultDict[ChecksumEvmAddress, Dict[str, FVal]] = defaultdict(dict)
+        for idx, output in enumerate(outputs):
+            current_address = addresses[idx // 3]
+            status, result = output
+            if status is False:
+                continue
+
+            if idx % 3 == 0:
+                key = 'eth_gain'
+                gain_info = self.stability_pool_contract.decode(result, 'getDepositorETHGain', arguments=[current_address])  # noqa: E501
+            elif idx % 3 == 1:
+                key = 'lqty_gain'
+                gain_info = self.stability_pool_contract.decode(result, 'getDepositorLQTYGain', arguments=[current_address])  # noqa: E501
+            else:
+                key = 'deposited'
+                gain_info = self.stability_pool_contract.decode(result, 'getCompoundedLUSDDeposit', arguments=[current_address])  # noqa: E501
+
+            amount = deserialize_asset_amount(
+                token_normalized_value_decimals(gain_info[0], 18),
+            )
+            data[current_address][key] = amount
+        return data
+
     def liquity_staking_balances(
-        self,
-        addresses: List[ChecksumEthAddress],
-    ) -> Dict[ChecksumEthAddress, StakePosition]:
+            self,
+            addresses: List[ChecksumEvmAddress],
+    ) -> Dict[ChecksumEvmAddress, StakePosition]:
         staked = self._get_raw_history(addresses, 'stake')
         lqty_price = Inquirer().find_usd_price(A_LQTY)
         data = {}
@@ -323,7 +387,7 @@ class Liquity(HasDSProxy):
 
     def _get_raw_history(
         self,
-        addresses: List[ChecksumEthAddress],
+        addresses: List[ChecksumEvmAddress],
         query_for: Literal['stake', 'trove'],
     ) -> Dict[str, Any]:
         param_types = {
@@ -343,12 +407,12 @@ class Liquity(HasDSProxy):
         )
 
     def get_trove_history(
-        self,
-        addresses: List[ChecksumEthAddress],
-        from_timestamp: Timestamp,
-        to_timestamp: Timestamp,
-    ) -> Dict[ChecksumEthAddress, List[LiquityEvent]]:
-        addresses_to_query = list(addresses)
+            self,
+            addresses: List[ChecksumEvmAddress],
+            from_timestamp: Timestamp,
+            to_timestamp: Timestamp,
+    ) -> Dict[ChecksumEvmAddress, List[LiquityEvent]]:
+        addresses_to_query = addresses.copy()
         proxied_addresses = self._get_accounts_having_proxy()
         proxies_to_address = {v: k for k, v in proxied_addresses.items()}
         addresses_to_query += proxied_addresses.values()
@@ -359,7 +423,7 @@ class Liquity(HasDSProxy):
             log.error(f'Failed to query trove graph events for liquity. {str(e)}')
             query = {}
 
-        result: Dict[ChecksumEthAddress, List[LiquityEvent]] = defaultdict(list)
+        result: Dict[ChecksumEvmAddress, List[LiquityEvent]] = defaultdict(list)
         for trove in query.get('troves', []):
             owner = to_checksum_address(trove['owner']['id'])
             if owner in proxies_to_address:
@@ -439,7 +503,7 @@ class Liquity(HasDSProxy):
                         sequence_number=str(change['sequenceNumber']),
                     )
                     result[owner].append(event)
-                except (DeserializationError, KeyError) as e:
+                except (DeserializationError, KeyError, NoPriceForGivenTimestamp) as e:
                     log.debug(f'Failed to deserialize Liquity trove event: {change}')
                     msg = str(e)
                     if isinstance(e, KeyError):
@@ -453,18 +517,18 @@ class Liquity(HasDSProxy):
         return result
 
     def get_staking_history(
-        self,
-        addresses: List[ChecksumEthAddress],
-        from_timestamp: Timestamp,
-        to_timestamp: Timestamp,
-    ) -> Dict[ChecksumEthAddress, List[LiquityEvent]]:
+            self,
+            addresses: List[ChecksumEvmAddress],
+            from_timestamp: Timestamp,
+            to_timestamp: Timestamp,
+    ) -> Dict[ChecksumEvmAddress, List[LiquityEvent]]:
         try:
             staked = self._get_raw_history(addresses, 'stake')
         except RemoteError as e:
             log.error(f'Failed to query stake graph events for liquity. {str(e)}')
             staked = {}
 
-        result: Dict[ChecksumEthAddress, List[LiquityEvent]] = defaultdict(list)
+        result: Dict[ChecksumEvmAddress, List[LiquityEvent]] = defaultdict(list)
         for stake in staked.get('lqtyStakes', []):
             owner = to_checksum_address(stake['id'])
             for change in stake['changes']:
@@ -552,16 +616,4 @@ class Liquity(HasDSProxy):
                         f'Failed to decode remote information. {msg}.',
                     )
                     continue
-        return result
-
-    # -- Methods following the EthereumModule interface -- #
-    def on_account_addition(self, address: ChecksumEthAddress) -> Optional[List['AssetBalance']]:
-        super().on_account_addition(address)
-        trove_info = self.get_positions([address])
-        result = []
-        if address in trove_info:
-            result.append(trove_info[address].collateral)
-        stake_info = self.liquity_staking_balances([address])
-        if address in stake_info:
-            result.append(stake_info[address].staked)
         return result

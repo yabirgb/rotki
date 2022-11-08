@@ -1,14 +1,16 @@
 import logging
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
 
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.constants.assets import A_KFEE, A_USD
 from rotkehlchen.constants.misc import ZERO
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.errors.price import NoPriceForGivenTimestamp, PriceQueryUnsupportedAsset
 from rotkehlchen.fval import FVal
-from rotkehlchen.globaldb.manual_price_oracle import ManualPriceOracle
+from rotkehlchen.globaldb.manual_price_oracles import ManualPriceOracle
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import Price, Timestamp
@@ -19,6 +21,7 @@ from .types import HistoricalPriceOracle, HistoricalPriceOracleInstance
 if TYPE_CHECKING:
     from rotkehlchen.externalapis.coingecko import Coingecko
     from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+    from rotkehlchen.externalapis.defillama import Defillama
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -72,6 +75,7 @@ class PriceHistorian():
     __instance: Optional['PriceHistorian'] = None
     _cryptocompare: 'Cryptocompare'
     _coingecko: 'Coingecko'
+    _defillama: 'Defillama'
     _manual: ManualPriceOracle  # This is used when iterating through all oracles
     _oracles: Optional[List[HistoricalPriceOracle]] = None
     _oracle_instances: Optional[List[HistoricalPriceOracleInstance]] = None
@@ -81,17 +85,21 @@ class PriceHistorian():
             data_directory: Path = None,
             cryptocompare: 'Cryptocompare' = None,
             coingecko: 'Coingecko' = None,
+            defillama: 'Defillama' = None,
     ) -> 'PriceHistorian':
         if PriceHistorian.__instance is not None:
             return PriceHistorian.__instance
 
-        assert data_directory, 'arguments should be given at the first instantiation'
-        assert cryptocompare, 'arguments should be given at the first instantiation'
-        assert coingecko, 'arguments should be given at the first instantiation'
+        error_msg = 'arguments should be given at the first instantiation'
+        assert data_directory, error_msg
+        assert cryptocompare, error_msg
+        assert coingecko, error_msg
+        assert defillama, error_msg
 
         PriceHistorian.__instance = object.__new__(cls)
         PriceHistorian._cryptocompare = cryptocompare
         PriceHistorian._coingecko = coingecko
+        PriceHistorian._defillama = defillama
         PriceHistorian._manual = ManualPriceOracle()
 
         return PriceHistorian.__instance
@@ -182,7 +190,9 @@ class PriceHistorian():
 
         # Querying historical forex data is attempted first via the external apis
         # and then via any price oracle that has fiat to fiat.
-        if from_asset.is_fiat() and to_asset.is_fiat():
+        try:
+            from_asset = from_asset.resolve_to_fiat_asset()
+            to_asset = from_asset.resolve_to_fiat_asset()
             price = Inquirer().query_historical_fiat_exchange_rates(
                 from_fiat_currency=from_asset,
                 to_fiat_currency=to_asset,
@@ -190,7 +200,8 @@ class PriceHistorian():
             )
             if price is not None:
                 return price
-            # else cryptocompare also has historical fiat to fiat data
+        except (UnknownAsset, WrongAssetType):
+            pass  # else cryptocompare also has historical fiat to fiat data
 
         instance = PriceHistorian()
         oracles = instance._oracles
@@ -198,6 +209,7 @@ class PriceHistorian():
         assert isinstance(oracles, list) and isinstance(oracle_instances, list), (
             'PriceHistorian should never be called before setting the oracles'
         )
+        rate_limited = False
         for oracle, oracle_instance in zip(oracles, oracle_instances):
             can_query_history = oracle_instance.can_query_history(
                 from_asset=from_asset,
@@ -213,7 +225,19 @@ class PriceHistorian():
                     to_asset=to_asset,
                     timestamp=timestamp,
                 )
-            except (PriceQueryUnsupportedAsset, NoPriceForGivenTimestamp, RemoteError):
+            except (
+                PriceQueryUnsupportedAsset,
+                NoPriceForGivenTimestamp,
+                UnknownAsset,
+                WrongAssetType,
+            ):
+                continue
+            except RemoteError as e:
+                # Raise the flag if any of the services was rate limited
+                rate_limited = (
+                    rate_limited is True or
+                    e.error_code == HTTPStatus.TOO_MANY_REQUESTS
+                )
                 continue
 
             log.debug(
@@ -229,4 +253,5 @@ class PriceHistorian():
             from_asset=from_asset,
             to_asset=to_asset,
             time=timestamp,
+            rate_limited=rate_limited,
         )

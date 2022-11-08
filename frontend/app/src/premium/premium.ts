@@ -1,22 +1,25 @@
 import * as Chart from 'chart.js';
-import Vue, { VueConstructor } from 'vue';
+import Vue from 'vue';
 import PremiumLoading from '@/components/premium/PremiumLoading.vue';
 import PremiumLoadingError from '@/components/premium/PremiumLoadingError.vue';
 import ThemeSwitchLock from '@/components/premium/ThemeSwitchLock.vue';
-import { api } from '@/services/rotkehlchen-api';
+import { useStatisticsApi } from '@/services/statistics/statistics-api';
+import { checkIfDevelopment } from '@/utils/env-utils';
+import { logger } from '@/utils/logging';
 
-function findComponents(): string[] {
-  return Object.getOwnPropertyNames(window).filter(value =>
+class ComponentLoadFailed extends Error {}
+
+const findComponents = (): string[] =>
+  Object.getOwnPropertyNames(window).filter(value =>
     value.startsWith('PremiumComponents')
   );
-}
 
-if (process.env.NODE_ENV === 'development') {
+if (checkIfDevelopment()) {
   // @ts-ignore
   findComponents().forEach(component => (window[component] = undefined));
 }
 
-async function loadComponents(): Promise<string[]> {
+const loadComponents = async (): Promise<string[]> => {
   // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve, reject) => {
     let components = findComponents();
@@ -25,6 +28,7 @@ async function loadComponents(): Promise<string[]> {
       return;
     }
 
+    const api = useStatisticsApi();
     const result = await api.queryStatisticsRenderer();
     const script = document.createElement('script');
     script.text = result;
@@ -40,9 +44,9 @@ async function loadComponents(): Promise<string[]> {
     script.addEventListener('error', reject);
     resolve(components);
   });
-}
+};
 
-async function loadLibrary() {
+export const loadLibrary = async () => {
   const [component] = await loadComponents();
   // @ts-ignore
   const library = window[component];
@@ -51,28 +55,29 @@ async function loadLibrary() {
     library.installed = true;
   }
   return library;
-}
+};
 
-function load(name: string): Promise<VueConstructor> {
-  // eslint-disable-next-line no-async-promise-executor
-  return new Promise(async resolve => {
+const load = async (name: string) => {
+  try {
     const library = await loadLibrary();
     if (library[name]) {
-      resolve(library[name]);
-    } else {
-      resolve(PremiumLoadingError as VueConstructor);
+      return library[name];
     }
-  });
-}
+  } catch (e: any) {
+    logger.error(e);
+  }
+
+  throw new ComponentLoadFailed();
+};
 
 const createFactory = (
-  component: Promise<VueConstructor>,
-  options?: { loading?: VueConstructor; error?: VueConstructor }
+  component: Promise<any>,
+  options?: { loading?: any; error?: any }
 ) => ({
   component: component,
   loading: options?.loading ?? PremiumLoading,
   error: options?.error ?? PremiumLoadingError,
-  delay: 100,
+  delay: 500,
   timeout: 30000
 });
 
@@ -110,10 +115,6 @@ export const AaveEarnedDetails = () => {
 
 export const Eth2Staking = () => {
   return createFactory(load('Eth2Staking'));
-};
-
-export const DexTradesTable = () => {
-  return createFactory(load('DexTradesTable'));
 };
 
 export const UniswapDetails = () => {
@@ -167,7 +168,7 @@ declare global {
   interface Window {
     Vue: any;
     Chart: typeof Chart;
-    '@vue/composition-api': any;
+    VueUse: any;
     'chartjs-plugin-zoom': any;
     zod: any;
     bn: any;

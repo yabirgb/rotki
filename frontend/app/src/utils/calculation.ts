@@ -1,6 +1,5 @@
 import { Balance, BigNumber } from '@rotki/common';
-import { get } from '@vueuse/core';
-import { useIgnoredAssetsStore } from '@/store/assets';
+import { useIgnoredAssetsStore } from '@/store/assets/ignored';
 import { Zero } from '@/utils/bignumbers';
 
 export const assetSum = (balances: { [asset: string]: Balance }) => {
@@ -31,12 +30,10 @@ export const toUnit = (value: BigNumber, unit: Unit = Unit.ETH): BigNumber => {
 export const balanceSum = (
   sum: Balance,
   { amount, usdValue }: Balance
-): Balance => {
-  return {
-    amount: sum.amount.plus(amount),
-    usdValue: sum.usdValue.plus(usdValue)
-  };
-};
+): Balance => ({
+  amount: sum.amount.plus(amount),
+  usdValue: sum.usdValue.plus(usdValue)
+});
 
 export const calculatePercentage = (value: BigNumber, divider: BigNumber) => {
   const percentage = divider.isZero()

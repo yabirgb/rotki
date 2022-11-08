@@ -2,29 +2,18 @@ import { BigNumber } from '@rotki/common';
 import { TimeUnit } from '@rotki/common/lib/settings';
 import { timeframes } from '@rotki/common/lib/settings/graphs';
 import { NetValue } from '@rotki/common/lib/statistics';
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
 import dayjs from 'dayjs';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import { setupGeneralBalances } from '@/composables/balances';
-import { CURRENCY_USD } from '@/data/currencies';
-import { aggregateTotal } from '@/filters';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
+import { setupLiquidityPosition } from '@/composables/defi';
+import { useStatisticsApi } from '@/services/statistics/statistics-api';
+import { useAggregatedBalancesStore } from '@/store/balances/aggregated';
+import { useNonFungibleBalancesStore } from '@/store/balances/non-fungible';
+import { useBalancePricesStore } from '@/store/balances/prices';
 import { useNotifications } from '@/store/notifications';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
 import { useSessionSettingsStore } from '@/store/settings/session';
-import { bigNumberify, Zero } from '@/utils/bignumbers';
-
-export interface OverallPerformance {
-  readonly period: string;
-  readonly currency: string;
-  readonly percentage: string;
-  readonly netWorth: string;
-  readonly delta: string;
-  readonly up?: boolean;
-}
+import { CURRENCY_USD } from '@/types/currencies';
+import { bigNumberify, One, Zero } from '@/utils/bignumbers';
 
 const defaultNetValue = () => ({
   times: [],
@@ -40,57 +29,51 @@ export const useStatisticsStore = defineStore('statistics', () => {
   const { currencySymbol, floatingPrecision } = storeToRefs(
     useGeneralSettingsStore()
   );
-  const {
-    aggregatedBalances,
-    liabilities,
-    nfBalances,
-    nfTotalValue,
-    exchangeRate
-  } = setupGeneralBalances();
+  const { balances, liabilities } = useAggregatedBalancesStore();
+  const { nonFungibleTotalValue } = useNonFungibleBalancesStore();
   const { timeframe } = storeToRefs(useSessionSettingsStore());
+  const { exchangeRate } = useBalancePricesStore();
+
+  const { lpTotal } = setupLiquidityPosition();
+
+  const { t } = useI18n();
+
+  const calculateTotalValue = (includeNft: boolean = false) =>
+    computed(() => {
+      const aggregatedBalances = get(balances());
+      const totalLiabilities = get(liabilities());
+      const nftTotal = includeNft ? get(nonFungibleTotalValue()) : 0;
+      const lpTotalBalance = get(lpTotal(includeNft));
+
+      const assetValue = aggregatedBalances.reduce(
+        (sum, value) => sum.plus(value.usdValue),
+        Zero
+      );
+
+      const liabilityValue = totalLiabilities.reduce(
+        (sum, value) => sum.plus(value.usdValue),
+        Zero
+      );
+
+      return assetValue
+        .plus(nftTotal)
+        .plus(lpTotalBalance)
+        .minus(liabilityValue);
+    });
 
   const totalNetWorth = computed(() => {
     const mainCurrency = get(currencySymbol);
-    const balances = get(aggregatedBalances);
-    const totalLiabilities = get(liabilities);
-    const nfbs = get(nfBalances);
-    const rate = get(exchangeRate(mainCurrency));
-    let nftTotal = Zero;
-
-    if (nftsInNetValue) {
-      nftTotal = nfbs.reduce((sum, balance) => {
-        return sum.plus(balance.usdPrice.multipliedBy(rate));
-      }, Zero);
-    }
-
-    const assetSum = aggregateTotal(balances, mainCurrency, rate).plus(
-      nftTotal
-    );
-    const liabilitySum = aggregateTotal(totalLiabilities, mainCurrency, rate);
-    return assetSum.minus(liabilitySum);
+    const rate = get(exchangeRate(mainCurrency)) ?? One;
+    return get(calculateTotalValue(get(nftsInNetValue))).multipliedBy(rate);
   });
 
   const totalNetWorthUsd = computed(() => {
-    const balances = get(aggregatedBalances);
-    const totalLiabilities = get(liabilities);
-    const nftTotal = get(nfTotalValue(true));
-
-    const assetValue = balances.reduce(
-      (sum, value) => sum.plus(value.usdValue),
-      Zero
-    );
-
-    const liabilityValue = totalLiabilities.reduce(
-      (sum, value) => sum.plus(value.usdValue),
-      Zero
-    );
-
-    return assetValue.plus(nftTotal).minus(liabilityValue);
+    return get(calculateTotalValue(true));
   });
 
   const overall = computed(() => {
     const currency = get(currencySymbol);
-    const rate = get(exchangeRate(currency));
+    const rate = get(exchangeRate(currency)) ?? One;
     const selectedTimeframe = get(timeframe);
     const allTimeframes = timeframes((unit, amount) =>
       dayjs().subtract(amount, unit).startOf(TimeUnit.DAY).unix()
@@ -135,17 +118,16 @@ export const useStatisticsStore = defineStore('statistics', () => {
     };
   });
 
+  const api = useStatisticsApi();
   const fetchNetValue = async () => {
     try {
-      set(netValue, await api.queryNetvalueData(get(nftsInNetValue)));
+      set(netValue, await api.queryNetValueData(get(nftsInNetValue)));
     } catch (e: any) {
       notify({
-        title: i18n.t('actions.statistics.net_value.error.title').toString(),
-        message: i18n
-          .t('actions.statistics.net_value.error.message', {
-            message: e.message
-          })
-          .toString(),
+        title: t('actions.statistics.net_value.error.title').toString(),
+        message: t('actions.statistics.net_value.error.message', {
+          message: e.message
+        }).toString(),
         display: false
       });
     }
@@ -154,7 +136,7 @@ export const useStatisticsStore = defineStore('statistics', () => {
   const getNetValue = (startingDate: number) =>
     computed(() => {
       const currency = get(currencySymbol);
-      const rate = get(exchangeRate(currency));
+      const rate = get(exchangeRate(currency)) ?? One;
 
       const convert = (value: string | number | BigNumber): number => {
         const bigNumber =
@@ -189,18 +171,13 @@ export const useStatisticsStore = defineStore('statistics', () => {
       };
     });
 
-  const reset = () => {
-    set(netValue, defaultNetValue());
-  };
-
   return {
     netValue,
     totalNetWorth,
     totalNetWorthUsd,
     overall,
     fetchNetValue,
-    getNetValue,
-    reset
+    getNetValue
   };
 });
 

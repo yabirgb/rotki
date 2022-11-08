@@ -2,16 +2,16 @@ import dataclasses
 from typing import Any, Dict, Literal, Optional, Tuple
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset, EthereumToken
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.serialization.deserialize import deserialize_optional_to_fval
-from rotkehlchen.types import ChecksumEthAddress, EVMTxHash, Timestamp, make_evm_tx_hash
+from rotkehlchen.types import ChecksumEvmAddress, EVMTxHash, Timestamp, make_evm_tx_hash
 
 AAVE_EVENT_TYPE = Literal['deposit', 'withdrawal', 'interest', 'borrow', 'repay', 'liquidation']
 AAVE_EVENT_DB_TUPLE = Tuple[
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     AAVE_EVENT_TYPE,
     int,  # block_number
     Timestamp,
@@ -47,8 +47,8 @@ class AaveEvent:
         data['tx_hash'] = self.tx_hash.hex()
         return data
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> Tuple[
-        ChecksumEthAddress,
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> Tuple[
+        ChecksumEvmAddress,
         AAVE_EVENT_TYPE,
         int,
         Timestamp,
@@ -78,7 +78,7 @@ class AaveEvent:
 @dataclasses.dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
 class AaveInterestEvent(AaveEvent):
     """A simple event of the Aave protocol. Deposit, withdrawal or interest"""
-    asset: Asset
+    asset: CryptoAsset
     value: Balance
 
     def serialize(self) -> Dict[str, Any]:
@@ -86,7 +86,7 @@ class AaveInterestEvent(AaveEvent):
         result['asset'] = self.asset.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.asset.identifier,
@@ -102,9 +102,9 @@ class AaveInterestEvent(AaveEvent):
 @dataclasses.dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
 class AaveDepositWithdrawalEvent(AaveEvent):
     """A deposit or withdrawal in the aave protocol"""
-    asset: Asset
+    asset: CryptoAsset
     value: Balance
-    atoken: EthereumToken
+    atoken: EvmToken
 
     def serialize(self) -> Dict[str, Any]:
         result = super().serialize()
@@ -112,7 +112,7 @@ class AaveDepositWithdrawalEvent(AaveEvent):
         result['atoken'] = self.atoken.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.asset.identifier,
@@ -132,7 +132,7 @@ class AaveBorrowEvent(AaveInterestEvent):
     borrow_rate: FVal
     accrued_borrow_interest: FVal
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = AaveEvent.to_db_tuple(self, address)
         return base_tuple + (
             self.asset.identifier,
@@ -150,7 +150,7 @@ class AaveRepayEvent(AaveInterestEvent):
     """A repay event of the Aave protocol"""
     fee: Balance
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = AaveEvent.to_db_tuple(self, address)
         return base_tuple + (
             self.asset.identifier,
@@ -166,9 +166,9 @@ class AaveRepayEvent(AaveInterestEvent):
 @dataclasses.dataclass(init=True, repr=True, eq=False, order=False, unsafe_hash=False, frozen=True)
 class AaveLiquidationEvent(AaveEvent):
     """An aave liquidation event. You gain the principal and lose the collateral."""
-    collateral_asset: Asset
+    collateral_asset: CryptoAsset
     collateral_balance: Balance
-    principal_asset: Asset
+    principal_asset: CryptoAsset
     principal_balance: Balance
 
     def serialize(self) -> Dict[str, Any]:
@@ -177,7 +177,7 @@ class AaveLiquidationEvent(AaveEvent):
         result['principal_asset'] = self.principal_asset.identifier
         return result
 
-    def to_db_tuple(self, address: ChecksumEthAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
+    def to_db_tuple(self, address: ChecksumEvmAddress) -> AAVE_EVENT_DB_TUPLE:  # type: ignore
         base_tuple = super().to_db_tuple(address)
         return base_tuple + (
             self.collateral_asset.identifier,
@@ -203,15 +203,15 @@ def aave_event_from_db(event_tuple: AAVE_EVENT_DB_TUPLE) -> AaveEvent:
     asset2 = None
     if event_tuple[9] is not None:
         try:
-            asset2 = Asset(event_tuple[9])
-        except UnknownAsset as e:
+            asset2 = CryptoAsset(event_tuple[9])
+        except (UnknownAsset, WrongAssetType) as e:
             raise DeserializationError(
                 f'Unknown asset {event_tuple[6]} encountered during deserialization '
                 f'of Aave event from DB for asset2',
             ) from e
 
     try:
-        asset1 = Asset(event_tuple[6])
+        asset1 = CryptoAsset(event_tuple[6])
     except UnknownAsset as e:
         raise DeserializationError(
             f'Unknown asset {event_tuple[6]} encountered during deserialization '
@@ -228,7 +228,7 @@ def aave_event_from_db(event_tuple: AAVE_EVENT_DB_TUPLE) -> AaveEvent:
             tx_hash=tx_hash,
             log_index=log_index,
             asset=asset1,
-            atoken=EthereumToken.from_asset(asset2),  # type: ignore # should be a token
+            atoken=EvmToken(asset2.identifier),  # type: ignore # should be a token
             value=Balance(amount=asset1_amount, usd_value=asset1_usd_value),
         )
     if event_type == 'interest':

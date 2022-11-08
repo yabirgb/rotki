@@ -8,8 +8,8 @@ import pytest
 import requests
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import WORLD_TO_KUCOIN
 from rotkehlchen.assets.converters import UNSUPPORTED_KUCOIN_ASSETS, asset_from_kucoin
+from rotkehlchen.assets.exchanges_mappings.kucoin import WORLD_TO_KUCOIN
 from rotkehlchen.constants.assets import A_BTC, A_ETH, A_LINK, A_USDT
 from rotkehlchen.constants.timing import WEEK_IN_SECONDS
 from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset
@@ -67,7 +67,7 @@ def test_kucoin_exchange_assets_are_known(mock_kucoin):
             assert symbol in unsupported_assets
         except UnknownAsset as e:
             test_warnings.warn(UserWarning(
-                f'Found unknown asset {e.asset_name} in kucoin. '
+                f'Found unknown asset {e.identifier} in kucoin. '
                 f'Support for it has to be added',
             ))
 

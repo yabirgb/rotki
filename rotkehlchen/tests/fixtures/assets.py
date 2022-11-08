@@ -4,7 +4,7 @@ import pytest
 
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.types import AssetType
-from rotkehlchen.constants.resolver import ETHEREUM_DIRECTIVE
+from rotkehlchen.constants.resolver import evm_address_to_identifier
 from rotkehlchen.tests.utils.mock import MockResponse
 
 
@@ -41,7 +41,8 @@ def asset_resolver(
         mock_asset_github_response,
         force_reinitialize_asset_resolver,
         use_clean_caching_directory,
-        custom_ethereum_tokens,
+        user_ethereum_tokens,
+        generatable_user_ethereum_tokens,
 ):
     """Run the first initialization of the AssetResolver singleton
 
@@ -70,9 +71,17 @@ def asset_resolver(
             resolver = AssetResolver()
 
     # add any custom ethereum tokens given by the fixtures for a test
-    if custom_ethereum_tokens is not None:
-        for entry in custom_ethereum_tokens:
-            asset_id = ETHEREUM_DIRECTIVE + entry.ethereum_address
-            globaldb.add_asset(asset_id=asset_id, asset_type=AssetType.ETHEREUM_TOKEN, data=entry)
+    if user_ethereum_tokens is not None:
+        if generatable_user_ethereum_tokens is False:
+            given_user_tokens = user_ethereum_tokens
+        else:  # a callable was given
+            given_user_tokens = user_ethereum_tokens()
+        for entry in given_user_tokens:
+            asset_id = evm_address_to_identifier(
+                address=entry.evm_address,
+                chain=entry.chain,
+                token_type=entry.token_kind,
+            )
+            globaldb.add_asset(asset_id=asset_id, asset_type=AssetType.EVM_TOKEN, data=entry)
 
     return resolver

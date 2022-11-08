@@ -1,13 +1,8 @@
 <template>
   <v-row>
     <v-col cols="12">
-      <loan-header class="mt-8 mb-6" :owner="vault.owner">
-        {{
-          $t('maker_dao_vault_loan.header', {
-            identifier: scrambleData ? '-' : vault.identifier,
-            collateralType: vault.collateralType
-          })
-        }}
+      <loan-header v-if="vault.owner" class="mt-8 mb-6" :owner="vault.owner">
+        {{ tc('maker_dao_vault_loan.header', 0, header) }}
       </loan-header>
       <v-row no-gutters>
         <v-col cols="12" md="6" class="pe-md-4">
@@ -17,10 +12,10 @@
           <maker-dao-vault-liquidation :vault="vault" />
         </v-col>
         <v-col cols="12" class="pt-8 pt-md-8">
-          <loan-debt :debt="vault.debt" :asset="vault.collateralAsset">
+          <loan-debt :debt="vault.debt" :asset="vault.collateral.asset">
             <maker-dao-vault-debt-details
               :total-interest-owed="totalInterestOwed"
-              :loading="!vault.totalInterestOwed"
+              :loading="!totalInterestOwed"
               :stability-fee="vault.stabilityFee"
             />
           </loan-debt>
@@ -30,13 +25,13 @@
         <v-col cols="12">
           <premium-card
             v-if="!premium"
-            :title="$t('maker_dao_vault_loan.borrowing_history')"
+            :title="tc('maker_dao_vault_loan.borrowing_history')"
           />
           <vault-events-list
             v-else
             :asset="vault.collateral.asset"
-            :events="vault.events"
-            :creation="vault.creationTs"
+            :events="events"
+            :creation="creation"
             @open-link="openLink($event)"
           />
         </v-col>
@@ -45,15 +40,8 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
+import { PropType } from 'vue';
 import LoanDebt from '@/components/defi/loan/LoanDebt.vue';
 import LoanHeader from '@/components/defi/loan/LoanHeader.vue';
 import MakerDaoVaultCollateral from '@/components/defi/loan/loans/makerdao/MakerDaoVaultCollateral.vue';
@@ -62,56 +50,63 @@ import MakerDaoVaultLiquidation from '@/components/defi/loan/loans/makerdao/Make
 import PremiumCard from '@/components/display/PremiumCard.vue';
 import { useInterop } from '@/electron-interop';
 import { VaultEventsList } from '@/premium/premium';
+import { usePremiumStore } from '@/store/session/premium';
+import { useSessionSettingsStore } from '@/store/settings/session';
 import {
   MakerDAOVault,
   MakerDAOVaultDetails,
+  MakerDAOVaultEvent,
   MakerDAOVaultModel
-} from '@/store/defi/types';
-import { usePremiumStore } from '@/store/session/premium';
-import { useSessionSettingsStore } from '@/store/settings/session';
+} from '@/types/defi/maker';
 import { Zero } from '@/utils/bignumbers';
 
-export default defineComponent({
-  name: 'MakerDaoVaultLoan',
-  components: {
-    MakerDaoVaultLiquidation,
-    MakerDaoVaultCollateral,
-    MakerDaoVaultDebtDetails,
-    PremiumCard,
-    LoanDebt,
-    LoanHeader,
-    VaultEventsList
-  },
-  props: {
-    vault: {
-      required: true,
-      type: Object as PropType<MakerDAOVaultModel>
-    }
-  },
-  setup(props) {
-    const { vault } = toRefs(props);
-    const { scrambleData } = storeToRefs(useSessionSettingsStore());
-    const { premium } = storeToRefs(usePremiumStore());
-    const { openUrl } = useInterop();
-
-    const openLink = (url: string) => {
-      openUrl(url);
-    };
-
-    const totalInterestOwed = computed(() => {
-      if ('totalInterestOwed' in get(vault)) {
-        return (get(vault) as MakerDAOVault & MakerDAOVaultDetails)
-          .totalInterestOwed;
-      }
-      return Zero;
-    });
-
-    return {
-      scrambleData,
-      totalInterestOwed,
-      premium,
-      openLink
-    };
+const props = defineProps({
+  vault: {
+    required: true,
+    type: Object as PropType<MakerDAOVaultModel>
   }
+});
+
+const { vault } = toRefs(props);
+const { scrambleData } = storeToRefs(useSessionSettingsStore());
+const { premium } = storeToRefs(usePremiumStore());
+const { openUrl } = useInterop();
+const { tc } = useI18n();
+
+const openLink = (url: string) => {
+  openUrl(url);
+};
+
+const totalInterestOwed = computed(() => {
+  const makerVault = get(vault);
+  if ('totalInterestOwed' in makerVault) {
+    return (get(vault) as MakerDAOVault & MakerDAOVaultDetails)
+      .totalInterestOwed;
+  }
+  return Zero;
+});
+
+const events = computed<MakerDAOVaultEvent[] | undefined>(() => {
+  const makerVault = get(vault);
+  if ('totalInterestOwed' in makerVault) {
+    return makerVault.events;
+  }
+  return undefined;
+});
+
+const creation = computed(() => {
+  const makerVault = get(vault);
+  if ('totalInterestOwed' in makerVault) {
+    return makerVault.creationTs;
+  }
+  return undefined;
+});
+
+const header = computed(() => {
+  const makerVault = get(vault);
+  return {
+    identifier: scrambleData ? '-' : makerVault.identifier,
+    collateralType: makerVault.collateralType
+  };
 });
 </script>

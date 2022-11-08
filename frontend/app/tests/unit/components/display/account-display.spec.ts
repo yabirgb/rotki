@@ -1,33 +1,19 @@
 import { GeneralAccount } from '@rotki/common/lib/account';
 import { Blockchain } from '@rotki/common/lib/blockchain';
 import { mount, Wrapper } from '@vue/test-utils';
-import { set } from '@vueuse/core';
-import {
-  createPinia,
-  Pinia,
-  PiniaVuePlugin,
-  setActivePinia,
-  storeToRefs
-} from 'pinia';
-import Vue from 'vue';
+import { createPinia, Pinia, setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
 import AccountDisplay from '@/components/display/AccountDisplay.vue';
-import '../../i18n';
 import { useSessionStore } from '@/store/session';
 import { PrivacyMode } from '@/store/session/types';
 import { useSessionSettingsStore } from '@/store/settings/session';
-import store from '@/store/store';
 
-vi.mock('@/store/store', () => ({
-  default: {
-    getters: {
-      'balances/accounts': []
-    }
+vi.mock('@/services/rotkehlchen-api', () => ({
+  assets: {
+    assetImageUrl: vi.fn()
   }
 }));
-
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
+vi.mock('@/services/websocket/websocket-service');
 
 describe('AccountDisplay.vue', () => {
   let wrapper: Wrapper<any>;
@@ -43,7 +29,6 @@ describe('AccountDisplay.vue', () => {
   function createWrapper() {
     const vuetify = new Vuetify();
     return mount(AccountDisplay, {
-      store,
       pinia,
       vuetify,
       stubs: {
@@ -74,8 +59,7 @@ describe('AccountDisplay.vue', () => {
   });
 
   test('blurs address on privacy mode', async () => {
-    const { privacyMode } = storeToRefs(useSessionSettingsStore());
-    set(privacyMode, PrivacyMode.SEMI_PRIVATE);
+    useSessionSettingsStore().update({ privacyMode: PrivacyMode.SEMI_PRIVATE });
     await wrapper.vm.$nextTick();
     expect(wrapper.find('.blur-content').exists()).toBe(true);
   });

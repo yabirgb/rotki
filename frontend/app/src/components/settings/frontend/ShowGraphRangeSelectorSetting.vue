@@ -7,7 +7,7 @@
     <v-switch
       v-model="showGraphRangeSelector"
       class="general-settings__fields__zero-base mb-4 mt-2"
-      :label="$t('frontend_settings.label.show_graph_range_selector')"
+      :label="t('frontend_settings.label.show_graph_range_selector')"
       :success-messages="success"
       :error-messages="error"
       @change="update"
@@ -16,9 +16,6 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import { useFrontendSettingsStore } from '@/store/settings/frontend';
 
 const showGraphRangeSelector = ref<boolean>(true);
@@ -29,4 +26,6 @@ const { showGraphRangeSelector: enabled } = storeToRefs(
 onMounted(() => {
   set(showGraphRangeSelector, get(enabled));
 });
+
+const { t } = useI18n();
 </script>

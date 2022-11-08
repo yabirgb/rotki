@@ -22,8 +22,6 @@ SHEETS_SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
 ]
 
-VALUE_INPUT_OPTION = 'USER_ENTERED'
-
 
 def _login(service_name: str, version: str, scopes: List[str], credentials_path: Path):
     """Create a specific google service driver and loginto it with credentials
@@ -161,7 +159,7 @@ class GoogleService:
                     'fields': 'userEnteredFormat.numberFormat',
                 },
             })
-        self.sheets_service.spreadsheets().batchUpdate(  # noqa: E501 # pylint: disable=no-member
+        self.sheets_service.spreadsheets().batchUpdate(  # pylint: disable=no-member
             spreadsheetId=sheet_id,
             body={'requests': requests},
         ).execute()

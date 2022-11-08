@@ -1,9 +1,8 @@
 import { AssetBalance } from '@rotki/common';
-import { ManagedAsset } from '@/services/assets/types';
-import { AssetInfoGetter } from '@/store/balances/types';
+import { AssetInfo } from '@rotki/common/lib/data';
 import { assert } from '@/utils/assertions';
 
-function levenshtein(a: string, b: string) {
+const levenshtein = (a: string, b: string) => {
   let tmp;
   if (a.length === 0) {
     return b.length;
@@ -39,15 +38,7 @@ function levenshtein(a: string, b: string) {
     }
   }
   return res;
-}
-
-function score(keyword: string, { name, symbol }: ManagedAsset): number {
-  const symbolScore = symbol
-    ? levenshtein(keyword, symbol.toLocaleLowerCase())
-    : 0;
-  const nameScore = name ? levenshtein(keyword, name.toLocaleLowerCase()) : 0;
-  return Math.min(symbolScore, nameScore);
-}
+};
 
 /**
  *
@@ -55,15 +46,15 @@ function score(keyword: string, { name, symbol }: ManagedAsset): number {
  * @param {string} b - Second string to compare
  * @param {string} keyword
  *
- * @return {number} - Rank comparison between string a to keyword and string b to keyword.
+ * @return {number} - Rank comparison between string `a` to keyword and string `b` to keyword.
  *
  * @description
  * This method use levenshtein to compare the string, but with little modifications.
  * This method will prioritize this thing (in order) other than the value from levenshtein:
- * 1. It will prioritize string that match from beginning (i.e. for keyword `hop`, it prioritizes string `hop-portocol` higher than string `hoo`)
+ * 1. It will prioritize string that match from beginning (i.e. for keyword `hop`, it prioritizes string `hop-protocol` higher than string `hoo`)
  * 2. It will prioritize string that contain the keyword (i.e. for keyword `urv`, it prioritizes string `curvy`, higher than string `urw`)
  */
-export function compareSymbols(a: string, b: string, keyword: string) {
+export const compareSymbols = (a: string, b: string, keyword: string) => {
   const search = keyword.toLocaleLowerCase().trim();
   const keywordA = a.toLocaleLowerCase().trim();
   const keywordB = b.toLocaleLowerCase().trim();
@@ -94,35 +85,11 @@ export function compareSymbols(a: string, b: string, keyword: string) {
   }
 
   return rankA - rankB;
-}
+};
 
-export function compareAssets(
-  a: ManagedAsset,
-  b: ManagedAsset,
-  element: keyof ManagedAsset,
-  keyword: string,
-  desc: boolean
-): number {
-  const fields = ['symbol', 'name'];
-  if (keyword.length > 0 && fields.includes(element)) {
-    const diff = score(keyword, a) - score(keyword, b);
-    return desc ? diff * -1 : diff;
-  }
-
-  const aElement = a[element];
-  const bElement = b[element];
-
-  if (typeof bElement === 'number' && typeof aElement === 'number') {
-    return desc ? bElement - aElement : aElement - bElement;
-  } else if (typeof bElement === 'string' && typeof aElement === 'string') {
-    return desc
-      ? bElement.toLocaleLowerCase().localeCompare(aElement)
-      : aElement.toLocaleLowerCase().localeCompare(bElement);
-  }
-  return 0;
-}
-
-export const getSortItems = (getInfo: AssetInfoGetter) => {
+export const getSortItems = (
+  getInfo: (identifier: string) => AssetInfo | null
+) => {
   return (
     items: AssetBalance[],
     sortBy: (keyof AssetBalance)[],
@@ -149,4 +116,25 @@ export const getSortItems = (getInfo: AssetInfoGetter) => {
       ).toNumber();
     });
   };
+};
+
+export const isEvmIdentifier = (identifier?: string) => {
+  if (!identifier) return false;
+  return identifier.startsWith('eip155');
+};
+
+export const getAddressFromEvmIdentifier = (identifier?: string) => {
+  if (!identifier) return '';
+  return identifier.split(':')[2] ?? '';
+};
+
+export const createEvmIdentifierFromAddress = (
+  address: string,
+  chain: string = '1'
+) => {
+  return `eip155:${chain}/erc20:${address}`;
+};
+
+export const getValidSelectorFromEvmAddress = (address: string) => {
+  return address.replace(/[^a-z0-9]/gi, '');
 };

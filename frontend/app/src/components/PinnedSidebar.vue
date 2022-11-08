@@ -10,37 +10,38 @@
     @input="visibleUpdate($event)"
   >
     <div>
-      <component :is="pinned.name" v-if="pinned" v-bind="pinned.props" />
+      <component
+        :is="component"
+        v-if="pinned && component"
+        v-bind="pinned.props"
+      />
     </div>
   </v-navigation-drawer>
 </template>
-<script lang="ts">
-import { defineComponent } from '@vue/composition-api';
-import { storeToRefs } from 'pinia';
+<script setup lang="ts">
+import { ComputedRef } from 'vue';
 import ReportActionableCard from '@/components/profitloss/ReportActionableCard.vue';
-import { useSessionStore } from '@/store/session';
+import { useAreaVisibilityStore } from '@/store/session/visibility';
 
-export default defineComponent({
-  name: 'PinnedSidebar',
-  components: {
-    ReportActionableCard
-  },
-  props: {
-    visible: { required: true, type: Boolean }
-  },
-  emits: ['visible:update'],
-  setup(_, { emit }) {
-    const visibleUpdate = (_visible: boolean) => {
-      emit('visible:update', _visible);
-    };
+defineProps({
+  visible: { required: true, type: Boolean }
+});
 
-    const { pinned } = storeToRefs(useSessionStore());
+const emit = defineEmits<{ (e: 'visible:update', visible: boolean): void }>();
 
-    return {
-      pinned,
-      visibleUpdate
-    };
+const visibleUpdate = (visible: boolean) => {
+  emit('visible:update', visible);
+};
+
+const { pinned } = storeToRefs(useAreaVisibilityStore());
+
+const component: ComputedRef<any> = computed(() => {
+  const pinnedValue = get(pinned);
+  if (pinnedValue) {
+    if (pinnedValue.name === 'report-actionable-card')
+      return ReportActionableCard;
   }
+  return null;
 });
 </script>
 

@@ -1,9 +1,10 @@
 from enum import Enum
 from typing import TYPE_CHECKING, List, Literal, NamedTuple, Optional, Protocol
 
+from rotkehlchen.accounting.structures.base import HistoryBaseEntry
+
 if TYPE_CHECKING:
     from rotkehlchen.accounting.pot import AccountingPot
-    from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 
 
 class AccountantCallback(Protocol):
@@ -29,5 +30,4 @@ class TxEventSettings(NamedTuple):
     take: int
     method: Literal['acquisition', 'spend']
     multitake_treatment: Optional[TxMultitakeTreatment] = None
-    # accountant_cb: Optional[Callable[['AccountingPot', 'HistoryBaseEntry', List['HistoryBaseEntry']], None]] = None  # noqa: E501
     accountant_cb: Optional[AccountantCallback] = None

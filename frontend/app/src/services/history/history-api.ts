@@ -2,31 +2,9 @@ import { ActionResult } from '@rotki/common/lib/data';
 import { AxiosInstance, AxiosRequestTransformer } from 'axios';
 import {
   axiosSnakeCaseTransformer,
-  getUpdatedKey,
-  setupTransformer
+  getUpdatedKey
 } from '@/services/axios-tranformers';
 import { basicAxiosTransformer } from '@/services/consts';
-import { IgnoredActions } from '@/services/history/const';
-import {
-  AssetMovement,
-  AssetMovementCollectionResponse,
-  AssetMovementRequestPayload,
-  EntryWithMeta,
-  EthTransaction,
-  EthTransactionCollectionResponse,
-  LedgerAction,
-  LedgerActionCollectionResponse,
-  LedgerActionRequestPayload,
-  NewEthTransactionEvent,
-  NewLedgerAction,
-  NewTrade,
-  Trade,
-  TradeCollectionResponse,
-  TradeLocation,
-  TradeRequestPayload,
-  TransactionEventRequestPayload,
-  TransactionRequestPayload
-} from '@/services/history/types';
 import { PendingTask } from '@/services/types-api';
 import {
   handleResponse,
@@ -36,6 +14,32 @@ import {
   validWithSessionStatus
 } from '@/services/utils';
 import { CollectionResponse } from '@/types/collection';
+import {
+  LedgerAction,
+  LedgerActionCollectionResponse,
+  LedgerActionRequestPayload,
+  NewLedgerAction
+} from '@/types/history/ledger-actions';
+import { EntryWithMeta } from '@/types/history/meta';
+import {
+  AssetMovement,
+  AssetMovementCollectionResponse,
+  AssetMovementRequestPayload
+} from '@/types/history/movements';
+import { TradeLocation } from '@/types/history/trade-location';
+import {
+  NewTrade,
+  Trade,
+  TradeCollectionResponse,
+  TradeRequestPayload
+} from '@/types/history/trades';
+import {
+  EthTransaction,
+  EthTransactionCollectionResponse,
+  NewEthTransactionEvent,
+  TransactionEventRequestPayload,
+  TransactionRequestPayload
+} from '@/types/history/tx';
 import { ReportProgress } from '@/types/reports';
 
 export class HistoryApi {
@@ -109,10 +113,10 @@ export class HistoryApi {
       .then(handleResponse);
   }
 
-  async deleteExternalTrade(tradeId: string): Promise<boolean> {
+  async deleteExternalTrade(tradesIds: string[]): Promise<boolean> {
     return this.axios
       .delete<ActionResult<boolean>>('/trades', {
-        data: axiosSnakeCaseTransformer({ tradeId }),
+        data: axiosSnakeCaseTransformer({ tradesIds }),
         validateStatus: validStatus
       })
       .then(handleResponse);
@@ -198,7 +202,7 @@ export class HistoryApi {
   ): Promise<PendingTask> {
     return this.axios
       .post<ActionResult<PendingTask>>(
-        'blockchains/ETH/transactions/events',
+        'blockchains/ETH/transactions',
         axiosSnakeCaseTransformer({
           asyncQuery: true,
           ...payload
@@ -302,10 +306,10 @@ export class HistoryApi {
       .then(handleResponse);
   }
 
-  async deleteLedgerAction(identifier: number): Promise<boolean> {
+  async deleteLedgerAction(identifiers: number[]): Promise<boolean> {
     return this.axios
       .delete<ActionResult<boolean>>('/ledgeractions', {
-        data: axiosSnakeCaseTransformer({ identifier }),
+        data: axiosSnakeCaseTransformer({ identifiers }),
         validateStatus: validStatus
       })
       .then(handleResponse);
@@ -321,16 +325,6 @@ export class HistoryApi {
     );
     const data = handleResponse(response);
     return ReportProgress.parse(data);
-  }
-
-  fetchIgnored(): Promise<IgnoredActions> {
-    return this.axios
-      .get<ActionResult<IgnoredActions>>('/actions/ignored', {
-        validateStatus: validStatus,
-        transformResponse: setupTransformer([])
-      })
-      .then(handleResponse)
-      .then(result => IgnoredActions.parse(result));
   }
 
   fetchAvailableCounterparties(): Promise<string[]> {

@@ -1,7 +1,3 @@
-import { computed, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import i18n from '@/i18n';
 import { Watcher, WatcherTypes } from '@/services/session/types';
 import { useWatchersApi } from '@/services/session/watchers-api';
 import { useNotifications } from '@/store/notifications';
@@ -9,6 +5,8 @@ import { usePremiumStore } from '@/store/session/premium';
 
 export const useWatchersStore = defineStore('session/watchers', () => {
   const watchers = ref<Watcher<WatcherTypes>[]>([]);
+
+  const { t } = useI18n();
 
   const loanWatchers = computed(() => {
     const loanWatcherTypes = ['makervault_collateralization_ratio'];
@@ -31,12 +29,10 @@ export const useWatchersStore = defineStore('session/watchers', () => {
       set(watchers, await api.watchers());
     } catch (e: any) {
       notify({
-        title: i18n.t('actions.session.fetch_watchers.error.title').toString(),
-        message: i18n
-          .t('actions.session.fetch_watchers.error.message', {
-            message: e.message
-          })
-          .toString(),
+        title: t('actions.session.fetch_watchers.error.title').toString(),
+        message: t('actions.session.fetch_watchers.error.message', {
+          message: e.message
+        }).toString(),
         display: true
       });
     }
@@ -56,18 +52,13 @@ export const useWatchersStore = defineStore('session/watchers', () => {
     set(watchers, await api.editWatcher(editedWatchers));
   };
 
-  const reset = () => {
-    set(watchers, []);
-  };
-
   return {
     watchers,
     loanWatchers,
     fetchWatchers,
     addWatchers,
     editWatchers,
-    deleteWatchers,
-    reset
+    deleteWatchers
   };
 });
 

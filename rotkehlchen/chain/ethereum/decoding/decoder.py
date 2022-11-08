@@ -9,10 +9,11 @@ from gevent.lock import Semaphore
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
-from rotkehlchen.assets.asset import EthereumToken
-from rotkehlchen.assets.utils import get_or_create_ethereum_token
+from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.assets.utils import get_or_create_evm_token
 from rotkehlchen.chain.ethereum.abi import decode_event_data_abi_str
 from rotkehlchen.chain.ethereum.constants import MODULES_PACKAGE, MODULES_PREFIX_LENGTH
+from rotkehlchen.chain.ethereum.decoding.constants import NAUGHTY_ERC721
 from rotkehlchen.chain.ethereum.structures import EthereumTxReceipt, EthereumTxReceiptLog
 from rotkehlchen.chain.ethereum.utils import token_normalized_value
 from rotkehlchen.constants import ZERO
@@ -21,15 +22,17 @@ from rotkehlchen.db.constants import HISTORY_MAPPING_DECODED
 from rotkehlchen.db.ethtx import DBEthTx
 from rotkehlchen.db.filtering import ETHTransactionsFilterQuery, HistoryEventFilterQuery
 from rotkehlchen.db.history_events import DBHistoryEvents
-from rotkehlchen.errors.asset import UnknownAsset
+from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import InputError, ModuleLoadingError, NotERC20Conformant, RemoteError
 from rotkehlchen.errors.serialization import ConversionError, DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
-    ChecksumEthAddress,
-    EthereumTransaction,
+    ChainID,
+    ChecksumEvmAddress,
+    EvmTokenKind,
+    EvmTransaction,
     EVMTxHash,
     Location,
     TimestampMS,
@@ -75,13 +78,13 @@ class EVMTransactionDecoder():
             self,
             database: 'DBHandler',
             ethereum_manager: 'EthereumManager',
-            eth_transactions: 'EthTransactions',
+            transactions: 'EthTransactions',
             msg_aggregator: MessagesAggregator,
     ):
         self.database = database
         self.all_counterparties: Set[str] = set()
         self.ethereum_manager = ethereum_manager
-        self.eth_transactions = eth_transactions
+        self.transactions = transactions
         self.msg_aggregator = msg_aggregator
         self.dbethtx = DBEthTx(self.database)
         self.dbevents = DBHistoryEvents(self.database)
@@ -99,7 +102,7 @@ class EVMTransactionDecoder():
     def _recursively_initialize_decoders(
             self, package: Union[str, ModuleType],
     ) -> Tuple[
-            Dict[ChecksumEthAddress, Tuple[Any, ...]],
+            Dict[ChecksumEvmAddress, Tuple[Any, ...]],
             List[Callable],
             List[Callable],
     ]:
@@ -124,11 +127,16 @@ class EVMTransactionDecoder():
                 if submodule_decoder:
                     if class_name in self.decoders:
                         raise ModuleLoadingError(f'Decoder with name {class_name} already loaded')
-                    self.decoders[class_name] = submodule_decoder(
-                        ethereum_manager=self.ethereum_manager,
-                        base_tools=self.base,
-                        msg_aggregator=self.msg_aggregator,
-                    )
+                    try:
+                        self.decoders[class_name] = submodule_decoder(
+                            ethereum_manager=self.ethereum_manager,
+                            base_tools=self.base,
+                            msg_aggregator=self.msg_aggregator,
+                        )
+                    except (UnknownAsset, WrongAssetType) as e:
+                        self.msg_aggregator.add_error(f'Failed at initialization of {class_name} decoder due to asset mismatch: {str(e)}')  # noqa: E501
+                        continue
+
                     address_results.update(self.decoders[class_name].addresses_to_decoders())
                     rules_results.extend(self.decoders[class_name].decoding_rules())
                     enricher_results.extend(self.decoders[class_name].enricher_rules())
@@ -161,9 +169,9 @@ class EVMTransactionDecoder():
 
     def try_all_rules(
             self,
-            token: Optional[EthereumToken],
+            token: Optional[EvmToken],
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],
             action_items: List[ActionItem],
     ) -> Optional[HistoryBaseEntry]:
@@ -177,11 +185,11 @@ class EVMTransactionDecoder():
     def decode_by_address_rules(
             self,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],
             all_logs: List[EthereumTxReceiptLog],
             action_items: List[ActionItem],
-    ) -> Tuple[Optional[HistoryBaseEntry], Optional[ActionItem]]:
+    ) -> Tuple[Optional[HistoryBaseEntry], List[ActionItem]]:
         """
         Sees if the log is on an address for which we have specific decoders and calls it
 
@@ -192,7 +200,7 @@ class EVMTransactionDecoder():
         """
         mapping_result = self.address_mappings.get(tx_log.address)
         if mapping_result is None:
-            return None, None
+            return None, []
         method = mapping_result[0]
 
         try:
@@ -204,14 +212,14 @@ class EVMTransactionDecoder():
             log.debug(
                 f'Decoding tx log with index {tx_log.log_index} of transaction '
                 f'{transaction.tx_hash.hex()} through {method.__name__} failed due to {str(e)}')
-            return None, None
+            return None, []
 
         return result
 
     def decode_transaction(
             self,
             write_cursor: 'DBCursor',
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             tx_receipt: EthereumTxReceipt,
     ) -> List[HistoryBaseEntry]:
         """Decodes an ethereum transaction and its receipt and saves result in the DB"""
@@ -222,14 +230,13 @@ class EVMTransactionDecoder():
 
         # decode transaction logs from the receipt
         for tx_log in tx_receipt.logs:
-            event, action_item = self.decode_by_address_rules(tx_log, transaction, events, tx_receipt.logs, action_items)  # noqa: E501
-            if action_item:
-                action_items.append(action_item)
+            event, new_action_items = self.decode_by_address_rules(tx_log, transaction, events, tx_receipt.logs, action_items)  # noqa: E501
+            action_items.extend(new_action_items)
             if event:
                 events.append(event)
                 continue
 
-            token = GlobalDBHandler.get_ethereum_token(tx_log.address)
+            token = GlobalDBHandler.get_evm_token(tx_log.address, chain=ChainID.ETHEREUM)
             event = self.try_all_rules(token=token, tx_log=tx_log, transaction=transaction, decoded_events=events, action_items=action_items)  # noqa: E501
             if event:
                 events.append(event)
@@ -239,7 +246,8 @@ class EVMTransactionDecoder():
             'INSERT OR IGNORE INTO evm_tx_mappings(tx_hash, blockchain, value) VALUES(?, ?, ?)',  # noqa: E501
             (transaction.tx_hash, 'ETH', HISTORY_MAPPING_DECODED),
         )
-
+        if events == [] and (eth_event := self._get_eth_transfer_event(transaction)) is not None:
+            events = [eth_event]
         return sorted(events, key=lambda x: x.sequence_index, reverse=False)
 
     def get_and_decode_undecoded_transactions(self, limit: Optional[int] = None) -> None:
@@ -272,7 +280,7 @@ class EVMTransactionDecoder():
         with self.database.user_write() as cursor:
             for tx_hash in tx_hashes:
                 try:
-                    receipt = self.eth_transactions.get_or_query_transaction_receipt(cursor, tx_hash)  # noqa: E501
+                    receipt = self.transactions.get_or_query_transaction_receipt(cursor, tx_hash)  # noqa: E501
                 except RemoteError as e:
                     raise InputError(f'Hash {tx_hash.hex()} does not correspond to a transaction') from e  # noqa: E501
 
@@ -294,7 +302,7 @@ class EVMTransactionDecoder():
     def get_or_decode_transaction_events(
             self,
             write_cursor: 'DBCursor',
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             tx_receipt: EthereumTxReceipt,
             ignore_cache: bool,
     ) -> List[HistoryBaseEntry]:
@@ -314,7 +322,7 @@ class EVMTransactionDecoder():
                 events = self.dbevents.get_history_events(
                     cursor=write_cursor,
                     filter_query=HistoryEventFilterQuery.make(
-                        event_identifier=transaction.tx_hash,
+                        event_identifiers=[transaction.tx_hash],
                     ),
                     has_premium=True,  # for this function we don't limit anything
                 )
@@ -325,11 +333,11 @@ class EVMTransactionDecoder():
         return events
 
     def _maybe_decode_internal_transactions(
-        self,
-        tx: EthereumTransaction,
-        tx_receipt: EthereumTxReceipt,
-        events: List[HistoryBaseEntry],
-        ts_ms: TimestampMS,
+            self,
+            tx: EvmTransaction,
+            tx_receipt: EthereumTxReceipt,
+            events: List[HistoryBaseEntry],
+            ts_ms: TimestampMS,
     ) -> None:
         """
         check for internal transactions if the transaction is not canceled. This function mutates
@@ -353,6 +361,7 @@ class EVMTransactionDecoder():
                 continue
 
             event_type, location_label, counterparty, verb = direction_result
+            preposition = 'to' if verb == 'Send' else 'from'
             events.append(HistoryBaseEntry(
                 event_identifier=tx.tx_hash,
                 sequence_index=self.base.get_next_sequence_counter(),
@@ -361,15 +370,39 @@ class EVMTransactionDecoder():
                 location_label=location_label,
                 asset=A_ETH,
                 balance=Balance(amount=amount),
-                notes=f'{verb} {amount} ETH {internal_tx.from_address} -> {internal_tx.to_address}',  # noqa: E501
+                notes=f'{verb} {amount} ETH {preposition} {counterparty}',
                 event_type=event_type,
                 event_subtype=HistoryEventSubType.NONE,
                 counterparty=counterparty,
             ))
 
+    def _get_eth_transfer_event(self, tx: EvmTransaction) -> Optional[HistoryBaseEntry]:
+        direction_result = self.base.decode_direction(
+            from_address=tx.from_address,
+            to_address=tx.to_address,
+        )
+        if direction_result is None:
+            return None
+        event_type, location_label, counterparty, verb = direction_result
+        amount = ZERO if tx.value == 0 else from_wei(FVal(tx.value))
+        preposition = 'to' if verb == 'Send' else 'from'
+        return HistoryBaseEntry(
+            event_identifier=tx.tx_hash,
+            sequence_index=self.base.get_next_sequence_counter(),
+            timestamp=ts_sec_to_ms(tx.timestamp),
+            location=Location.BLOCKCHAIN,
+            location_label=location_label,
+            asset=A_ETH,
+            balance=Balance(amount=amount),
+            notes=f'{verb} {amount} ETH {preposition} {counterparty}',
+            event_type=event_type,
+            event_subtype=HistoryEventSubType.NONE,
+            counterparty=counterparty,
+        )
+
     def _maybe_decode_simple_transactions(
             self,
-            tx: EthereumTransaction,
+            tx: EvmTransaction,
             tx_receipt: EthereumTxReceipt,
     ) -> List[HistoryBaseEntry]:
         """Decodes normal ETH transfers, internal transactions and gas cost payments"""
@@ -379,7 +412,7 @@ class EVMTransactionDecoder():
         # check for gas spent
         direction_result = self.base.decode_direction(tx.from_address, tx.to_address)
         if direction_result is not None:
-            event_type, location_label, counterparty, verb = direction_result
+            event_type, location_label, _, _ = direction_result
             if event_type in (HistoryEventType.SPEND, HistoryEventType.TRANSFER):
                 eth_burned_as_gas = from_wei(FVal(tx.gas_used * tx.gas_price))
                 events.append(HistoryBaseEntry(
@@ -390,7 +423,7 @@ class EVMTransactionDecoder():
                     location_label=location_label,
                     asset=A_ETH,
                     balance=Balance(amount=eth_burned_as_gas),
-                    notes=f'Burned {eth_burned_as_gas} ETH in gas from {location_label}',
+                    notes=f'Burned {eth_burned_as_gas} ETH for gas',
                     event_type=HistoryEventType.SPEND,
                     event_subtype=HistoryEventSubType.FEE,
                     counterparty=CPT_GAS,
@@ -433,27 +466,15 @@ class EVMTransactionDecoder():
         if amount == ZERO:
             return events
 
-        preposition = 'to' if verb == 'Send' else 'from'
-        events.append(HistoryBaseEntry(
-            event_identifier=tx.tx_hash,
-            sequence_index=self.base.get_next_sequence_counter(),
-            timestamp=ts_ms,
-            location=Location.BLOCKCHAIN,
-            location_label=location_label,
-            asset=A_ETH,
-            balance=Balance(amount=amount),
-            notes=f'{verb} {amount} ETH {tx.from_address} {preposition} {tx.to_address}',
-            event_type=event_type,
-            event_subtype=HistoryEventSubType.NONE,
-            counterparty=counterparty,
-        ))
+        if (eth_event := self._get_eth_transfer_event(tx)) is not None:
+            events.append(eth_event)
         return events
 
     def _maybe_decode_erc20_approve(
             self,
-            token: Optional[EthereumToken],
+            token: Optional[EvmToken],
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
     ) -> Optional[HistoryBaseEntry]:
@@ -497,20 +518,30 @@ class EVMTransactionDecoder():
 
     def _maybe_decode_erc20_721_transfer(
             self,
-            token: Optional[EthereumToken],
+            token: Optional[EvmToken],
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             action_items: List[ActionItem],
     ) -> Optional[HistoryBaseEntry]:
         if tx_log.topics[0] != ERC20_OR_ERC721_TRANSFER:
             return None
 
+        if tx_log.address in NAUGHTY_ERC721 or len(tx_log.topics) == 4:  # typical ERC721 has 3 indexed args  # noqa: E501
+            token_kind = EvmTokenKind.ERC721
+        elif len(tx_log.topics) == 3:  # typical ERC20 has 2 indexed args
+            token_kind = EvmTokenKind.ERC20
+        else:
+            log.debug(f'Failed to decode token with address {tx_log.address} due to inability to match token type')  # noqa: E501
+            return None
+
         if token is None:
             try:
-                found_token = get_or_create_ethereum_token(
+                found_token = get_or_create_evm_token(
                     userdb=self.database,
-                    ethereum_address=tx_log.address,
+                    evm_address=tx_log.address,
+                    chain=ChainID.ETHEREUM,
+                    token_kind=token_kind,
                     ethereum_manager=self.ethereum_manager,
                 )
             except NotERC20Conformant:
@@ -570,11 +601,11 @@ class EVMTransactionDecoder():
         )
         return transfer
 
-    def _maybe_enrich_transfers(  # pylint: disable=no-self-use
+    def _maybe_enrich_transfers(
             self,
-            token: Optional[EthereumToken],  # pylint: disable=unused-argument
+            token: Optional[EvmToken],  # pylint: disable=unused-argument
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,  # pylint: disable=unused-argument
+            transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: List[HistoryBaseEntry],
             action_items: List[ActionItem],  # pylint: disable=unused-argument
     ) -> Optional[HistoryBaseEntry]:
@@ -595,21 +626,30 @@ class EVMTransactionDecoder():
         if tx_log.topics[0] == GNOSIS_CHAIN_BRIDGE_RECEIVE and tx_log.address == '0x88ad09518695c6c3712AC10a214bE5109a655671':  # noqa: E501
             for event in decoded_events:
                 if event.event_type == HistoryEventType.RECEIVE:
+                    try:
+                        crypto_asset = event.asset.resolve_to_crypto_asset()
+                    except (UnknownAsset, WrongAssetType):
+                        next(iter(self.decoders.values())).notify_user(
+                            event=event,
+                            counterparty=CPT_GNOSIS_CHAIN,
+                        )
+                        continue
+
                     # user bridged from gnosis chain
                     event.event_type = HistoryEventType.TRANSFER
                     event.event_subtype = HistoryEventSubType.BRIDGE
                     event.counterparty = CPT_GNOSIS_CHAIN
                     event.notes = (
-                        f'Bridge {event.balance.amount} {event.asset.symbol} from gnosis chain'
+                        f'Bridge {event.balance.amount} {crypto_asset.symbol} from gnosis chain'
                     )
 
         return None
 
     def _enrich_protocol_tranfers(  # pylint: disable=no-self-use
             self,
-            token: EthereumToken,
+            token: EvmToken,
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             event: HistoryBaseEntry,
             action_items: List[ActionItem],
     ) -> None:
@@ -620,21 +660,29 @@ class EVMTransactionDecoder():
         transfer.
         """
         for enrich_call in self.token_enricher_rules:
-            transfer_enriched = enrich_call(
-                token=token,
-                tx_log=tx_log,
-                transaction=transaction,
-                event=event,
-                action_items=action_items,
-            )
+            try:
+                transfer_enriched = enrich_call(
+                    token=token,
+                    tx_log=tx_log,
+                    transaction=transaction,
+                    event=event,
+                    action_items=action_items,
+                )
+            except (UnknownAsset, WrongAssetType) as e:
+                log.error(
+                    f'Failed to enrich transfer due to unknown asset {event.asset}. {str(e)}',
+                )
+                # Don't try other rules since all of them will fail to resolve the asset
+                break
+
             if transfer_enriched:
                 break
 
     def _maybe_decode_governance(  # pylint: disable=no-self-use
             self,
-            token: Optional[EthereumToken],  # pylint: disable=unused-argument
+            token: Optional[EvmToken],  # pylint: disable=unused-argument
             tx_log: EthereumTxReceiptLog,
-            transaction: EthereumTransaction,
+            transaction: EvmTransaction,
             decoded_events: List[HistoryBaseEntry],  # pylint: disable=unused-argument
             action_items: List[ActionItem],  # pylint: disable=unused-argument
     ) -> Optional[HistoryBaseEntry]:

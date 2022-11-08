@@ -82,9 +82,32 @@ module.exports = {
         selector: 'typeLike',
         format: ['PascalCase']
       }
-    ]
+    ],
+    '@typescript-eslint/no-floating-promises': ['error', { ignoreIIFE: true }]
   },
 
+  overrides: [
+    {
+      files: ['*.ts'],
+      rules: {
+        'import/max-dependencies': [
+          // TODO: Raise the severity to 'error'
+          'warn',
+          {
+            max: 20,
+            ignoreTypeImports: false,
+          }
+        ],
+        'max-len': [
+          // TODO: Raise the severity to 'error'
+          'warn',
+          {
+            code: 400
+          }
+        ],
+      }
+    }
+  ],
   parserOptions: {
     parser: '@typescript-eslint/parser',
     project: './tsconfig.json'

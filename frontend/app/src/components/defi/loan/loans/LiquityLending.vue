@@ -2,7 +2,7 @@
   <v-row>
     <v-col cols="12">
       <loan-header class="mt-8 mb-6" :owner="loan.owner">
-        {{ $t('liquity_lending.header', { troveId: loan.balance.troveId }) }}
+        {{ tc('liquity_lending.header', 0, { troveId: loan.balance.troveId }) }}
       </loan-header>
       <v-row no-gutters>
         <v-col cols="12" md="6" class="pe-md-4">
@@ -35,7 +35,7 @@
         <v-col cols="12">
           <premium-card
             v-if="!premium"
-            :title="$t('liquity_lending.trove_events')"
+            :title="tc('liquity_lending.trove_events')"
           />
           <liquity-trove-events
             v-else
@@ -48,60 +48,39 @@
   </v-row>
 </template>
 
-<script lang="ts">
-import { AssetBalance } from '@rotki/common';
-import {
-  computed,
-  defineComponent,
-  PropType,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { AssetBalance, BigNumber } from '@rotki/common';
+import { ComputedRef, PropType } from 'vue';
 import LoanDebt from '@/components/defi/loan/LoanDebt.vue';
 import LoanHeader from '@/components/defi/loan/LoanHeader.vue';
 import LiquityCollateral from '@/components/defi/loan/loans/liquity/LiquityCollateral.vue';
 import LiquityLiquidation from '@/components/defi/loan/loans/liquity/LiquityLiquidation.vue';
 import PremiumCard from '@/components/display/PremiumCard.vue';
 import { isSectionLoading } from '@/composables/common';
-import { getPremium } from '@/composables/session';
+import { usePremium } from '@/composables/premium';
 import { LiquityTroveEvents } from '@/premium/premium';
-import { Section } from '@/store/const';
 import { LiquityLoan } from '@/store/defi/liquity/types';
+import { Section } from '@/types/status';
 
-export default defineComponent({
-  name: 'LiquityLending',
-  components: {
-    PremiumCard,
-    LiquityLiquidation,
-    LiquityCollateral,
-    LiquityTroveEvents,
-    LoanDebt,
-    LoanHeader
-  },
-  props: {
-    loan: {
-      required: true,
-      type: Object as PropType<LiquityLoan>
-    }
-  },
-  setup(props) {
-    const { loan } = toRefs(props);
-    const debt = computed<AssetBalance>(() => get(loan).balance.debt);
-    const collateral = computed<AssetBalance>(
-      () => get(loan).balance.collateral
-    );
-    const ratio = computed(() => get(loan).balance.collateralizationRatio);
-    const liquidationPrice = computed(() => get(loan).balance.liquidationPrice);
-    const premium = getPremium();
-    const loadingEvents = isSectionLoading(Section.DEFI_LIQUITY_EVENTS);
-    return {
-      debt,
-      collateral,
-      ratio,
-      liquidationPrice,
-      premium,
-      loadingEvents
-    };
+const props = defineProps({
+  loan: {
+    required: true,
+    type: Object as PropType<LiquityLoan>
   }
 });
+
+const { loan } = toRefs(props);
+const debt: ComputedRef<AssetBalance> = computed(() => get(loan).balance.debt);
+const collateral: ComputedRef<AssetBalance> = computed(
+  () => get(loan).balance.collateral
+);
+const ratio: ComputedRef<BigNumber | null> = computed(
+  () => get(loan).balance.collateralizationRatio
+);
+const liquidationPrice: ComputedRef<BigNumber | null> = computed(
+  () => get(loan).balance.liquidationPrice
+);
+const premium = usePremium();
+const loadingEvents = isSectionLoading(Section.DEFI_LIQUITY_EVENTS);
+const { tc } = useI18n();
 </script>

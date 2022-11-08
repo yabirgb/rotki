@@ -1,25 +1,21 @@
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
+from typing import Optional
 
 from eth_utils import to_checksum_address
 from web3 import Web3
-from web3.types import BlockIdentifier
 
-from rotkehlchen.assets.asset import Asset, EthereumToken
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
 from rotkehlchen.constants.assets import A_ETH
-from rotkehlchen.constants.ethereum import ETH_MULTICALL, ETH_MULTICALL_2, ETH_SPECIAL_ADDRESS
-from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset
+from rotkehlchen.constants.ethereum import ETH_SPECIAL_ADDRESS
+from rotkehlchen.constants.resolver import ethaddress_to_identifier
+from rotkehlchen.constants.timing import ETH_PROTOCOLS_CACHE_REFRESH
+from rotkehlchen.errors.asset import UnknownAsset, UnsupportedAsset, WrongAssetType
 from rotkehlchen.fval import FVal
+from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import ChecksumEthAddress
+from rotkehlchen.types import ChecksumEvmAddress, GeneralCacheType
 from rotkehlchen.utils.hexbytes import hexstring_to_bytes
-from rotkehlchen.utils.misc import get_chunks
-
-if TYPE_CHECKING:
-    from rotkehlchen.chain.ethereum.contracts import EthereumContract
-    from rotkehlchen.chain.ethereum.manager import EthereumManager
-    from rotkehlchen.chain.ethereum.types import WeightedNode
-
+from rotkehlchen.utils.misc import ts_now
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -70,111 +66,49 @@ def token_raw_value_decimals(token_amount: FVal, token_decimals: Optional[int]) 
 
 def token_normalized_value(
         token_amount: int,
-        token: EthereumToken,
+        token: EvmToken,
 ) -> FVal:
     return token_normalized_value_decimals(token_amount, token.decimals)
 
 
-def asset_normalized_value(amount: int, asset: Asset) -> FVal:
+def get_decimals(asset: CryptoAsset) -> int:
+    """
+    May raise:
+    - UnsupportedAsset if the given asset is not ETH or an ethereum token
+    """
+    if asset.identifier == 'ETH':
+        return 18
+    try:
+        token = asset.resolve_to_evm_token()
+    except UnknownAsset as e:
+        raise UnsupportedAsset(asset.identifier) from e
+
+    return token.decimals
+
+
+def asset_normalized_value(amount: int, asset: CryptoAsset) -> FVal:
     """Takes in an amount and an asset and returns its normalized value
 
     May raise:
     - UnsupportedAsset if the given asset is not ETH or an ethereum token
     """
-    if asset.identifier == 'ETH':
-        decimals = 18
-    else:
-        token = EthereumToken.from_asset(asset)
-        if token is None:
-            raise UnsupportedAsset(asset.identifier)
-        decimals = token.decimals
-
-    return token_normalized_value_decimals(amount, decimals)
+    return token_normalized_value_decimals(amount, get_decimals(asset))
 
 
-def asset_raw_value(amount: FVal, asset: Asset) -> int:
+def asset_raw_value(amount: FVal, asset: CryptoAsset) -> int:
     """Takes in an amount and an asset and returns its raw(wei equivalent) value
 
     May raise:
     - UnsupportedAsset if the given asset is not ETH or an ethereum token
     """
-    if asset.identifier == 'ETH':
-        decimals = 18
-    else:
-        token = EthereumToken.from_asset(asset)
-        if token is None:
-            raise UnsupportedAsset(asset.identifier)
-        decimals = token.decimals
-
-    return token_raw_value_decimals(amount, decimals)
-
-
-def multicall(
-        ethereum: 'EthereumManager',
-        calls: List[Tuple[ChecksumEthAddress, str]],
-        # only here to comply with multicall_2
-        require_success: bool = True,  # pylint: disable=unused-argument
-        call_order: Optional[Sequence['WeightedNode']] = None,
-        block_identifier: BlockIdentifier = 'latest',
-        calls_chunk_size: int = MULTICALL_CHUNKS,
-) -> Any:
-    calls_chunked = list(get_chunks(calls, n=calls_chunk_size))
-    output = []
-    for call_chunk in calls_chunked:
-        multicall_result = ETH_MULTICALL.call(
-            ethereum=ethereum,
-            method_name='aggregate',
-            arguments=[call_chunk],
-            call_order=call_order,
-            block_identifier=block_identifier,
-        )
-        _, chunk_output = multicall_result
-        output += chunk_output
-    return output
-
-
-def multicall_2(
-        ethereum: 'EthereumManager',
-        calls: List[Tuple[ChecksumEthAddress, str]],
-        require_success: bool,
-        call_order: Optional[Sequence['WeightedNode']] = None,
-        block_identifier: BlockIdentifier = 'latest',
-        # only here to comply with multicall
-        calls_chunk_size: int = MULTICALL_CHUNKS,  # pylint: disable=unused-argument
-) -> List[Tuple[bool, bytes]]:
-    """
-    Use a MULTICALL_2 contract for an aggregated query. If require_success
-    is set to False any call in the list of calls is allowed to fail.
-    """
-    return ETH_MULTICALL_2.call(
-        ethereum=ethereum,
-        method_name='tryAggregate',
-        arguments=[require_success, calls],
-        call_order=call_order,
-        block_identifier=block_identifier,
-    )
-
-
-def multicall_specific(
-        ethereum: 'EthereumManager',
-        contract: 'EthereumContract',
-        method_name: str,
-        arguments: List[Any],
-        call_order: Optional[Sequence['WeightedNode']] = None,
-) -> Any:
-    calls = [(
-        contract.address,
-        contract.encode(method_name=method_name, arguments=i),
-    ) for i in arguments]
-    output = multicall(ethereum, calls, True, call_order)
-    return [contract.decode(x, method_name, arguments[0]) for x in output]
+    return token_raw_value_decimals(amount, get_decimals(asset))
 
 
 def generate_address_via_create2(
         address: str,
         salt: str,
         init_code: str,
-) -> ChecksumEthAddress:
+) -> ChecksumEvmAddress:
     """Python implementation of CREATE2 opcode.
 
     Given an address (deployer), a salt and an init code (contract creation
@@ -198,18 +132,29 @@ def generate_address_via_create2(
     return to_checksum_address(contract_address)
 
 
-def ethaddress_to_asset(address: ChecksumEthAddress) -> Optional[Asset]:
+def ethaddress_to_asset(address: ChecksumEvmAddress) -> Optional[CryptoAsset]:
     """Takes an ethereum address and returns a token/asset for it
 
     Checks for special cases like the special ETH address used in some protocols
     """
     if address == ETH_SPECIAL_ADDRESS:
-        return A_ETH
+        return A_ETH.resolve_to_crypto_asset()
 
     try:
-        asset = EthereumToken(address)
-    except UnknownAsset:
+        asset = EvmToken(ethaddress_to_identifier(address))
+    except (UnknownAsset, WrongAssetType):
         log.error(f'Could not find asset/token for address {address}')
         return None
 
     return asset
+
+
+def should_update_curve_cache() -> bool:
+    """
+    Checks if the last time the curve lp tokens were queried is far enough to trigger
+    the process of querying them again.
+    """
+    last_update_ts = GlobalDBHandler().get_general_cache_last_queried_ts_by_key(
+        key_parts=[GeneralCacheType.CURVE_LP_TOKENS],
+    )
+    return ts_now() - last_update_ts >= ETH_PROTOCOLS_CACHE_REFRESH

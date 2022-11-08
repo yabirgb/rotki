@@ -1,24 +1,19 @@
 import { mount, Wrapper } from '@vue/test-utils';
 import flushPromises from 'flush-promises';
-import { createPinia, PiniaVuePlugin, setActivePinia } from 'pinia';
-import Vue from 'vue';
+import { setActivePinia } from 'pinia';
 import Vuetify from 'vuetify';
 import RevealableInput from '@/components/inputs/RevealableInput.vue';
 import { useSessionStore } from '@/store/session';
-import store from '@/store/store';
-
-Vue.use(Vuetify);
-Vue.use(PiniaVuePlugin);
+import createCustomPinia from '../../utils/create-pinia';
 
 describe('RevealableInput.vue', () => {
   let wrapper: Wrapper<any>;
 
   beforeEach(() => {
     const vuetify = new Vuetify();
-    const pinia = createPinia();
+    const pinia = createCustomPinia();
     setActivePinia(pinia);
     wrapper = mount(RevealableInput, {
-      store,
       pinia,
       vuetify,
       propsData: {
@@ -28,7 +23,7 @@ describe('RevealableInput.vue', () => {
   });
 
   afterEach(() => {
-    useSessionStore().reset();
+    useSessionStore().$reset();
   });
 
   test('should be password mode by default', async () => {
@@ -40,7 +35,7 @@ describe('RevealableInput.vue', () => {
   test('should change to type text', async () => {
     const input = wrapper.find('input');
     await wrapper.vm.$nextTick();
-    wrapper.find('button').trigger('click');
+    await wrapper.find('button').trigger('click');
     await wrapper.vm.$nextTick();
     expect(input.attributes('type')).toBe('text');
   });
@@ -48,7 +43,7 @@ describe('RevealableInput.vue', () => {
   test('input changing should emit an event', async () => {
     const input = wrapper.find('input');
     await wrapper.vm.$nextTick();
-    input.setValue('123');
+    await input.setValue('123');
     await wrapper.vm.$nextTick();
     await flushPromises();
     expect(wrapper.emitted('input')?.[0]?.[0]).toBe('123');

@@ -14,10 +14,13 @@ from rotkehlchen.config import default_data_directory
 from rotkehlchen.constants import ONE
 from rotkehlchen.externalapis.coingecko import Coingecko
 from rotkehlchen.externalapis.cryptocompare import Cryptocompare
+from rotkehlchen.externalapis.defillama import Defillama
 from rotkehlchen.fval import FVal
-from rotkehlchen.inquirer import DEFAULT_CURRENT_PRICE_ORACLES_ORDER, Inquirer
+from rotkehlchen.globaldb.manual_price_oracles import ManualCurrentOracle
+from rotkehlchen.inquirer import DEFAULT_CURRENT_PRICE_ORACLES_ORDER, CurrentPriceOracle, Inquirer
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.types import Timestamp
+from rotkehlchen.user_messages import MessagesAggregator
 
 
 @pytest.fixture(name='use_clean_caching_directory')
@@ -161,8 +164,18 @@ def fixture_mocked_current_prices():
     return {}
 
 
+@pytest.fixture(name='mocked_current_prices_with_oracles')
+def fixture_mocked_current_prices_with_oracles():
+    return {}
+
+
 @pytest.fixture(scope='session', name='session_mocked_current_prices')
 def fixture_session_mocked_current_prices():
+    return {}
+
+
+@pytest.fixture(scope='session', name='session_mocked_current_prices_with_oracles')
+def fixture_session_mocked_current_prices_with_oracles():
     return {}
 
 
@@ -176,10 +189,11 @@ def fixture_session_current_price_oracles_order():
     return DEFAULT_CURRENT_PRICE_ORACLES_ORDER
 
 
-def create_inquirer(
+def _create_inquirer(
         data_directory,
         should_mock_current_price_queries,
         mocked_prices,
+        mocked_current_prices_with_oracles,
         current_price_oracles_order,
         ethereum_manager,
         ignore_mocked_prices_for=None,
@@ -189,12 +203,13 @@ def create_inquirer(
     Inquirer._Inquirer__instance = None  # type: ignore
     # Get a cryptocompare without a DB since invoking DB fixture here causes problems
     # of existing user for some tests
-    cryptocompare = Cryptocompare(data_directory=data_directory, database=None)
-    gecko = Coingecko()
     inquirer = Inquirer(
         data_dir=data_directory,
-        cryptocompare=cryptocompare,
-        coingecko=gecko,
+        cryptocompare=Cryptocompare(data_directory=data_directory, database=None),
+        coingecko=Coingecko(),
+        defillama=Defillama(),
+        manualcurrent=ManualCurrentOracle(),
+        msg_aggregator=MessagesAggregator(),
     )
     if ethereum_manager is not None:
         inquirer.inject_ethereum(ethereum_manager)
@@ -215,33 +230,121 @@ def create_inquirer(
             from_asset,
             to_asset,
             ignore_cache: bool = False,  # pylint: disable=unused-argument
+            coming_from_latest_price: bool = False,   # pylint: disable=unused-argument
     ):
         return mocked_prices.get((from_asset, to_asset), FVal('1.5'))
 
-    def mock_find_usd_price(asset, ignore_cache: bool = False):  # pylint: disable=unused-argument
+    def mock_find_usd_price(
+        asset,
+        ignore_cache: bool = False,  # pylint: disable=unused-argument
+        coming_from_latest_price: bool = False,   # pylint: disable=unused-argument
+    ):
         return mocked_prices.get(asset, FVal('1.5'))
+
+    def mock_find_price_with_oracle(
+            from_asset,
+            to_asset,
+            ignore_cache: bool = False,  # pylint: disable=unused-argument
+    ):
+        price, oracle = mocked_prices.get((from_asset, to_asset), (FVal('1.5'), CurrentPriceOracle.BLOCKCHAIN))  # noqa: E501
+        return price, oracle, False
+
+    def mock_find_usd_price_with_oracle(asset, ignore_cache: bool = False):  # pylint: disable=unused-argument  # noqa: E501
+        price, oracle = mocked_prices.get(asset, (FVal('1.5'), CurrentPriceOracle.BLOCKCHAIN))
+        return price, oracle, False
 
     if ignore_mocked_prices_for is None:
         inquirer.find_price = mock_find_price  # type: ignore
         inquirer.find_usd_price = mock_find_usd_price  # type: ignore
+        inquirer.find_price_and_oracle = mock_find_price_with_oracle  # type: ignore
+        inquirer.find_usd_price_and_oracle = mock_find_usd_price_with_oracle  # type: ignore
     else:
-        def mock_some_prices(from_asset, to_asset, ignore_cache=False):
-            if from_asset.symbol in ignore_mocked_prices_for:
-                return inquirer.find_price_old(from_asset, to_asset, ignore_cache)
-            return mock_find_price(from_asset, to_asset, ignore_cache)
+        def mock_some_prices(
+                from_asset,
+                to_asset,
+                ignore_cache=False,
+                coming_from_latest_price=False,
+        ):
+            if from_asset.identifier in ignore_mocked_prices_for:
+                return inquirer.find_price_old(
+                    from_asset=from_asset,
+                    to_asset=to_asset,
+                    ignore_cache=ignore_cache,
+                    coming_from_latest_price=coming_from_latest_price,
+                )
+            return mock_find_price(
+                from_asset=from_asset,
+                to_asset=to_asset,
+                ignore_cache=ignore_cache,
+                coming_from_latest_price=coming_from_latest_price,
+            )
 
-        def mock_some_usd_prices(asset, ignore_cache=False):
-            if asset.symbol in ignore_mocked_prices_for:
-                return inquirer.find_usd_price_old(asset, ignore_cache)
-            return mock_find_usd_price(asset, ignore_cache)
+        def mock_some_usd_prices(
+                asset,
+                ignore_cache=False,
+                coming_from_latest_price=False,
+        ):
+            if asset.identifier in ignore_mocked_prices_for:
+                return inquirer.find_usd_price_old(
+                    asset=asset,
+                    ignore_cache=ignore_cache,
+                    coming_from_latest_price=coming_from_latest_price,
+                )
+            return mock_find_usd_price(
+                asset=asset,
+                ignore_cache=ignore_cache,
+                coming_from_latest_price=coming_from_latest_price,
+            )
+
+        def mock_prices_with_oracles(from_asset, to_asset, ignore_cache=False, coming_from_latest_price=False, match_main_currency=False):  # noqa: E501
+            if from_asset.identifier in ignore_mocked_prices_for:
+                return inquirer.find_price_and_oracle_old(
+                    from_asset=from_asset,
+                    to_asset=to_asset,
+                    ignore_cache=ignore_cache,
+                    coming_from_latest_price=coming_from_latest_price,
+                    match_main_currency=match_main_currency,
+                )
+            if len(mocked_current_prices_with_oracles) != 0:
+                price, oracle = mocked_current_prices_with_oracles.get((from_asset, to_asset), (FVal('1.5'), CurrentPriceOracle.BLOCKCHAIN))  # noqa: E501
+                return price, oracle, False
+            price = mock_find_price(
+                from_asset=from_asset,
+                to_asset=to_asset,
+                ignore_cache=ignore_cache,
+                coming_from_latest_price=coming_from_latest_price,
+            )
+            return price, CurrentPriceOracle.BLOCKCHAIN, False
+
+        def mock_usd_prices_with_oracles(asset, ignore_cache=False, coming_from_latest_price=False, match_main_currency=False):  # noqa: E501
+            if asset.identifier in ignore_mocked_prices_for:
+                return inquirer.find_usd_price_and_oracle_old(
+                    asset=asset,
+                    ignore_cache=ignore_cache,
+                    coming_from_latest_price=coming_from_latest_price,
+                    match_main_currency=match_main_currency,
+                )
+            if len(mocked_current_prices_with_oracles) != 0:
+                price, oracle = mocked_current_prices_with_oracles.get(asset, (FVal('1.5'), CurrentPriceOracle.BLOCKCHAIN))  # noqa: E501
+                return price, oracle, False
+            price = mock_find_usd_price(
+                asset=asset,
+                ignore_cache=ignore_cache,
+                coming_from_latest_price=coming_from_latest_price,
+            )
+            return price, CurrentPriceOracle.BLOCKCHAIN, False
 
         inquirer.find_price_old = inquirer.find_price  # type: ignore
         inquirer.find_usd_price_old = inquirer.find_usd_price  # type: ignore
         inquirer.find_price = mock_some_prices  # type: ignore
         inquirer.find_usd_price = mock_some_usd_prices  # type: ignore
+        inquirer.find_usd_price_and_oracle_old = inquirer.find_usd_price_and_oracle  # type: ignore  # noqa: E501
+        inquirer.find_price_and_oracle_old = inquirer.find_price_and_oracle  # type: ignore
+        inquirer.find_price_and_oracle = mock_prices_with_oracles  # type: ignore
+        inquirer.find_usd_price_and_oracle = mock_usd_prices_with_oracles  # type: ignore
 
     def mock_query_fiat_pair(base, quote):  # pylint: disable=unused-argument
-        return ONE
+        return (ONE, CurrentPriceOracle.FIAT)
 
     inquirer._query_fiat_pair = mock_query_fiat_pair  # type: ignore
 
@@ -250,9 +353,11 @@ def create_inquirer(
 
 @pytest.fixture(name='inquirer')
 def fixture_inquirer(
+        globaldb,  # pylint: disable=unused-argument  # needed for _create_inquirer
         data_dir,
         should_mock_current_price_queries,
         mocked_current_prices,
+        mocked_current_prices_with_oracles,
         current_price_oracles_order,
         ignore_mocked_prices_for,
 ):
@@ -261,10 +366,11 @@ def fixture_inquirer(
     The reason is that some tests became really slow because they exhausted the coingecko/cc
     oracles and used the defi ones.
     """
-    return create_inquirer(
+    return _create_inquirer(
         data_directory=data_dir,
         should_mock_current_price_queries=should_mock_current_price_queries,
         mocked_prices=mocked_current_prices,
+        mocked_current_prices_with_oracles=mocked_current_prices_with_oracles,
         current_price_oracles_order=current_price_oracles_order,
         ethereum_manager=None,
         ignore_mocked_prices_for=ignore_mocked_prices_for,
@@ -273,19 +379,22 @@ def fixture_inquirer(
 
 @pytest.fixture(scope='session')
 def session_inquirer(
+        session_globaldb,  # pylint: disable=unused-argument  # needed for _create_inquirer
         session_data_dir,
         session_should_mock_current_price_queries,
         session_mocked_current_prices,
+        session_mocked_current_prices_with_oracles,
         session_current_price_oracles_order,
 ):
     """
     The ethereum_manager argument is defined as None for the reasons explained in the
     `inquirer` fixture
     """
-    return create_inquirer(
+    return _create_inquirer(
         data_directory=session_data_dir,
         should_mock_current_price_queries=session_should_mock_current_price_queries,
         mocked_prices=session_mocked_current_prices,
+        mocked_current_prices_with_oracles=session_mocked_current_prices_with_oracles,
         current_price_oracles_order=session_current_price_oracles_order,
         ethereum_manager=None,
     )
@@ -293,9 +402,11 @@ def session_inquirer(
 
 @pytest.fixture(name='inquirer_defi')
 def fixture_inquirer_defi(
+        globaldb,  # pylint: disable=unused-argument  # needed for _create_inquirer
         data_dir,
         should_mock_current_price_queries,
         mocked_current_prices,
+        mocked_current_prices_with_oracles,
         current_price_oracles_order,
         ignore_mocked_prices_for,
         ethereum_manager,
@@ -303,10 +414,11 @@ def fixture_inquirer_defi(
     """This fixture is different from `inquirer` just in the use of defi oracles to query
     prices. If you don't need to use the defi oracles it is faster to use the `inquirer` fixture.
     """
-    return create_inquirer(
+    return _create_inquirer(
         data_directory=data_dir,
         should_mock_current_price_queries=should_mock_current_price_queries,
         mocked_prices=mocked_current_prices,
+        mocked_current_prices_with_oracles=mocked_current_prices_with_oracles,
         current_price_oracles_order=current_price_oracles_order,
         ethereum_manager=ethereum_manager,
         ignore_mocked_prices_for=ignore_mocked_prices_for,

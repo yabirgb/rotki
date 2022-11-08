@@ -2,12 +2,58 @@
 Changelog
 =========
 
+* :release:`1.26.1 <2022-11-04>`
+* :feature:`5080` For custom assets with custom price there should no longer be any double conversion. So 1 euro should always be one euro.
+* :feature:`5046` Users who deleted important assets from their rotki instance will now have a fallback and won't get their rotki stuck.
+* :bug:`5041` Add an option to only show ignored assets in assets table.
+* :bug:`5052` Provide a fix for the edge case at 1.25.3->1.26.0 (v34->v35) DB upgrade that caused a FOREIGN key error and botched the upgrade.
+* :bug:`-` Having SOL in custody of bitcoin.de will now work properly again.
+* :bug:`5051` Windows users with a premium subscription should be able to upload their user DB for backup to our server properly again.
+* :bug:`4821` Provide a fix for an infinite loop querying FTX trades if many trades were made in a short time.
+* :bug:`5073` Rotki won't fail to start at an edge case of starting the app again after more than a year when a particular global DB table that is expected is missing.
+* :bug:`-` Acquisitions in onchain swaps won't be taxable in PnL reports.
+
+* :release:`1.26.0 <2022-10-28>`
+* :feature:`2607` Users can now add general and section specific notes in rotki by clicking on the note icon on the top right menu.
+* :feature:`4906` Add supports for custom assets.
+* :feature:`4675` Added YFIETH-f curve pool to the list of known assets.
+* :feature:`4676` Now curve pools are automatically detected in the background each week, and more pools are supported.
+* :feature:`4755` Add mass delete functionality for trades and ledger actions.
+* :bug:`4722` Show unsupported error when running rotki on Windows 7.
+* :feature:`4449` Add Taproot (P2TR) option when adding Bitcoin xpub.
+* :feature:`2770` Add generic CSV import functionality.
+* :feature:`1830` Bitcoin and Bitcoin Cash addresses are now derived from XPUBs when balances are refreshed.
 * :feature:`4602` Shows indicator that indicates whether ETH nodes are connected or not.
+* :feature:`1744` LP balances (Uniswap V2 & V3, Sushiswap, Balancer) should now appear in the dashboard and be taken into account in the snapshots.
 * :feature:`3249` Add Uniswap V3 LP Positions Functionality.
 * :feature:`4600` User will now be notified if a leftover backend process is running when starting rotki.
+* :feature:`1224` Windows binaries should now be signed and the warnings that the software is not trusted should slowly go away.
+* :feature:`4704` Management of ignored assets is now moved to asset settings.
+* :feature:`-` Ethereum transactions involving convex finance should now be automatically decoded.
+* :feature:`1705` Ethereum token for each address will no longer be automatically detected with each query. Query speed performance improvement.
+* :feature:`-` Transactions that have interaced with the WETH contract are now properly decoded.
+* :feature:`-` An ethereum address's tokens can now be manually detected by pressing a specific button in the UI.
+* :feature:`-` Transactions involving uniswap v2 and uniswap v3 will now be properly decoded in the ethereum transactions view
+* :feature:`2701` Multi-evm assets are now supported. All EVM assets display the chain they correspond to in the UI.
+* :bug:`-` When force sync fails a proper error message is displayed
+* :bug:`-` If something is wrong with an asset update, it won't end up having partial information. 
+* :bug:`4930` Taxable ledger actions that spend fiat currencies should now be properly seen as taxable.
+* :bug:`4870` ETH2 staking view should no longer freeze for too many validators.
+* :bug:`-` Decimals now defaults to 18 when token contract info query fails.
 
-* :bug:`4657` Fix an edge case at ENS reverse resolution making an address resolving to the zero address instead of a name.
-* :feature:`4645` Support the new poloniex API. Note that with their "new and advanced" API we can't query trades history older than 90 days
+* :release:`1.25.3 <2022-09-02>`
+* :bug:`4781` Failure in one specific binance endpoint during balance query won't fail the entire binance balances query unless it's the main spot balances endpoint.
+* :bug:`4769` Fixed various issues with adding/editing/deleting web3 nodes. Editing the name of a node now works and also setting all open nodes to 0% query probability should no longer throw a 500 error.
+* :bug:`4710` Users will again be able to import CSV from certain importers.
+* :bug:`-` Bisq importer will now use the correct amount in all the imported trades.
+* :bug:`-` Addition of same addresses and xpubs on Bitcoin and Bitcoin Cash now should work properly and balances should be correct.
+
+* :release:`1.25.2 <2022-08-17>`
+* :feature:`-` The add button in blockchain accounts & balances is now bigger on larger screens.
+* :bug:`4671` Fixes an issue with the auto-updater not working properly.
+* :bug:`4657` Now ens names are verified by forward resolution.
+* :feature:`4645` Support the new poloniex API. Note that with their "new and advanced" API we can't query trades history older than 1 week.
+* :bug:`4682` Premium users will again be able to load the dex trades section correctly.
 
 * :release:`1.25.1 <2022-07-28>`
 * :bug:`-` Introduce an experimental approach to ignore uniswap v2 pool pricing for pools with single sided liquidity that is less than $5k. This is experimental and we will probably figure out a better way to filter spam assets in the future. Context: https://twitter.com/peter_szilagyi/status/1552532767790997504
@@ -1285,7 +1331,7 @@ Changelog
 * :feature:`1201` Changing the password when premium sync is enabled, will now display a warning to users about the change affecting synced instances.
 * :feature:`1178` Users can now select which accounts they want to track for the activated defi modules. If none are selected all accounts are queried.
 * :feature:`1084` Users can now select which of the available defi modules they want to activate.
-* :bug:`1285` Properly track SNX tokens by pointing to the `migrated <https://blog.synthetix.io/proxy-contract-cutover-on-may-10/`__ proxy contract
+* :bug:`1285` Properly track SNX tokens by pointing to the `migrated <https://blog.synthetix.io/proxy-contract-cutover-on-may-10/>`__ proxy contract
 * :feature:`820` Multiple open ethereum nodes will be now also queried along with your own ethereum node or etherscan. But in smaller frequency so as not to spam those services. The additional nodes rotki now queries are:
   - MyCrypto
   - Blockscout
@@ -1661,7 +1707,7 @@ Changelog
 * :bug:`443` Fix bug in deserialization of non-exact floating point kraken timestamp values which could lead to a crash during tax report generation.
 
 * :release:`1.0.1 <2019-08-02>`
-* :feature:`425` Users can now provide arguments to the backend via a config file. For more information check the `docs <https://rotkehlchen.readthedocs.io/en/latest/usage_guide.html#set-the-backend-s-arguments`__.
+* :feature:`425` Users can now provide arguments to the backend via a config file. For more information check the `docs <https://rotkehlchen.readthedocs.io/en/latest/usage_guide.html#set-the-backend-s-arguments>`__.
 * :feature:`-` Added support for the following tokens
 
   - `Luna Coin <https://coinmarketcap.com/currencies/luna-coin/>`__

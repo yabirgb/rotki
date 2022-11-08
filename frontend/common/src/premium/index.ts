@@ -1,9 +1,10 @@
-import { Ref } from "@vue/composition-api";
+import { MaybeRef } from '@vueuse/core';
+import { ComputedRef, Ref } from "vue";
 import VueI18n from 'vue-i18n';
-import { SupportedAsset } from "../data";
-import { ProfitLossModel } from "../defi";
-import { BalancerBalanceWithOwner, BalancerEvent, BalancerProfitLoss, Pool } from "../defi/balancer";
-import { DexTrade } from "../defi/dex";
+
+import { AssetInfo } from "../data";
+import { LpType, ProfitLossModel } from "../defi";
+import { BalancerBalance, BalancerEvent, BalancerProfitLoss } from "../defi/balancer";
 import { XswapBalance, XswapEventDetails, XswapPool, XswapPoolProfit } from "../defi/xswap";
 import { AssetBalanceWithPrice, BigNumber } from "../index";
 import { Theme , DebugSettings, FrontendSettingsPayload, Themes, TimeUnit } from '../settings';
@@ -13,7 +14,7 @@ import { LocationData, NetValue, OwnedAssets, TimedAssetBalances, TimedBalances 
 export interface PremiumInterface {
   readonly useHostComponents: boolean;
   readonly version: number;
-  readonly api: PremiumApi;
+  readonly api: () => PremiumApi;
   readonly debug?: DebugSettings;
 }
 
@@ -48,13 +49,6 @@ export interface DateUtilities {
   convertToTimestamp(date: string, dateFormat?: string): number;
 }
 
-export type DexTradesApi = {
-  fetchUniswapTrades: (refresh: boolean) => Promise<void>
-  fetchBalancerTrades: (refresh: boolean) => Promise<void>
-  fetchSushiswapTrades: (refresh: boolean) => Promise<void>
-  dexTrades: (addresses: string[]) => Ref<DexTrade[]>
-};
-
 export type CompoundApi = {
   compoundRewards: Ref<ProfitLossModel[]>
   compoundDebtLoss: Ref<ProfitLossModel[]>
@@ -65,8 +59,8 @@ export type CompoundApi = {
 export type BalancerApi = {
   balancerProfitLoss: (addresses: string[]) => Ref<BalancerProfitLoss[]>,
   balancerEvents: (addresses: string[]) => Ref<BalancerEvent[]>,
-  balancerBalances: Ref<BalancerBalanceWithOwner[]>,
-  balancerPools: Ref<Pool[]>,
+  balancerBalances: (addresses: string[]) => Ref<BalancerBalance[]>,
+  balancerPools: Ref<XswapPool[]>,
   balancerAddresses: Ref<string[]>,
   fetchBalancerBalances: (refresh: boolean) => Promise<void>,
   fetchBalancerEvents: (refresh: boolean) => Promise<void>
@@ -85,17 +79,18 @@ export type SushiApi = {
 export type BalancesApi = {
   byLocation: Ref<Record<string, BigNumber>>
   aggregatedBalances: Ref<AssetBalanceWithPrice[]>
-  exchangeRate: (currency: string) => Ref<number>
+  exchangeRate: (currency: string) => Ref<BigNumber>
 };
 
 export type AssetsApi = {
-  assetInfo(identifier: string): SupportedAsset | undefined;
-  assetSymbol(identifier: string): string;
-  getIdentifierForSymbol(symbol: string): string | undefined;
+  assetInfo(identifier: MaybeRef<string>): ComputedRef<AssetInfo | null>;
+  assetSymbol(identifier: MaybeRef<string>): ComputedRef<string>;
+  tokenAddress(identifier: MaybeRef<string>): ComputedRef<string>;
 };
 
 export type UtilsApi = {
-  truncate(text: string, length: number): string
+  truncate(text: string, length: number): string,
+  getPoolName(type: LpType, assets: string[]): string
 };
 
 export interface DataUtilities {
@@ -103,7 +98,6 @@ export interface DataUtilities {
   readonly utils: UtilsApi
   readonly statistics: StatisticsApi;
   readonly adex: AdexApi;
-  readonly dexTrades: DexTradesApi,
   readonly compound: CompoundApi,
   readonly balancer: BalancerApi,
   readonly balances: BalancesApi

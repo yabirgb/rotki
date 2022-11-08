@@ -1,14 +1,9 @@
-import { set } from '@vueuse/core';
-import { acceptHMRUpdate, defineStore, storeToRefs } from 'pinia';
-import i18n from '@/i18n';
-import { api } from '@/services/rotkehlchen-api';
-import { useMainStore } from '@/store/main';
+import { useSettingsApi } from '@/services/settings/settings-api';
+import { useMessageStore } from '@/store/message';
 import { usePremiumStore } from '@/store/session/premium';
 import { useQueriedAddressesStore } from '@/store/session/queried-addresses';
 import { useAccountingSettingsStore } from '@/store/settings/accounting';
-import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { useGeneralSettingsStore } from '@/store/settings/general';
-import { useSessionSettingsStore } from '@/store/settings/session';
 import { ActionStatus } from '@/store/types';
 import { KrakenAccountType } from '@/types/exchanges';
 import { Module } from '@/types/modules';
@@ -16,13 +11,14 @@ import { SettingsUpdate } from '@/types/user';
 import { uniqueStrings } from '@/utils/data';
 
 export const useSettingsStore = defineStore('settings', () => {
-  const { setMessage } = useMainStore();
+  const { setMessage } = useMessageStore();
   const { addQueriedAddress } = useQueriedAddressesStore();
   const generalStore = useGeneralSettingsStore();
   const accountingStore = useAccountingSettingsStore();
-  const frontendStore = useFrontendSettingsStore();
-  const sessionStore = useSessionSettingsStore();
   const { premium, premiumSync } = storeToRefs(usePremiumStore());
+  const { t } = useI18n();
+
+  const api = useSettingsApi();
 
   const setKrakenAccountType = async (krakenAccountType: KrakenAccountType) => {
     try {
@@ -31,17 +27,15 @@ export const useSettingsStore = defineStore('settings', () => {
       });
       generalStore.update(general);
       setMessage({
-        title: i18n
-          .t('actions.session.kraken_account.success.title')
-          .toString(),
-        description: i18n
-          .t('actions.session.kraken_account.success.message')
-          .toString(),
+        title: t('actions.session.kraken_account.success.title').toString(),
+        description: t(
+          'actions.session.kraken_account.success.message'
+        ).toString(),
         success: true
       });
     } catch (e: any) {
       setMessage({
-        title: i18n.t('actions.session.kraken_account.error.title').toString(),
+        title: t('actions.session.kraken_account.error.title').toString(),
         description: e.message
       });
     }
@@ -88,18 +82,10 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   };
 
-  const reset = () => {
-    accountingStore.reset();
-    generalStore.reset();
-    frontendStore.reset();
-    sessionStore.reset();
-  };
-
   return {
     setKrakenAccountType,
     enableModule,
-    update,
-    reset
+    update
   };
 });
 

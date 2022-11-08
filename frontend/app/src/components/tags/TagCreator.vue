@@ -15,7 +15,7 @@
           </v-btn>
         </template>
         <span>
-          {{ $t('tag_creator.refresh_tooltip') }}
+          {{ t('tag_creator.refresh_tooltip') }}
         </span>
       </v-tooltip>
     </v-row>
@@ -26,7 +26,7 @@
             <v-text-field
               outlined
               class="tag_creator__name"
-              :label="$t('common.name')"
+              :label="t('common.name')"
               :rules="rules"
               :value="tag.name"
               :disabled="editMode"
@@ -40,7 +40,7 @@
               outlined
               class="tag_creator__description"
               :value="tag.description"
-              :label="$t('tag_creator.labels.description')"
+              :label="t('tag_creator.labels.description')"
               @input="changed({ description: $event })"
             />
           </v-col>
@@ -48,14 +48,10 @@
       </v-col>
     </v-row>
     <v-row align="center" justify="center" no-gutters>
-      <v-col cols="6">
-        <v-row>
-          <v-col cols="12">
-            <div class="text-h6 text-center">
-              {{ $t('tag_creator.labels.foreground') }}
-            </div>
-          </v-col>
-        </v-row>
+      <v-col md="6">
+        <div class="mb-3 text-h6 text-center">
+          {{ t('tag_creator.labels.foreground') }}
+        </div>
         <v-row no-gutters>
           <v-col cols="12" class="tag-creator__color-picker">
             <v-color-picker
@@ -71,14 +67,10 @@
           </v-col>
         </v-row>
       </v-col>
-      <v-col cols="6">
-        <v-row>
-          <v-col cols="12">
-            <div class="text-h6 text-center">
-              {{ $t('tag_creator.labels.background') }}
-            </div>
-          </v-col>
-        </v-row>
+      <v-col md="6">
+        <div class="mb-3 text-h6 text-center">
+          {{ t('tag_creator.labels.background') }}
+        </div>
         <v-row no-gutters>
           <v-col cols="12" class="tag-creator__color-picker">
             <v-color-picker
@@ -96,7 +88,16 @@
       </v-col>
     </v-row>
     <v-row class="mb-2">
-      <v-col cols="12">
+      <v-col cols="12" class="d-flex justify-end">
+        <v-btn
+          v-if="editMode"
+          class="mr-4"
+          width="100"
+          depressed
+          @click="cancel"
+        >
+          {{ t('common.actions.cancel') }}
+        </v-btn>
         <v-btn
           class="tag-creator__buttons__save"
           width="100"
@@ -105,85 +106,60 @@
           :disabled="!valid"
           @click="save"
         >
-          {{ $t('common.actions.save') }}
-        </v-btn>
-        <v-btn v-if="editMode" width="100" depressed @click="cancel">
-          {{ $t('common.actions.cancel') }}
+          {{ t('common.actions.save') }}
         </v-btn>
       </v-col>
     </v-row>
   </v-form>
 </template>
 
-<script lang="ts">
-import {
-  defineComponent,
-  PropType,
-  Ref,
-  ref,
-  toRefs
-} from '@vue/composition-api';
-import { get } from '@vueuse/core';
+<script setup lang="ts">
+import { PropType, Ref } from 'vue';
 import TagIcon from '@/components/tags/TagIcon.vue';
-import { TagEvent } from '@/components/tags/types';
-import i18n from '@/i18n';
+import { TagEvent } from '@/types/tags';
 import { Tag } from '@/types/user';
 import { invertColor, randomColor } from '@/utils/Color';
 
-export default defineComponent({
-  name: 'TagCreator',
-  components: { TagIcon },
-  props: {
-    tag: { required: true, type: Object as PropType<Tag> },
-    editMode: { required: true, type: Boolean }
-  },
-  emits: ['changed', 'save', 'cancel'],
-  setup(props, { emit }) {
-    const { tag } = toRefs(props);
-    const valid = ref<boolean>(false);
-
-    const form: Ref<any> = ref(null);
-    const rules = [
-      (v: string) =>
-        !!v || i18n.t('tag_creator.validation.empty_name').toString()
-    ];
-
-    const changed = (event: TagEvent) => {
-      emit('changed', {
-        ...get(tag),
-        ...event
-      });
-    };
-
-    const save = () => {
-      get(form)?.reset();
-      emit('save', get(tag));
-    };
-
-    const cancel = () => {
-      get(form)?.reset();
-      emit('cancel');
-    };
-
-    const randomize = () => {
-      const backgroundColor = randomColor();
-      changed({
-        backgroundColor,
-        foregroundColor: invertColor(backgroundColor)
-      });
-    };
-
-    return {
-      form,
-      valid,
-      randomize,
-      rules,
-      changed,
-      save,
-      cancel
-    };
-  }
+const props = defineProps({
+  tag: { required: true, type: Object as PropType<Tag> },
+  editMode: { required: true, type: Boolean }
 });
+
+const emit = defineEmits(['changed', 'save', 'cancel']);
+const { t } = useI18n();
+
+const { tag } = toRefs(props);
+const valid = ref<boolean>(false);
+
+const form: Ref<any> = ref(null);
+const rules = [
+  (v: string) => !!v || t('tag_creator.validation.empty_name').toString()
+];
+
+const changed = (event: TagEvent) => {
+  emit('changed', {
+    ...get(tag),
+    ...event
+  });
+};
+
+const save = () => {
+  get(form)?.reset();
+  emit('save', get(tag));
+};
+
+const cancel = () => {
+  get(form)?.reset();
+  emit('cancel');
+};
+
+const randomize = () => {
+  const backgroundColor = randomColor();
+  changed({
+    backgroundColor,
+    foregroundColor: invertColor(backgroundColor)
+  });
+};
 </script>
 
 <style scoped lang="scss">

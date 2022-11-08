@@ -1,7 +1,7 @@
 <template>
   <card>
     <template #title>
-      {{ $t('asset_locations.title') }}
+      {{ t('asset_locations.title') }}
     </template>
     <template #actions>
       <v-row no-gutters justify="end">
@@ -36,10 +36,11 @@
       </template>
       <template #item.balance.usdValue="{ item }">
         <amount-display
-          :fiat-currency="identifier"
-          :amount="item.balance.amount"
-          :value="item.balance.usdValue"
           show-currency="symbol"
+          :amount="item.balance.amount"
+          :price-asset="identifier"
+          fiat-currency="USD"
+          :value="item.balance.usdValue"
         />
       </template>
       <template #item.percentage="{ item }">
@@ -49,28 +50,24 @@
   </card>
 </template>
 
-<script lang="ts">
+<script setup lang="ts">
 import { BigNumber } from '@rotki/common';
 import { GeneralAccount } from '@rotki/common/lib/account';
 import { Blockchain } from '@rotki/common/lib/blockchain';
-import { computed, defineComponent, ref, toRefs } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+import { ComputedRef } from 'vue';
 import { DataTableHeader } from 'vuetify';
 import LabeledAddressDisplay from '@/components/display/LabeledAddressDisplay.vue';
 import DataTable from '@/components/helper/DataTable.vue';
 import TagFilter from '@/components/inputs/TagFilter.vue';
 import TagDisplay from '@/components/tags/TagDisplay.vue';
-import {
-  setupBlockchainAccounts,
-  setupGeneralBalances
-} from '@/composables/balances';
-import { CURRENCY_USD } from '@/data/currencies';
-import i18n from '@/i18n';
-import { useAssetInfoRetrieval } from '@/store/assets';
+import { useAggregatedBalancesStore } from '@/store/balances/aggregated';
+import { useBalancesBreakdownStore } from '@/store/balances/breakdown';
 import { AssetBreakdown } from '@/store/balances/types';
-import { useMainStore } from '@/store/main';
+import { useAccountBalancesStore } from '@/store/blockchain/accountbalances';
+import { useEthAccountsStore } from '@/store/blockchain/accounts/eth';
 import { useGeneralSettingsStore } from '@/store/settings/general';
+import { useStatusStore } from '@/store/status';
+import { CURRENCY_USD } from '@/types/currencies';
 
 type AssetLocations = (AssetBreakdown & {
   readonly account: GeneralAccount | undefined;
@@ -78,141 +75,120 @@ type AssetLocations = (AssetBreakdown & {
   readonly label: string;
 })[];
 
-export default defineComponent({
-  name: 'AssetLocations',
-  components: {
-    DataTable,
-    LabeledAddressDisplay,
-    TagDisplay,
-    TagFilter
-  },
-  props: {
-    identifier: { required: true, type: String }
-  },
-  setup(props) {
-    const { identifier } = toRefs(props);
+const props = defineProps({
+  identifier: { required: true, type: String }
+});
 
-    const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
-    const { account, eth2Account } = setupBlockchainAccounts();
-    const { detailsLoading } = toRefs(useMainStore());
-    const { assetPriceInfo } = useAssetInfoRetrieval();
-    const { assetBreakdown } = setupGeneralBalances();
+const { identifier } = toRefs(props);
 
-    const onlyTags = ref<string[]>([]);
+const { currencySymbol } = storeToRefs(useGeneralSettingsStore());
+const { getAccountByAddress } = useAccountBalancesStore();
+const { getEth2Account } = useEthAccountsStore();
+const { detailsLoading } = storeToRefs(useStatusStore());
+const { assetPriceInfo } = useAggregatedBalancesStore();
+const { assetBreakdown } = useBalancesBreakdownStore();
+const { t } = useI18n();
 
-    const totalUsdValue = computed<BigNumber>(() => {
-      return get(assetPriceInfo(get(identifier))).usdValue;
-    });
+const onlyTags = ref<string[]>([]);
 
-    const getAccount = (item: AssetBreakdown) =>
-      computed<GeneralAccount | undefined>(() => {
-        if (item.location === Blockchain.ETH2) {
-          return get(eth2Account(item.address));
-        }
-        return get(account(item.address));
-      });
+const totalUsdValue = computed<BigNumber>(() => {
+  return get(assetPriceInfo(identifier)).usdValue;
+});
 
-    const assetLocations = computed<AssetLocations>(() => {
-      const breakdowns = get(assetBreakdown(get(identifier)));
-      return breakdowns.map((item: AssetBreakdown) => {
-        const account = get(getAccount(item));
-        return {
-          ...item,
-          account,
-          label: account?.label ?? ''
-        };
-      });
-    });
+const getAccount = (
+  item: AssetBreakdown
+): ComputedRef<GeneralAccount | undefined> =>
+  computed(() =>
+    item.location === Blockchain.ETH2
+      ? get(getEth2Account(item.address))
+      : get(getAccountByAddress(item.address))
+  );
 
-    const visibleAssetLocations = computed<AssetLocations>(() => {
-      if (get(onlyTags).length === 0) {
-        return get(assetLocations);
-      }
-
-      return get(assetLocations).filter(assetLocation => {
-        if (assetLocation.tags) {
-          return get(onlyTags).every(tag => assetLocation.tags?.includes(tag));
-        }
-      });
-    });
-
-    const getPercentage = (usdValue: BigNumber): string => {
-      const percentage = get(totalUsdValue).isZero()
-        ? 0
-        : usdValue.div(get(totalUsdValue)).multipliedBy(100);
-
-      return percentage.toFixed(2);
-    };
-
-    const tableHeaders = computed<DataTableHeader[]>(() => {
-      const visibleItemsLength = get(visibleAssetLocations).length;
-      const eth2Length = get(visibleAssetLocations).filter(
-        account => account?.location === Blockchain.ETH2
-      ).length;
-
-      const labelAccount = i18n.t('common.account').toString();
-      const labelValidator = i18n
-        .t('asset_locations.header.validator')
-        .toString();
-
-      let label = '';
-      if (eth2Length === 0) {
-        label = labelAccount;
-      } else if (eth2Length === visibleItemsLength) {
-        label = labelValidator;
-      } else {
-        label = `${labelAccount} / ${labelValidator}`;
-      }
-
-      return [
-        {
-          text: i18n.t('common.location').toString(),
-          value: 'location',
-          align: 'center',
-          width: '120px'
-        },
-        {
-          text: label,
-          value: 'label'
-        },
-        {
-          text: i18n.t('common.amount').toString(),
-          value: 'balance.amount',
-          align: 'end'
-        },
-        {
-          text: i18n
-            .t('asset_locations.header.value', {
-              symbol: get(currencySymbol) ?? CURRENCY_USD
-            })
-            .toString(),
-          value: 'balance.usdValue',
-          align: 'end'
-        },
-        {
-          text: i18n.t('asset_locations.header.percentage').toString(),
-          value: 'percentage',
-          sortable: false,
-          align: 'end'
-        }
-      ];
-    });
-
+const assetLocations = computed<AssetLocations>(() => {
+  const breakdowns = get(assetBreakdown(get(identifier)));
+  return breakdowns.map((item: AssetBreakdown) => {
+    const account = get(getAccount(item));
     return {
-      onlyTags,
-      tableHeaders,
-      visibleAssetLocations,
-      detailsLoading,
+      ...item,
       account,
-      getPercentage,
-      getAccount
+      label: account?.label ?? ''
     };
+  });
+});
+
+const visibleAssetLocations = computed<AssetLocations>(() => {
+  if (get(onlyTags).length === 0) {
+    return get(assetLocations);
   }
+
+  return get(assetLocations).filter(assetLocation => {
+    if (assetLocation.tags) {
+      return get(onlyTags).every(tag => assetLocation.tags?.includes(tag));
+    }
+  });
+});
+
+const getPercentage = (usdValue: BigNumber): string => {
+  const percentage = get(totalUsdValue).isZero()
+    ? 0
+    : usdValue.div(get(totalUsdValue)).multipliedBy(100);
+
+  return percentage.toFixed(2);
+};
+
+const tableHeaders = computed<DataTableHeader[]>(() => {
+  const visibleItemsLength = get(visibleAssetLocations).length;
+  const eth2Length = get(visibleAssetLocations).filter(
+    account => account?.location === Blockchain.ETH2
+  ).length;
+
+  const labelAccount = t('common.account').toString();
+  const labelValidator = t('asset_locations.header.validator').toString();
+
+  let label = '';
+  if (eth2Length === 0) {
+    label = labelAccount;
+  } else if (eth2Length === visibleItemsLength) {
+    label = labelValidator;
+  } else {
+    label = `${labelAccount} / ${labelValidator}`;
+  }
+
+  return [
+    {
+      text: t('common.location').toString(),
+      value: 'location',
+      align: 'center',
+      width: '120px'
+    },
+    {
+      text: label,
+      value: 'label'
+    },
+    {
+      text: t('common.amount').toString(),
+      value: 'balance.amount',
+      align: 'end'
+    },
+    {
+      text: t('asset_locations.header.value', {
+        symbol: get(currencySymbol) ?? CURRENCY_USD
+      }).toString(),
+      value: 'balance.usdValue',
+      align: 'end'
+    },
+    {
+      text: t('asset_locations.header.percentage').toString(),
+      value: 'percentage',
+      sortable: false,
+      align: 'end'
+    }
+  ];
 });
 </script>
 
 <style scoped lang="scss">
-::v-deep {
+:deep() {
   th {
     &:first-child {
       span {

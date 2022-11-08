@@ -1,16 +1,28 @@
 export class RotkiApp {
+  private loadEnv(): void {
+    const apiKey = Cypress.env('ETHERSCAN_API_KEY');
+    if (apiKey) {
+      cy.log('Using CYPRESS_ETHERSCAN_API_KEY env variable');
+      cy.addEtherscanKey(apiKey);
+    } else {
+      cy.log('CYPRESS_ETHERSCAN_API_KEY not set');
+    }
+  }
+
   visit() {
     cy.visit('/?skip_update=1');
   }
 
   createAccount(username: string, password: string = '1234') {
     cy.logout();
-    // simulate high scaling / low res by making a very small viewpoirt
+    // simulate high scaling / low res by making a very small viewport
     cy.get('.connection-loading__content').should('not.exist');
+    cy.get('[data-cy=account-management-forms]').should('be.visible');
+
     cy.get('[data-cy=account-management]').then($body => {
-      const button = $body.find('.login__button__new-account');
+      const button = $body.find('[data-cy=new-account]');
       if (button.length > 0) {
-        cy.get('.login__button__new-account').click();
+        cy.get('[data-cy=new-account]').scrollIntoView().click();
       }
     });
 
@@ -23,10 +35,19 @@ export class RotkiApp {
     cy.get('.create-account__analytics__button__confirm').click();
     cy.get('[data-cy=account-management__loading]').should('not.exist');
     cy.updateAssets();
+    this.loadEnv();
   }
 
-  fasterLogin(username: string, password: string = '1234') {
+  fasterLogin(
+    username: string,
+    password: string = '1234',
+    disableModules: boolean = false
+  ) {
     cy.createAccount(username, password);
+    if (disableModules) {
+      cy.disableModules();
+    }
+    this.loadEnv();
     this.visit();
     this.login(username, password);
     this.closePremiumOverlay();

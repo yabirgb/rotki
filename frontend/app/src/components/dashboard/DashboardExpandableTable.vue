@@ -38,9 +38,6 @@
   </card>
 </template>
 <script setup lang="ts">
-import { computed, ref } from '@vue/composition-api';
-import { get } from '@vueuse/core';
-
 const expanded = ref<boolean>(true);
 
 const panel = computed<number>(() => {
@@ -48,7 +45,7 @@ const panel = computed<number>(() => {
 });
 </script>
 <style scoped lang="scss">
-::v-deep {
+:deep() {
   .v-expansion-panel {
     &::before {
       box-shadow: none;

@@ -1,13 +1,13 @@
 <template>
   <progress-screen v-if="loading">
-    <template #message>{{ $t('lending.loading') }}</template>
+    <template #message>{{ tc('lending.loading') }}</template>
   </progress-screen>
   <div v-else>
     <v-row no-gutters align="center">
       <v-col>
         <refresh-header
           :loading="refreshing"
-          :title="$tc('common.deposits')"
+          :title="tc('common.deposits')"
           @refresh="refresh()"
         >
           <deposit-protocol-reset
@@ -34,7 +34,7 @@
           hint
           outlined
           dense
-          :chains="['ETH']"
+          :chains="chains"
           :usable-addresses="defiAddresses"
         />
       </v-col>
@@ -44,7 +44,7 @@
     </v-row>
     <v-row v-if="!isYearnVaults && !isYearnVaultsV2" class="mt-8" no-gutters>
       <v-col>
-        <stat-card :title="$t('common.assets')">
+        <stat-card :title="tc('common.assets')">
           <lending-asset-table
             :loading="refreshing"
             :assets="lendingBalances"
@@ -79,11 +79,11 @@
     />
     <v-row class="loans__history mt-8" no-gutters>
       <v-col cols="12">
-        <premium-card v-if="!premium" :title="$t('lending.history')" />
+        <premium-card v-if="!premium" :title="tc('lending.history')" />
         <lending-history
           v-else
           :loading="historyRefreshing"
-          :history="lendingHistory"
+          :history="history"
           :floating-precision="floatingPrecision"
           @open-link="openUrl($event)"
         />
@@ -95,10 +95,7 @@
 <script setup lang="ts">
 import { BigNumber } from '@rotki/common';
 import { GeneralAccount } from '@rotki/common/lib/account';
-import { DefiProtocol } from '@rotki/common/lib/blockchain';
-import { computed, onMounted, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
+import { Blockchain, DefiProtocol } from '@rotki/common/lib/blockchain';
 import ActiveModules from '@/components/defi/ActiveModules.vue';
 import DepositProtocolReset from '@/components/defi/DepositProtocolReset.vue';
 import DepositTotals from '@/components/defi/DepositTotals.vue';
@@ -110,25 +107,24 @@ import BlockchainAccountSelector from '@/components/helper/BlockchainAccountSele
 import DefiProtocolSelector from '@/components/helper/DefiProtocolSelector.vue';
 import ProgressScreen from '@/components/helper/ProgressScreen.vue';
 import RefreshHeader from '@/components/helper/RefreshHeader.vue';
-import { setupStatusChecking, useRoute } from '@/composables/common';
-import { getPremium } from '@/composables/session';
+import { useSectionLoading } from '@/composables/common';
+import { usePremium } from '@/composables/premium';
 import { useInterop } from '@/electron-interop';
 import {
   AaveEarnedDetails,
   CompoundLendingDetails,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   LendingHistory,
   YearnVaultsProfitDetails
 } from '@/premium/premium';
 import { ProtocolVersion } from '@/services/defi/consts';
-import { YearnVaultProfitLoss } from '@/services/defi/types/yearn';
-import { Section } from '@/store/const';
 import { useDefiStore } from '@/store/defi';
 import { useAaveStore } from '@/store/defi/aave';
 import { useDefiSupportedProtocolsStore } from '@/store/defi/protocols';
 import { useYearnStore } from '@/store/defi/yearn';
 import { useGeneralSettingsStore } from '@/store/settings/general';
+import { YearnVaultProfitLoss } from '@/types/defi/yearn';
 import { Module } from '@/types/modules';
+import { Section } from '@/types/status';
 
 const section = Section.DEFI_LENDING;
 const historySection = Section.DEFI_LENDING_HISTORY;
@@ -140,18 +136,22 @@ const modules: Module[] = [
   Module.MAKERDAO_DSR
 ];
 
+const chains = [Blockchain.ETH];
+
 const selectedAccount = ref<GeneralAccount | null>(null);
 const protocol = ref<DefiProtocol | null>(null);
-const premium = getPremium();
+const premium = usePremium();
 const route = useRoute();
 const { openUrl } = useInterop();
-const { shouldShowLoadingScreen, isSectionRefreshing } = setupStatusChecking();
+const { shouldShowLoadingScreen, isSectionRefreshing } = useSectionLoading();
 const { floatingPrecision } = storeToRefs(useGeneralSettingsStore());
 
 const defiStore = useDefiStore();
 const store = useDefiSupportedProtocolsStore();
 const yearnStore = useYearnStore();
 const aaveStore = useAaveStore();
+
+const { tc } = useI18n();
 
 const isProtocol = (protocol: DefiProtocol) =>
   computed(() => {
@@ -180,7 +180,7 @@ const lendingBalances = computed(() => {
   return get(store.aggregatedLendingBalances(protocols, addresses));
 });
 
-const lendingHistory = computed(() => {
+const history = computed(() => {
   let protocols = get(selectedProtocols);
   let addresses = get(selectedAddresses);
   return get(store.lendingHistory(protocols, addresses));

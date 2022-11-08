@@ -21,38 +21,20 @@
   </fragment>
 </template>
 
-<script lang="ts">
-import { defineComponent, toRefs } from '@vue/composition-api';
+<script setup lang="ts">
 import Fragment from '@/components/helper/Fragment';
 import KrakenStakingEvents from '@/components/staking/kraken/KrakenStakingEvents.vue';
 import KrakenStakingOverview from '@/components/staking/kraken/KrakenStakingOverview.vue';
 import KrakenStakingReceived from '@/components/staking/kraken/KrakenStakingReceived.vue';
-import { setupStatusChecking } from '@/composables/common';
-import { Section } from '@/store/const';
+import { useSectionLoading } from '@/composables/common';
 import { useKrakenStakingStore } from '@/store/staking/kraken';
+import { Section } from '@/types/status';
 
-export default defineComponent({
-  name: 'KrakenStaking',
-  components: {
-    KrakenStakingReceived,
-    KrakenStakingOverview,
-    Fragment,
-    KrakenStakingEvents
-  },
-  setup() {
-    const store = useKrakenStakingStore();
-    const { events } = toRefs(store);
+const store = useKrakenStakingStore();
+const { load, updatePagination } = store;
+const { events } = toRefs(store);
+const { isSectionRefreshing } = useSectionLoading();
+const loading = isSectionRefreshing(Section.STAKING_KRAKEN);
 
-    const { isSectionRefreshing } = setupStatusChecking();
-
-    const { load, updatePagination } = store;
-    const refresh = () => load(true);
-    return {
-      events,
-      loading: isSectionRefreshing(Section.STAKING_KRAKEN),
-      refresh,
-      updatePagination
-    };
-  }
-});
+const refresh = () => load(true);
 </script>

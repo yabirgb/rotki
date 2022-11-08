@@ -1,4 +1,3 @@
-import { computed } from '@vue/composition-api';
 import { useTasks } from '@/store/tasks';
 
 export const setupTaskStatus = () => {

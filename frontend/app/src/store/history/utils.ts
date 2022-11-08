@@ -1,5 +1,7 @@
-import { EntryMeta, EntryWithMeta } from '@/services/history/types';
+import { useFrontendSettingsStore } from '@/store/settings/frontend';
 import { Collection } from '@/types/collection';
+import { HistoryRequestPayload } from '@/types/history';
+import { EntryMeta, EntryWithMeta } from '@/types/history/meta';
 import { uniqueStrings } from '@/utils/data';
 import { isValidEthAddress } from '@/utils/text';
 
@@ -27,16 +29,18 @@ export function transformEntryWithMeta<T>(
 }
 
 export function filterAddressesFromWords(words: string[]): string[] {
-  return words
-    .filter((word, index) => {
-      // Check if the word is ETH address
-      const isAddress = isValidEthAddress(word);
-
-      // Check if the word is Tx Hash
-      const isTransaction =
-        isAddress && index !== 0 && words[index - 1] === 'transaction';
-
-      return isAddress && !isTransaction;
-    })
-    .filter(uniqueStrings);
+  return words.filter(uniqueStrings).filter(isValidEthAddress);
 }
+
+export const defaultHistoricPayloadState = <
+  T extends Object
+>(): HistoryRequestPayload<T> => {
+  const store = useFrontendSettingsStore();
+
+  return {
+    limit: store.itemsPerPage,
+    offset: 0,
+    orderByAttributes: ['timestamp' as keyof T],
+    ascending: [false]
+  };
+};

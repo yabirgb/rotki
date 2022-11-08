@@ -4,18 +4,18 @@ from typing import Any, DefaultDict, Dict, List, NamedTuple, Optional, Set, Tupl
 from eth_typing.evm import ChecksumAddress
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import EthereumToken, UnderlyingToken
-from rotkehlchen.chain.ethereum.trades import AMMSwap, AMMTrade
-from rotkehlchen.chain.ethereum.types import string_to_ethereum_address
+from rotkehlchen.assets.asset import EvmToken, UnderlyingToken
+from rotkehlchen.chain.ethereum.types import string_to_evm_address
 from rotkehlchen.constants import ZERO
 from rotkehlchen.constants.resolver import ethaddress_to_identifier
+from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.fval import FVal
 from rotkehlchen.history.deserialization import deserialize_price
 from rotkehlchen.serialization.deserialize import deserialize_asset_amount, deserialize_timestamp
 from rotkehlchen.types import (
     AssetAmount,
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     EVMTxHash,
     Price,
     Timestamp,
@@ -25,13 +25,12 @@ from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
 
 # TODO: improve the prefixes annotation and amend their usage in balancer.py
 BALANCER_EVENTS_PREFIX = 'balancer_events'
-BALANCER_TRADES_PREFIX = 'balancer_trades'
 POOL_MAX_NUMBER_TOKENS = 8
 
 
 @dataclass(init=True, repr=True)
 class BalancerPoolTokenBalance:
-    token: EthereumToken
+    token: EvmToken
     total_amount: FVal  # token amount in the pool
     user_balance: Balance  # user token balance
     weight: FVal
@@ -49,7 +48,7 @@ class BalancerPoolTokenBalance:
 
 @dataclass(init=True, repr=True)
 class BalancerPoolBalance:
-    pool_token: EthereumToken
+    pool_token: EvmToken
     underlying_tokens_balance: List[BalancerPoolTokenBalance]
     total_amount: FVal  # LP token amount
     user_balance: Balance  # user LP token balance
@@ -57,27 +56,22 @@ class BalancerPoolBalance:
     def serialize(self) -> Dict[str, Any]:
 
         return {
-            'address': self.pool_token.ethereum_address,
+            'address': self.pool_token.evm_address,
             'tokens': [token.serialize() for token in self.underlying_tokens_balance],
             'total_amount': self.total_amount,
             'user_balance': self.user_balance.serialize(),
         }
 
 
-AddressToPoolBalances = Dict[ChecksumEthAddress, List[BalancerPoolBalance]]
-DDAddressToPoolBalances = DefaultDict[ChecksumEthAddress, List[BalancerPoolBalance]]
-TokenToPrices = Dict[ChecksumEthAddress, Price]
+AddressToPoolBalances = Dict[ChecksumEvmAddress, List[BalancerPoolBalance]]
+DDAddressToPoolBalances = DefaultDict[ChecksumEvmAddress, List[BalancerPoolBalance]]
+TokenToPrices = Dict[ChecksumEvmAddress, Price]
 
 
 class ProtocolBalance(NamedTuple):
     address_to_pool_balances: AddressToPoolBalances
-    known_tokens: Set[EthereumToken]
-    unknown_tokens: Set[EthereumToken]
-
-
-AddressToSwaps = Dict[ChecksumEthAddress, List[AMMSwap]]
-DDAddressToUniqueSwaps = DefaultDict[ChecksumEthAddress, Set[AMMSwap]]
-AddressToTrades = Dict[ChecksumEthAddress, List[AMMTrade]]
+    known_tokens: Set[EvmToken]
+    unknown_tokens: Set[EvmToken]
 
 
 class BalancerInvestEventType(SerializableEnumMixin):
@@ -93,11 +87,11 @@ class BalancerBPTEventType(SerializableEnumMixin):
 class BalancerInvestEvent(NamedTuple):
     tx_hash: EVMTxHash
     log_index: int
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     timestamp: Timestamp
     event_type: BalancerInvestEventType
-    pool_address_token: EthereumToken
-    token_address: ChecksumEthAddress
+    pool_address_token: EvmToken
+    token_address: ChecksumEvmAddress
     amount: AssetAmount  # added or removed token amount
 
     def __hash__(self) -> int:
@@ -111,7 +105,7 @@ class BalancerInvestEvent(NamedTuple):
 
 
 class BalancerBPTEventPoolToken(NamedTuple):
-    token: EthereumToken
+    token: EvmToken
     weight: FVal
 
     def serialize(self) -> Dict:
@@ -124,9 +118,9 @@ class BalancerBPTEventPoolToken(NamedTuple):
 class BalancerBPTEvent(NamedTuple):
     tx_hash: EVMTxHash
     log_index: int
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     event_type: BalancerBPTEventType
-    pool_address_token: EthereumToken
+    pool_address_token: EvmToken
     amount: AssetAmount  # minted or burned BPT amount
 
     def __hash__(self) -> int:
@@ -146,12 +140,12 @@ class BalancerEventsData(NamedTuple):
     burns: List[BalancerBPTEvent]
 
 
-AddressToInvestEvents = Dict[ChecksumEthAddress, List[BalancerInvestEvent]]
-DDAddressToUniqueInvestEvents = DefaultDict[ChecksumEthAddress, Set[BalancerInvestEvent]]
-AddressToBPTEvents = Dict[ChecksumEthAddress, List[BalancerBPTEvent]]
-DDAddressToUniqueBPTEvents = DefaultDict[ChecksumEthAddress, Set[BalancerBPTEvent]]
+AddressToInvestEvents = Dict[ChecksumEvmAddress, List[BalancerInvestEvent]]
+DDAddressToUniqueInvestEvents = DefaultDict[ChecksumEvmAddress, Set[BalancerInvestEvent]]
+AddressToBPTEvents = Dict[ChecksumEvmAddress, List[BalancerBPTEvent]]
+DDAddressToUniqueBPTEvents = DefaultDict[ChecksumEvmAddress, Set[BalancerBPTEvent]]
 AddressToEventsData = Dict[ChecksumAddress, BalancerEventsData]
-PoolAddrToTokenAddrToIndex = Dict[EthereumToken, Dict[ChecksumAddress, int]]
+PoolAddrToTokenAddrToIndex = Dict[EvmToken, Dict[ChecksumAddress, int]]
 
 BalancerEventDBTuple = (
     Tuple[
@@ -178,10 +172,10 @@ BalancerEventDBTuple = (
 class BalancerEvent(NamedTuple):
     tx_hash: EVMTxHash
     log_index: int
-    address: ChecksumEthAddress
+    address: ChecksumEvmAddress
     timestamp: Timestamp
     event_type: BalancerBPTEventType
-    pool_address_token: EthereumToken
+    pool_address_token: EvmToken
     lp_balance: Balance
     amounts: List[AssetAmount]
 
@@ -217,14 +211,15 @@ class BalancerEvent(NamedTuple):
         except AttributeError as e:
             raise DeserializationError(f'Unexpected event type: {event_tuple_type}.') from e
 
-        pool_address_token = EthereumToken.from_identifier(
-            event_tuple[5],
-            form_with_incomplete_data=True,  # since some may not have decimals input correctly
-        )
-        if pool_address_token is None:
+        try:
+            pool_address_token = EvmToken(
+                event_tuple[5],
+                form_with_incomplete_data=True,  # since some may not have decimals input correctly
+            )
+        except UnknownAsset as e:
             raise DeserializationError(
                 f'Balancer event pool token: {event_tuple[5]} not found in the DB.',
-            )
+            ) from e
 
         amounts: List[AssetAmount] = [
             deserialize_asset_amount(item)
@@ -234,7 +229,7 @@ class BalancerEvent(NamedTuple):
         return cls(
             tx_hash=make_evm_tx_hash(event_tuple[0]),
             log_index=event_tuple[1],
-            address=string_to_ethereum_address(event_tuple[2]),
+            address=string_to_evm_address(event_tuple[2]),
             timestamp=deserialize_timestamp(event_tuple[3]),
             event_type=event_type,
             pool_address_token=pool_address_token,
@@ -283,12 +278,12 @@ class BalancerEvent(NamedTuple):
 
 
 AddressToEvents = Dict[ChecksumAddress, List[BalancerEvent]]
-DDAddressToEvents = DefaultDict[EthereumToken, List[BalancerEvent]]
+DDAddressToEvents = DefaultDict[EvmToken, List[BalancerEvent]]
 
 
 class BalancerPoolEventsBalance(NamedTuple):
     address: ChecksumAddress
-    pool_address_token: EthereumToken
+    pool_address_token: EvmToken
     events: List[BalancerEvent]
     profit_loss_amounts: List[AssetAmount]
     usd_profit_loss: FVal
@@ -305,7 +300,7 @@ class BalancerPoolEventsBalance(NamedTuple):
             })
 
         return {
-            'pool_address': self.pool_address_token.ethereum_address,
+            'pool_address': self.pool_address_token.evm_address,
             'pool_tokens': tokens_and_weights,
             'events': [event.serialize(pool_tokens=self.pool_address_token.underlying_tokens) for event in self.events],  # noqa: E501
             'profit_loss_amounts': profit_loss_amounts,
@@ -313,5 +308,5 @@ class BalancerPoolEventsBalance(NamedTuple):
         }
 
 
-AddressToPoolEventsBalances = Dict[ChecksumEthAddress, List[BalancerPoolEventsBalance]]
-DDAddressToProfitLossAmounts = DefaultDict[EthereumToken, List[AssetAmount]]
+AddressToPoolEventsBalances = Dict[ChecksumEvmAddress, List[BalancerPoolEventsBalance]]
+DDAddressToProfitLossAmounts = DefaultDict[EvmToken, List[AssetAmount]]

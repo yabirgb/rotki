@@ -1,10 +1,10 @@
 <template>
   <setting-category>
     <template #title>
-      {{ $t('price_oracle_settings.title') }}
+      {{ t('price_oracle_settings.title') }}
     </template>
     <template #subtitle>
-      {{ $t('price_oracle_settings.subtitle') }}
+      {{ t('price_oracle_settings.subtitle') }}
     </template>
 
     <v-row>
@@ -21,7 +21,7 @@
             @input="update"
           >
             <template #title>
-              {{ $t('price_oracle_settings.current_prices') }}
+              {{ t('price_oracle_settings.latest_prices') }}
             </template>
           </price-oracle-selection>
         </settings-option>
@@ -40,7 +40,7 @@
             @input="update"
           >
             <template #title>
-              {{ $t('price_oracle_settings.historic_prices') }}
+              {{ t('price_oracle_settings.historic_prices') }}
             </template>
           </price-oracle-selection>
         </settings-option>
@@ -48,29 +48,32 @@
     </v-row>
     <v-row>
       <v-col class="text-caption">
-        {{ $t('price_oracle_selection.hint') }}
+        {{ t('price_oracle_selection.hint') }}
       </v-col>
     </v-row>
   </setting-category>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from '@vue/composition-api';
-import { get, set } from '@vueuse/core';
-import { storeToRefs } from 'pinia';
 import SettingsOption from '@/components/settings/controls/SettingsOption.vue';
 import PriceOracleSelection from '@/components/settings/PriceOracleSelection.vue';
 import SettingCategory from '@/components/settings/SettingCategory.vue';
 import { useGeneralSettingsStore } from '@/store/settings/general';
+import { PriceOracle } from '@/types/price-oracle';
 
-const baseAvailableOracles = ['cryptocompare', 'coingecko'];
+const baseAvailableOracles = [
+  PriceOracle.CRYPTOCOMPARE,
+  PriceOracle.COINGECKO,
+  PriceOracle.DEFILLAMA
+];
 const availableCurrentOracles: string[] = [
   ...baseAvailableOracles,
-  'uniswapv2',
-  'uniswapv3',
-  'saddle'
+  PriceOracle.UNISWAP2,
+  PriceOracle.UNISWAP3,
+  PriceOracle.SADDLE,
+  PriceOracle.MANUALCURRENT
 ];
-const availableHistoricOracles = [...baseAvailableOracles, 'manual'];
+const availableHistoricOracles = [...baseAvailableOracles, PriceOracle.MANUAL];
 
 const currentOracles = ref<string[]>([]);
 const historicOracles = ref<string[]>([]);
@@ -91,4 +94,6 @@ onMounted(() => {
   resetCurrentPriceOracles();
   resetHistoricalPriceOracles();
 });
+
+const { t } = useI18n();
 </script>

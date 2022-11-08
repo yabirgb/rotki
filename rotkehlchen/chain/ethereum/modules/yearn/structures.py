@@ -2,17 +2,17 @@ import dataclasses
 from typing import Any, Dict, Literal, NamedTuple, Optional, Tuple
 
 from rotkehlchen.accounting.structures.balance import Balance
-from rotkehlchen.assets.asset import Asset, EthereumToken
-from rotkehlchen.constants.ethereum import EthereumContract
+from rotkehlchen.assets.asset import CryptoAsset, EvmToken
+from rotkehlchen.chain.evm.contracts import EvmContract
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.serialization.deserialize import (
     deserialize_optional_to_fval,
     deserialize_timestamp,
 )
-from rotkehlchen.types import ChecksumEthAddress, EVMTxHash, Timestamp, make_evm_tx_hash
+from rotkehlchen.types import ChecksumEvmAddress, EVMTxHash, Timestamp, make_evm_tx_hash
 
 YEARN_EVENT_DB_TUPLE = Tuple[
-    ChecksumEthAddress,
+    ChecksumEvmAddress,
     Literal['deposit', 'withdraw'],  # event_type
     str,  # from_asset identifier
     str,  # from_value amount
@@ -35,9 +35,9 @@ class YearnVaultEvent:
     event_type: Literal['deposit', 'withdraw']
     block_number: int
     timestamp: Timestamp
-    from_asset: Asset
+    from_asset: CryptoAsset
     from_value: Balance
-    to_asset: Asset
+    to_asset: CryptoAsset
     to_value: Balance
     realized_pnl: Optional[Balance]
     tx_hash: EVMTxHash
@@ -60,7 +60,7 @@ class YearnVaultEvent:
             'log_index': self.log_index,
         }
 
-    def serialize_for_db(self, address: ChecksumEthAddress) -> YEARN_EVENT_DB_TUPLE:
+    def serialize_for_db(self, address: ChecksumEvmAddress) -> YEARN_EVENT_DB_TUPLE:
         pnl_amount = None
         pnl_usd_value = None
         if self.realized_pnl:
@@ -133,8 +133,8 @@ class YearnVaultEvent:
             raise DeserializationError(
                 f'Failed to deserialize block number {result[10]} in yearn vault event: {str(e)}',
             ) from e
-        from_asset = Asset(result[2])
-        to_asset = Asset(result[5])
+        from_asset = CryptoAsset(result[2])
+        to_asset = CryptoAsset(result[5])
         return cls(
             event_type=result[1],
             from_asset=from_asset,
@@ -156,6 +156,6 @@ class YearnVaultEvent:
 
 class YearnVault(NamedTuple):
     name: str
-    contract: EthereumContract
-    underlying_token: EthereumToken
-    token: EthereumToken
+    contract: EvmContract
+    underlying_token: EvmToken
+    token: EvmToken

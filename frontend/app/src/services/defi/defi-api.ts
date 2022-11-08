@@ -1,8 +1,17 @@
+import { ActionResult } from '@rotki/common/lib/data';
 import { AxiosInstance, AxiosResponseTransformer } from 'axios';
-import { setupTransformer } from '@/services/axios-tranformers';
+import {
+  axiosSnakeCaseTransformer,
+  setupTransformer
+} from '@/services/axios-tranformers';
+import { basicAxiosTransformer } from '@/services/consts';
 import { ProtocolVersion } from '@/services/defi/consts';
 import { ApiImplementation, PendingTask } from '@/services/types-api';
-import { fetchExternalAsync } from '@/services/utils';
+import {
+  fetchExternalAsync,
+  handleResponse,
+  validWithSessionAndExternalService
+} from '@/services/utils';
 
 export class DefiApi {
   private readonly axios: AxiosInstance;
@@ -83,11 +92,6 @@ export class DefiApi {
     return fetchExternalAsync(this.api, url);
   }
 
-  async fetchUniswapTrades(): Promise<PendingTask> {
-    const url = 'blockchains/ETH/modules/uniswap/history/trades';
-    return fetchExternalAsync(this.api, url);
-  }
-
   async fetchUniswapV2Balances(): Promise<PendingTask> {
     const url = 'blockchains/ETH/modules/uniswap/v2/balances';
     return fetchExternalAsync(this.api, url);
@@ -108,11 +112,6 @@ export class DefiApi {
     return fetchExternalAsync(this.api, url);
   }
 
-  async fetchBalancerTrades(): Promise<PendingTask> {
-    const url = 'blockchains/ETH/modules/balancer/history/trades';
-    return fetchExternalAsync(this.api, url);
-  }
-
   async fetchBalancerEvents(): Promise<PendingTask> {
     const url = '/blockchains/ETH/modules/balancer/history/events';
     return fetchExternalAsync(this.api, url);
@@ -120,11 +119,6 @@ export class DefiApi {
 
   async fetchSushiswapBalances() {
     const url = 'blockchains/ETH/modules/sushiswap/balances';
-    return fetchExternalAsync(this.api, url);
-  }
-
-  async fetchSushiswapTrades(): Promise<PendingTask> {
-    const url = 'blockchains/ETH/modules/sushiswap/history/trades';
     return fetchExternalAsync(this.api, url);
   }
 
@@ -151,5 +145,20 @@ export class DefiApi {
   fetchLiquityStakingEvents(): Promise<PendingTask> {
     const url = 'blockchains/ETH/modules/liquity/events/staking';
     return fetchExternalAsync(this.api, url);
+  }
+
+  async fetchAirdrops(): Promise<PendingTask> {
+    const response = await this.axios.get<ActionResult<PendingTask>>(
+      '/blockchains/ETH/airdrops',
+      {
+        params: axiosSnakeCaseTransformer({
+          asyncQuery: true
+        }),
+        validateStatus: validWithSessionAndExternalService,
+        transformResponse: basicAxiosTransformer
+      }
+    );
+
+    return handleResponse(response);
   }
 }

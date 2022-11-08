@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, NamedTuple, Optiona
 
 from rotkehlchen.accounting.mixins.event import AccountingEventMixin, AccountingEventType
 from rotkehlchen.accounting.structures.types import ActionType
-from rotkehlchen.assets.asset import Asset
+from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.assets.converters import asset_from_binance
-from rotkehlchen.constants.misc import ZERO
+from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.crypto import sha3
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.fval import FVal
@@ -131,9 +131,9 @@ class AssetMovement(AccountingEventMixin):
             timestamp=deserialize_timestamp(data['timestamp']),
             address=deserialize_optional(data['address'], str),
             transaction_id=deserialize_optional(data['transaction_id'], str),
-            asset=Asset(data['asset']),
+            asset=Asset(data['asset']).check_existence(),
             amount=deserialize_fval(data['amount'], name='amount', location='data structure'),
-            fee_asset=Asset(data['fee_asset']),
+            fee_asset=Asset(data['fee_asset']).check_existence(),
             fee=deserialize_fee(data['fee']),
             link=str(data['link']),
         )
@@ -150,9 +150,9 @@ class AssetMovement(AccountingEventMixin):
             address=entry[3],
             transaction_id=entry[4],
             timestamp=Timestamp(entry[5]),
-            asset=Asset(entry[6]),
+            asset=Asset(entry[6]).check_existence(),
             amount=deserialize_asset_amount(entry[7]),
-            fee_asset=Asset(entry[8]),
+            fee_asset=Asset(entry[8]).check_existence(),
             fee=deserialize_fee(entry[9]),
             link=entry[10],
         )
@@ -257,7 +257,8 @@ class Trade(AccountingEventMixin):
 
     @property
     def identifier(self) -> TradeID:
-        """Formulates a unique identifier for the trade to become the DB primary key
+        """
+        Formulates a unique identifier for the trade to become the DB primary key
         """
         string = (
             str(self.location) +
@@ -289,7 +290,8 @@ class Trade(AccountingEventMixin):
 
     @classmethod
     def deserialize(cls, data: Dict[str, Any]) -> 'Trade':
-        """Deserializes a trade dict to a Trade object.
+        """
+        Deserializes a trade dict to a Trade object.
         May raise:
             - UnknownAsset
             - DeserializationError
@@ -300,21 +302,22 @@ class Trade(AccountingEventMixin):
         return (
             f'trade at {str(self.location)} location and date '
             f'{datetime.fromtimestamp(self.timestamp)} '
-            f'of type {str(self.trade_type)} with base asset: {self.base_asset.name} '
-            f'and quote asset: {self.quote_asset.name}'
+            f'of type {str(self.trade_type)} with base asset: {self.base_asset.symbol_or_name()} '
+            f'and quote asset: {self.quote_asset.symbol_or_name()}'
         )
 
     @classmethod
     def deserialize_from_db(cls, entry: TradeDBTuple) -> 'Trade':
-        """May raise:
-            - DeserializationError
-            - UnknownAsset
+        """
+        May raise:
+        - DeserializationError
+        - UnknownAsset
         """
         return Trade(
             timestamp=deserialize_timestamp(entry[1]),
             location=Location.deserialize_from_db(entry[2]),
-            base_asset=Asset(entry[3]),
-            quote_asset=Asset(entry[4]),
+            base_asset=Asset(entry[3]).check_existence(),
+            quote_asset=Asset(entry[4]).check_existence(),
             trade_type=TradeType.deserialize_from_db(entry[5]),
             amount=deserialize_asset_amount(entry[6]),
             rate=deserialize_price(entry[7]),
@@ -379,7 +382,8 @@ class Trade(AccountingEventMixin):
             return 1
 
         group_id = self.identifier
-        taxable = accounting.settings.include_crypto2crypto or asset_in.is_fiat()
+        taxable = asset_in.is_fiat() or accounting.settings.include_crypto2crypto
+
         _, trade_taxable_amount = accounting.add_spend(
             event_type=AccountingEventType.TRADE,
             notes=notes + ' Amount out',
@@ -406,6 +410,14 @@ class Trade(AccountingEventMixin):
 
         if self.fee is not None and self.fee_currency is not None and self.fee != ZERO:
             # also checking fee_asset != None due to https://github.com/rotki/rotki/issues/4172
+            fee_price = None
+            if self.fee_currency == accounting.profit_currency:
+                fee_price = Price(ONE)
+            elif self.fee_currency == asset_in:
+                fee_price = prices[1]
+            elif self.fee_currency == asset_out:
+                fee_price = prices[0]
+
             accounting.add_spend(
                 event_type=AccountingEventType.FEE,
                 notes=notes + 'Fee',
@@ -414,6 +426,7 @@ class Trade(AccountingEventMixin):
                 asset=self.fee_currency,
                 amount=self.fee,
                 taxable=True,
+                given_price=fee_price,
                 # By setting the taxable amount ratio we determine how much of the fee
                 # spending should be a taxable spend and how much free.
                 taxable_amount_ratio=trade_taxable_amount / amount_out,
@@ -508,9 +521,9 @@ class MarginPosition(AccountingEventMixin):
             open_time=deserialize_timestamp(data['open_time']),
             close_time=deserialize_timestamp(data['close_time']),
             profit_loss=deserialize_asset_amount(data['profit_loss']),
-            pl_currency=Asset(data['pl_currency']),
+            pl_currency=Asset(data['pl_currency']).check_existence(),
             fee=deserialize_fee(data['fee']),
-            fee_currency=Asset(data['fee_currency']),
+            fee_currency=Asset(data['fee_currency']).check_existence(),
             link=str(data['link']),
             notes=str(data['notes']),
         )
@@ -530,9 +543,9 @@ class MarginPosition(AccountingEventMixin):
             open_time=open_time,
             close_time=deserialize_timestamp(entry[3]),
             profit_loss=deserialize_asset_amount(entry[4]),
-            pl_currency=Asset(entry[5]),
+            pl_currency=Asset(entry[5]).check_existence(),
             fee=deserialize_fee(entry[6]),
-            fee_currency=Asset(entry[7]),
+            fee_currency=Asset(entry[7]).check_existence(),
             link=entry[8],
             notes=entry[9],
         )
@@ -631,7 +644,7 @@ class Loan(AccountingEventMixin):
             location=Location.deserialize(data['location']),
             open_time=deserialize_timestamp(data['open_time']),
             close_time=deserialize_timestamp(data['close_time']),
-            currency=Asset(data['currency']),
+            currency=Asset(data['currency']).check_existence(),
             fee=deserialize_fee(data['fee']),
             earned=deserialize_asset_amount(data['earned']),
             amount_lent=deserialize_asset_amount(data['amount_lent']),
@@ -667,7 +680,7 @@ class Loan(AccountingEventMixin):
         return 1
 
 
-def trade_pair_from_assets(base: Asset, quote: Asset) -> TradePair:
+def trade_pair_from_assets(base: AssetWithOracles, quote: AssetWithOracles) -> TradePair:
     return TradePair(f'{base.identifier}_{quote.identifier}')
 
 
@@ -695,13 +708,13 @@ def deserialize_trade(data: Dict[str, Any]) -> Trade:
     return Trade(
         timestamp=data['timestamp'],
         location=location,
-        base_asset=Asset(data['base_asset']),
-        quote_asset=Asset(data['quote_asset']),
+        base_asset=Asset(data['base_asset']).check_existence(),
+        quote_asset=Asset(data['quote_asset']).check_existence(),
         trade_type=trade_type,
         amount=amount,
         rate=rate,
         fee=deserialize_optional(data['fee'], deserialize_fee),
-        fee_currency=Asset(data['fee_currency']) if data['fee_currency'] is not None else None,
+        fee_currency=Asset(data['fee_currency']).check_existence() if data['fee_currency'] is not None else None,  # noqa: E501
         link=trade_link,
         notes=trade_notes,
     )
@@ -734,7 +747,7 @@ def trades_from_dictlist(
         except UnknownAsset as e:
             msg_aggregator.add_warning(
                 f'When processing {location} trades found a trade containing unknown '
-                f'asset {e.asset_name}. Ignoring it.')
+                f'asset {e.identifier}. Ignoring it.')
             continue
 
     return returned_trades
@@ -748,8 +761,8 @@ class BinancePair(NamedTuple):
     the base and quote assets of that symbol as parsed from exchangeinfo endpoint
     result"""
     symbol: str
-    base_asset: Asset
-    quote_asset: Asset
+    base_asset: AssetWithOracles
+    quote_asset: AssetWithOracles
     location: Location  # Should only be binance or binanceus
 
     def serialize_for_db(self) -> BINANCE_PAIR_DB_TUPLE:
