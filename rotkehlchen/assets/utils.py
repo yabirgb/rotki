@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Optional
 
 from rotkehlchen.assets.asset import Asset, AssetWithOracles, EvmToken, UnderlyingToken
+from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.types import AssetType
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.resolver import evm_address_to_identifier
@@ -33,7 +34,7 @@ def add_ethereum_token_to_db(token_data: EvmToken) -> EvmToken:
         data=token_data,
     )
     # This can, but should not raise UnknownAsset, DeserializationError
-    return EvmToken(token_data.identifier, form_with_incomplete_data=True)
+    return EvmToken(token_data.identifier)
 
 
 def get_or_create_evm_token(
@@ -74,10 +75,19 @@ def get_or_create_evm_token(
     )
     with userdb.get_or_create_evm_token_lock:
         try:
-            ethereum_token = EvmToken(
-                identifier=identifier,
-                form_with_incomplete_data=form_with_incomplete_data,
-            )
+            ethereum_token = EvmToken(identifier=identifier)
+            # It can happen that the asset is missing basic information but can be queried on
+            # chain or is provided by the developer. In that case make sure that no information
+            # is cached and trigger the edit process.
+            if (
+                form_with_incomplete_data is False and
+                (
+                    (ethereum_token.name == identifier and name is not None) or
+                    (decimals is not None and ethereum_token.decimals != decimals)
+                )
+            ):
+                AssetResolver.clean_memory_cache(identifier)
+                raise UnknownAsset(identifier)
         except (UnknownAsset, DeserializationError):
             # It can happen that the asset exists but is missing basic information.
             # Check if it exists and if that is the case we fetch information.
@@ -113,8 +123,14 @@ def get_or_create_evm_token(
                 else:
                     raise NotERC20Conformant(f'Token {evm_address} is of uknown type')  # pylint: disable=raise-missing-from  # noqa: E501
 
+            # make sure that basic information is always filled
+            if name is None:
+                name = identifier
+            if decimals is None:
+                decimals = 18
+
             # Store the information in the database
-            token_data = EvmToken.initialize(
+            ethereum_token = EvmToken.initialize(
                 address=evm_address,
                 chain_id=chain_id,
                 token_kind=token_kind,
@@ -127,11 +143,11 @@ def get_or_create_evm_token(
             if asset_exists is True:
                 # This means that we need to update the information in the database with the
                 # newly queried data
-                GlobalDBHandler().edit_evm_token(token_data)
+                GlobalDBHandler().edit_evm_token(ethereum_token)
             else:
                 # This can but should not raise InputError since it should not already exist.
-                ethereum_token = add_ethereum_token_to_db(
-                    token_data=token_data,
+                add_ethereum_token_to_db(
+                    token_data=ethereum_token,
                 )
 
                 with userdb.user_write() as cursor:

@@ -13,7 +13,6 @@ from rotkehlchen.assets.asset import (
     UnderlyingToken,
 )
 from rotkehlchen.assets.types import AssetType
-from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.fval import FVal
 from rotkehlchen.types import ChainID, EvmTokenKind, Location, Timestamp, TradeType
 
@@ -77,26 +76,24 @@ def deserialize_asset_with_oracles_from_db(
         asset_type: AssetType,
         asset_data: list[Any],
         underlying_tokens: Optional[list[UnderlyingToken]],
-        form_with_incomplete_data: bool,
 ) -> AssetWithOracles:
     """
     From a db tuple containing information about any asset deserialize to the correct Asset class
     according to type in the database.
     May raise:
     - DeserializationError
-    - UnknownAsset
     - WrongAssetType
     """
     identifier = asset_data[0]
     if asset_type == AssetType.EVM_TOKEN:
         decimals = asset_data[3]
-        if decimals is None:
-            decimals = 18
         name = asset_data[4]
         symbol = asset_data[5]
-        missing_basic_data = name is None or symbol is None
-        if missing_basic_data and form_with_incomplete_data is False:
-            raise UnknownAsset(identifier=identifier)
+
+        if decimals is None:
+            decimals = 18
+        if name is None:
+            name = identifier
 
         return EvmToken.initialize(
             address=asset_data[2],
@@ -138,7 +135,6 @@ def deserialize_generic_asset_from_db(
         asset_type: AssetType,
         asset_data: list[Any],
         underlying_tokens: Optional[list[UnderlyingToken]],
-        form_with_incomplete_data: bool,
 ) -> AssetWithNameAndType:
     """
     From a db tuple containing information about any asset deserialize to the correct Asset class
@@ -146,7 +142,6 @@ def deserialize_generic_asset_from_db(
     And extends it by allowing the deserialization of CustomAsset objets.
     May raise:
     - DeserializationError
-    - UnknownAsset
     - WrongAssetType
     """
     identifier = asset_data[0]
@@ -162,5 +157,4 @@ def deserialize_generic_asset_from_db(
         asset_type=asset_type,
         asset_data=asset_data,
         underlying_tokens=underlying_tokens,
-        form_with_incomplete_data=form_with_incomplete_data,
     )

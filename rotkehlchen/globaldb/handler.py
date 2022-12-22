@@ -1157,7 +1157,6 @@ class GlobalDBHandler():
                     asset_type=asset_type,
                     asset_data=entry,
                     underlying_tokens=underlying_tokens,
-                    form_with_incomplete_data=False,
                 )
                 assets.append(asset)
 
@@ -1782,7 +1781,6 @@ class GlobalDBHandler():
     @staticmethod
     def resolve_asset(
             identifier: str,
-            form_with_incomplete_data: bool,
             use_packaged_db: bool = False,
     ) -> AssetWithNameAndType:
         """
@@ -1834,14 +1832,10 @@ class GlobalDBHandler():
                 asset_type=asset_type,
                 asset_data=asset_data,
                 underlying_tokens=underlying_tokens,
-                form_with_incomplete_data=form_with_incomplete_data,
             )
 
     @staticmethod
-    def resolve_asset_from_packaged_and_store(
-            identifier: str,
-            form_with_incomplete_data: bool,
-    ) -> AssetWithNameAndType:
+    def resolve_asset_from_packaged_and_store(identifier: str) -> AssetWithNameAndType:
         """
         Reads an asset from the packaged globaldb and adds it to the database if missing or edits
         the local version of the asset.
@@ -1850,7 +1844,6 @@ class GlobalDBHandler():
         """
         asset = GlobalDBHandler().resolve_asset(
             identifier=identifier,
-            form_with_incomplete_data=form_with_incomplete_data,
             use_packaged_db=True,
         )
         # make sure that the asset is saved on the user's global db. First check if it exists
