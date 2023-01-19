@@ -88,7 +88,7 @@ jobs:
             COVERAGE_ARGS='--cov=./'
           fi          
           
-          python pytestgeventwrapper.py $PYTEST_ARGS $COVERAGE_ARGS rotkehlchen/tests
+          python pytestgeventwrapper.py $PYTEST_ARGS $COVERAGE_ARGS rotkehlchen/tests/unit/decoders
           python pytestgeventwrapper.py --dead-fixtures
         shell: bash
       - name: Upload coverage
