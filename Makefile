@@ -48,3 +48,6 @@ test-assets:
 	python pytestgeventwrapper.py rotkehlchen/tests/exchanges/test_independentreserve.py::test_assets_are_known
 	python pytestgeventwrapper.py rotkehlchen/tests/unit/test_zerionsdk.py::test_protocol_names_are_known
 	python pytestgeventwrapper.py rotkehlchen/tests/unit/test_zerionsdk.py::test_query_all_protocol_balances_for_account
+
+create-cassettes:
+	export CASSETTES_DIR=$(shell pwd) && python pytestgeventwrapper.py -m vcr rotkehlchen/tests

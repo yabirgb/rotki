@@ -1,4 +1,6 @@
 import datetime
+from http import HTTPStatus
+from json import JSONDecodeError
 import os
 import re
 import sys
@@ -7,16 +9,19 @@ import warnings as test_warnings
 from contextlib import suppress
 from enum import auto
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import py
 import pytest
 
-from rotkehlchen.config import default_data_directory
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import TRACE, add_logging_level, configure_logging
 from rotkehlchen.tests.utils.args import default_args
 from rotkehlchen.utils.mixins.serializableenum import SerializableEnumMixin
+from rotkehlchen.utils.serialization import jsonloads_dict
+
+if TYPE_CHECKING:
+    from vcr import VCR
 
 
 TESTS_ROOT_DIR = Path(__file__).parent
@@ -158,8 +163,32 @@ def get_cassette_dir(request: pytest.FixtureRequest) -> Path:
     return Path(request.node.path).relative_to(TESTS_ROOT_DIR).with_suffix('')
 
 
-@pytest.fixture
-def vcr_config(request: pytest.FixtureRequest, default_cassette_name: str) -> dict[str, Any]:
+def is_etherscan_rate_limited(response: dict[str, Any]) -> bool:
+    result = False
+    with suppress(JSONDecodeError, KeyError):
+        body = jsonloads_dict(response['body']['string'])  
+        result = int(body['status']) == 0 and 'rate limit reached' in body['result']
+    return result
+
+
+@pytest.fixture(scope='module', name='vcr')
+def vcr_fixture(vcr: 'VCR') -> 'VCR':
+    """
+    Update VCR instance to discard error responses
+    # pytest-deadfixtures ignore
+    """
+
+    def before_record_response(response: dict[str, Any]) -> Optional[dict[str, Any]]:
+        if response['status']['code'] != HTTPStatus.OK or is_etherscan_rate_limited(response):
+            return None
+
+        return response
+
+    vcr.before_record_response = before_record_response
+    return vcr
+
+@pytest.fixture(scope='module')
+def vcr_config() -> dict[str, Any]:
     """
     vcrpy config
     - record_mode: allow rewriting multiple cassettes using CASSETTE_REWRITE_PATH env variable
@@ -170,29 +199,28 @@ def vcr_config(request: pytest.FixtureRequest, default_cassette_name: str) -> di
     ^^^ this allows our fork of pytest-deadfixtures to ignore this fixture for usage detection
     since it cannot detect dynamic usage (request.getfixturevalue) in pytest-recording
     """
-    rewrite_path = os.environ.get('CASSETTE_REWRITE_PATH')
-    cassette_dir = get_cassette_dir(request)
-    cassette_path = cassette_dir / default_cassette_name
-
-    if rewrite_path and (cassette_path.is_relative_to(rewrite_path) or rewrite_path == '*'):
-        record_mode = 'rewrite'
-    else:
+    if 'RECORD_CASSETTES' in os.environ:
         record_mode = 'once'
-
-    decode_compressed_response = 'CI' not in os.environ
+    else:
+        record_mode = 'none'
 
     return {
         'record_mode': record_mode,
-        'decode_compressed_response': decode_compressed_response,
+        'decode_compressed_response': True,
     }
-
 
 @pytest.fixture(scope='module')
 def vcr_cassette_dir(request: pytest.FixtureRequest) -> str:
-    """Override pytest-recording's bundled fixture to store cassettes outside source code"""
+    """
+    Override pytest-vcr's bundled fixture to store cassettes outside source code
+    # pytest-deadfixtures ignore
+    """
     if 'CI' in os.environ:
         base_dir = Path.home() / '.cache' / '.rotkehlchen-cassettes-dir'
     else:
-        base_dir = default_data_directory().parent / 'cassettes'
+        if 'CASSETTES_DIR' in os.environ:
+            base_dir = Path(os.environ['CASSETTES_DIR']) / 'cassettes'
+        else:
+            base_dir = default_data_directory().parent / 'cassettes'
     cassette_dir = get_cassette_dir(request)
     return str(base_dir / cassette_dir)
