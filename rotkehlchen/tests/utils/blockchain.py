@@ -286,11 +286,11 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 # TODO: This here always returns empty response. If/when we want to
                 # mock it for etherscan, this is where we do it
                 args = []
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
             elif 'data=0x85c6a7930' in url:  # getProtocolBalances
                 data = url.split('data=')[1]
@@ -303,11 +303,11 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 # TODO: This here always returns empty response. If/when we want to
                 # mock it for etherscan, this is where we do it
                 args = []
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
             elif 'data=0x3b692f52' in url:  # getProtocolNames
                 data = url.split('data=')[1]
@@ -319,11 +319,11 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 # TODO: This here always returns empty response. If/when we want to
                 # mock it for etherscan, this is where we do it
                 args = []
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
             else:
                 raise AssertionError(f'Unexpected etherscan call during tests: {url}')
@@ -352,7 +352,7 @@ def mock_etherscan_query(
                 assert fn_abi['name'] == 'aggregate', 'Abi position of multicall aggregate changed'
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
 
                 if multicall_purpose == 'multibalance_query':
                     contract = eth_scan
@@ -371,7 +371,7 @@ def mock_etherscan_query(
                         call_contract_address = deserialize_evm_address(call_entry[0])
                         assert call_contract_address == contract.address, 'balances multicall should only contain calls to scan contract'  # noqa: E501
                         call_data = call_entry[1]
-                        scan_decoded_input = web3.codec.decode_abi(scan_input_types, call_data[4:])
+                        scan_decoded_input = web3.codec.decode(scan_input_types, call_data[4:])
                         account_address = deserialize_evm_address(scan_decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
                         token_values = []
                         for token_addy_str in scan_decoded_input[1]:  # pylint: disable=unsubscriptable-object # noqa: E501
@@ -385,16 +385,16 @@ def mock_etherscan_query(
                                     value = 0  # if token is missing from mapping return 0 value
                             token_values.append(value)
 
-                        result_bytes.append(web3.codec.encode_abi(scan_output_types, [token_values]))  # noqa: E501
+                        result_bytes.append(web3.codec.encode(scan_output_types, [token_values]))  # noqa: E501
 
-                    result = '0x' + web3.codec.encode_abi(output_types, [len(result_bytes), result_bytes]).hex()  # noqa: E501
+                    result = '0x' + web3.codec.encode(output_types, [len(result_bytes), result_bytes]).hex()  # noqa: E501
                     response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
                 else:
                     # else has to be the 32 bytes for multicall balance
                     # of both veCRV and others. Return empty response
                     # all pylint ignores below due to https://github.com/PyCQA/pylint/issues/4114
                     args = [1, [b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' for x in decoded_input[0]]]  # pylint: disable=unsubscriptable-object  # noqa: E501
-                    result = '0x' + web3.codec.encode_abi(output_types, args).hex()
+                    result = '0x' + web3.codec.encode(output_types, args).hex()
                     response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
 
             else:
@@ -418,12 +418,12 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 args = []
                 for account_address in decoded_input[0]:  # pylint: disable=unsubscriptable-object  # noqa: E501
                     account_address = deserialize_evm_address(account_address)
                     args.append(int(eth_map[account_address]['ETH']))
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
             elif 'data=0x06187b4f' in url:  # Multi token multiaddress balance query
                 data = url.split('data=')[1]
@@ -437,7 +437,7 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 args = []
                 for account_address in decoded_input[0]:  # pylint: disable=unsubscriptable-object  # noqa: E501
                     account_address = deserialize_evm_address(account_address)
@@ -457,7 +457,7 @@ def mock_etherscan_query(
                         x.append(value_to_add)
                     args.append(x)
 
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
 
             elif 'data=0xe5da1b68' in url:  # Multi token balance query
@@ -472,7 +472,7 @@ def mock_etherscan_query(
                 )
                 input_types = get_abi_input_types(fn_abi)
                 output_types = get_abi_output_types(fn_abi)
-                decoded_input = web3.codec.decode_abi(input_types, bytes.fromhex(data[10:]))
+                decoded_input = web3.codec.decode(input_types, bytes.fromhex(data[10:]))
                 args = []
                 account_address = deserialize_evm_address(decoded_input[0])  # pylint: disable=unsubscriptable-object  # noqa: E501
                 x = []
@@ -491,7 +491,7 @@ def mock_etherscan_query(
                         break
                     args.append(value_to_add)
 
-                result = '0x' + web3.codec.encode_abi(output_types, [args]).hex()
+                result = '0x' + web3.codec.encode(output_types, [args]).hex()
                 response = f'{{"jsonrpc":"2.0","id":1,"result":"{result}"}}'
             elif 'https://api.etherscan.io/api?module=proxy&action=eth_call&to=0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9&data=0x35ea6a75000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7' in url:  # noqa: E501
                 # This is querying ethscan for the aave balances

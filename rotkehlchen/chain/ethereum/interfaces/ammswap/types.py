@@ -35,7 +35,7 @@ class LiquidityPoolAsset:
     token: EvmToken
     total_amount: Optional[FVal]
     user_balance: Balance
-    usd_price: Price = Price(ZERO)
+    usd_price: Price = field(default_factory=lambda: Price(ZERO))
 
     def serialize(self) -> dict[str, Any]:
         return {
@@ -258,9 +258,9 @@ class LiquidityPoolEventsBalance(NamedTuple):
 @dataclass(init=True, repr=True)
 class AggregatedAmount:
     events: list[LiquidityPoolEvent] = field(default_factory=list)
-    profit_loss0: FVal = ZERO
-    profit_loss1: FVal = ZERO
-    usd_profit_loss: FVal = ZERO
+    profit_loss0: FVal = field(default_factory=lambda: ZERO)
+    profit_loss1: FVal = field(default_factory=lambda: ZERO)
+    usd_profit_loss: FVal = field(default_factory=lambda: ZERO)
 
 
 AddressEvents = dict[ChecksumEvmAddress, list[LiquidityPoolEvent]]

@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Optional
 
 from rotkehlchen.constants import ZERO
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 @dataclass(init=True, repr=False, eq=True, order=False, unsafe_hash=False, frozen=False)
 class PNL():
-    free: FVal = ZERO
-    taxable: FVal = ZERO
+    free: FVal = field(default_factory=lambda: ZERO)
+    taxable: FVal = field(default_factory=lambda: ZERO)
 
     def serialize(self) -> dict[str, str]:
         return {

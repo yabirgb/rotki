@@ -94,7 +94,7 @@ def decode_event_data_abi(
             f"between event inputs: '{', '.join(duplicate_names)}'",
         )
 
-    decoded_log_data = WEB3.codec.decode_abi(log_data_types, tx_log.data)
+    decoded_log_data = WEB3.codec.decode(log_data_types, tx_log.data)
     normalized_log_data = map_abi_data(
         BASE_RETURN_NORMALIZERS,
         log_data_types,

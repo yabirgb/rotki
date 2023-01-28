@@ -20,8 +20,8 @@ class BalanceType(DBEnumMixIn):
 
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=False)
 class Balance:
-    amount: FVal = ZERO
-    usd_value: FVal = ZERO
+    amount: FVal = field(default_factory=lambda: ZERO)
+    usd_value: FVal = field(default_factory=lambda: ZERO)
 
     def serialize(self) -> dict[str, str]:
         return {'amount': str(self.amount), 'usd_value': str(self.usd_value)}

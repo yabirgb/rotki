@@ -1,5 +1,5 @@
 import decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Literal, NamedTuple, Optional
 
 from rotkehlchen.accounting.mixins.event import AccountingEventMixin, AccountingEventType
@@ -91,11 +91,11 @@ ValidatorDailyStatsDBTuple = tuple[
 class ValidatorDailyStats(AccountingEventMixin):
     validator_index: int  # keeping the index here so it can be shown in accounting
     timestamp: Timestamp
-    start_usd_price: FVal = ZERO
-    end_usd_price: FVal = ZERO
-    pnl: FVal = ZERO
-    start_amount: FVal = ZERO
-    end_amount: FVal = ZERO
+    start_usd_price: FVal = field(default_factory=lambda: ZERO)
+    end_usd_price: FVal = field(default_factory=lambda: ZERO)
+    pnl: FVal = field(default_factory=lambda: ZERO)
+    start_amount: FVal = field(default_factory=lambda: ZERO)
+    end_amount: FVal = field(default_factory=lambda: ZERO)
     missed_attestations: int = 0
     orphaned_attestations: int = 0
     proposed_blocks: int = 0
@@ -104,8 +104,8 @@ class ValidatorDailyStats(AccountingEventMixin):
     included_attester_slashings: int = 0
     proposer_attester_slashings: int = 0
     deposits_number: int = 0
-    amount_deposited: FVal = ZERO
-    ownership_percentage: FVal = ONE  # customized by get_eth2_history_events
+    amount_deposited: FVal = field(default_factory=lambda: ZERO)
+    ownership_percentage: FVal = field(default_factory=lambda: ONE)  # customized by get_eth2_history_events
 
     def __str__(self) -> str:
         return f'ETH2 validator {self.validator_index} daily stats'

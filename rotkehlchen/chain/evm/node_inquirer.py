@@ -564,7 +564,7 @@ class EvmNodeInquirer(metaclass=ABCMeta):
             args=arguments,
         )
         output_types = get_abi_output_types(fn_abi)
-        output_data = web3.codec.decode_abi(output_types, bytes.fromhex(result[2:]))
+        output_data = web3.codec.decode(output_types, bytes.fromhex(result[2:]))
 
         if len(output_data) == 1:
             # due to https://github.com/PyCQA/pylint/issues/4114

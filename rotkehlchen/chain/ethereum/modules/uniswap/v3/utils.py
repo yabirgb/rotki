@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from eth_abi import encode_abi
+from eth_abi import encode
 from eth_utils import to_checksum_address, to_normalized_address
 from web3 import Web3
 from web3.exceptions import BadFunctionCallOutput
@@ -341,7 +341,7 @@ def _compute_pool_address(
 
     return generate_address_via_create2(
         address=uniswap_v3_factory_address,
-        salt=Web3.toHex(Web3.keccak(encode_abi(['address', 'address', 'uint24'], parameters))),
+        salt=Web3.toHex(Web3.keccak(encode(['address', 'address', 'uint24'], parameters))),
         init_code=POOL_INIT_CODE_HASH,
         is_init_code_hashed=True,
     )

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal, Optional, Sequence, Union, cast, over
 import requests
 from ens.abis import ENS as ENS_ABI, RESOLVER as ENS_RESOLVER_ABI
 from ens.exceptions import InvalidName
-from ens.main import ENS_MAINNET_ADDR
+from ens.constants import ENS_MAINNET_ADDR
 from ens.utils import is_none_or_zero_address, normal_name_to_hash, normalize_name
 from eth_typing import BlockNumber, HexStr
 from web3 import Web3
