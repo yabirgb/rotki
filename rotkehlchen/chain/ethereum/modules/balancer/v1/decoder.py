@@ -143,14 +143,17 @@ class Balancerv1Decoder(DecoderInterface):
             transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: list[HistoryBaseEntry],
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
+            counterparties: set[str],
     ) -> list[HistoryBaseEntry]:
         """
         It can happen that after sending tokens to the DSProxy in balancer V1 the amount of tokens
         required for the deposit is lower than the amount sent and then those tokens are returned
         to the DSProxy and then to the user.
         """
-        deposited_assets = set()
+        if CPT_BALANCER_V1 not in counterparties:
+            return decoded_events
 
+        deposited_assets = set()
         for event in decoded_events:
             if event.counterparty != CPT_BALANCER_V1:
                 continue
@@ -177,11 +180,15 @@ class Balancerv1Decoder(DecoderInterface):
             transaction: EvmTransaction,  # pylint: disable=unused-argument
             decoded_events: list[HistoryBaseEntry],
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
+            counterparties: set[str],
     ) -> list[HistoryBaseEntry]:
         """
         Check for accounting in v1 that the deposits/withdrawals events have the needed information
         to process them during accounting.
         """
+        if CPT_BALANCER_V1 not in counterparties:
+            return decoded_events
+
         related_events: list[HistoryBaseEntry] = []
         related_events_map: dict[HistoryBaseEntry, list[HistoryBaseEntry]] = {}
         # last event is only tracked in the case of exiting a pool and contains the event

@@ -6,6 +6,7 @@ from rotkehlchen.types import ChecksumEvmAddress
 if TYPE_CHECKING:
     from rotkehlchen.accounting.structures.base import HistoryBaseEntry
     from rotkehlchen.chain.evm.node_inquirer import EvmNodeInquirer
+    from rotkehlchen.chain.evm.decoding.decoder import EventDecoderFunction
     from rotkehlchen.user_messages import MessagesAggregator
 
     from .base import BaseDecoderTools
@@ -35,7 +36,7 @@ class DecoderInterface(metaclass=ABCMeta):
         """
         ...
 
-    def decoding_rules(self) -> list[Callable]:  # pylint: disable=no-self-use
+    def decoding_rules(self) -> list['EventDecoderFunction']:  # pylint: disable=no-self-use
         """
         Subclasses may implement this to add new generic decoding rules to be attempted
         by the decoding process

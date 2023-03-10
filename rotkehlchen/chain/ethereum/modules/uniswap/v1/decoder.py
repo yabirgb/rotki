@@ -4,6 +4,7 @@ from typing import Callable, Optional
 from rotkehlchen.accounting.structures.base import HistoryBaseEntry
 from rotkehlchen.accounting.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.assets.asset import EvmToken
+from rotkehlchen.chain.evm.decoding.decoder import EventDecoderFunction
 from rotkehlchen.chain.evm.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.evm.decoding.structures import ActionItem
 from rotkehlchen.chain.evm.decoding.utils import maybe_reshuffle_events
@@ -34,9 +35,10 @@ class Uniswapv1Decoder(DecoderInterface):
             decoded_events: list[HistoryBaseEntry],
             action_items: list[ActionItem],  # pylint: disable=unused-argument
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
-    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
         """Search for both events. Since the order is not guaranteed try reshuffle in both cases"""
         out_event = in_event = None
+        counterparty = None
         if tx_log.topics[0] == TOKEN_PURCHASE:
             buyer = hex_or_bytes_to_address(tx_log.topics[1])
             # search for a send to buyer from a tracked address
@@ -50,6 +52,7 @@ class Uniswapv1Decoder(DecoderInterface):
                     event.event_type = HistoryEventType.TRADE
                     event.event_subtype = HistoryEventSubType.SPEND
                     event.counterparty = CPT_UNISWAP_V1
+                    counterparty = event.counterparty
                     event.notes = f'Swap {event.balance.amount} {crypto_asset.symbol} in uniswap-v1 from {event.location_label}'  # noqa: E501
                     out_event = event
                 elif event.event_type == HistoryEventType.TRADE and event.event_subtype == HistoryEventSubType.RECEIVE and event.counterparty == CPT_UNISWAP_V1:  # noqa: :E501
@@ -68,17 +71,18 @@ class Uniswapv1Decoder(DecoderInterface):
                     event.event_type = HistoryEventType.TRADE
                     event.event_subtype = HistoryEventSubType.RECEIVE
                     event.counterparty = CPT_UNISWAP_V1
+                    counterparty = event.counterparty
                     event.notes = f'Receive {event.balance.amount} {crypto_asset.symbol} from uniswap-v1 swap in {event.location_label}'  # noqa: E501
                     in_event = event
                 elif event.event_type == HistoryEventType.TRADE and event.event_subtype == HistoryEventSubType.SPEND and event.counterparty == CPT_UNISWAP_V1:  # noqa: :E501
                     out_event = event
 
         maybe_reshuffle_events(out_event=out_event, in_event=in_event)
-        return None, []
+        return None, [], counterparty
 
     # -- DecoderInterface methods
 
-    def decoding_rules(self) -> list[Callable]:
+    def decoding_rules(self) -> list[EventDecoderFunction]:
         return [
             self._maybe_decode_swap,
         ]

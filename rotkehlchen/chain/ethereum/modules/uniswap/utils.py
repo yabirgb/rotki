@@ -239,7 +239,7 @@ def find_uniswap_v2_lp_price(
             f'Couldnt retrieve non zero price information for tokens {token0}, {token1} '
             f'with result {token0_price}, {token1_price}',
         )
-    numerator = (token0_supply * token0_price + token1_supply * token1_price)
+    numerator = token0_supply * token0_price + token1_supply * token1_price
     share_value = numerator / total_supply
     return Price(share_value)
 
@@ -250,7 +250,7 @@ def decode_basic_uniswap_info(
         decoded_events: list[HistoryBaseEntry],
         counterparty: str,
         notify_user: Callable[[HistoryBaseEntry, str], None],
-) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
     """
     Check last three events and if they are related to the swap, label them as such.
     We check three events because potential events are: spend, (optionally) approval, receive.
@@ -262,7 +262,7 @@ def decode_basic_uniswap_info(
             crypto_asset = event.asset.resolve_to_crypto_asset()
         except (UnknownAsset, WrongAssetType):
             notify_user(event, counterparty)
-            return None, []
+            return None, [], None
 
         if (
             event.event_type == HistoryEventType.INFORMATIONAL and
@@ -325,4 +325,4 @@ def decode_basic_uniswap_info(
     if spend_event is not None and receive_event is not None:
         maybe_reshuffle_events(out_event=spend_event, in_event=receive_event)
 
-    return None, []
+    return None, [], None

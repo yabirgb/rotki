@@ -7,6 +7,7 @@ from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.modules.makerdao.sai.constants import CPT_SAI
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value
 from rotkehlchen.chain.evm.decoding.constants import CPT_GAS
+from rotkehlchen.chain.evm.decoding.decoder import EventDecoderFunction
 from rotkehlchen.chain.evm.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.evm.decoding.structures import ActionItem
 from rotkehlchen.chain.evm.decoding.utils import maybe_reshuffle_events
@@ -522,10 +523,10 @@ class MakerdaosaiDecoder(DecoderInterface):
             decoded_events: list[HistoryBaseEntry],  # pylint: disable=unused-argument
             action_items: list[ActionItem],  # pylint: disable=unused-argument
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
-    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
         """This method decodes the migration of a Sai CDP to Dai CDP."""
         if tx_log.topics[0] != SAI_CDP_MIGRATION_TOPIC:
-            return None, []
+            return None, [], None
 
         old_cdp_id = hex_or_bytes_to_int(tx_log.topics[1])
         new_cdp_id = hex_or_bytes_to_int(tx_log.topics[2])
@@ -542,9 +543,9 @@ class MakerdaosaiDecoder(DecoderInterface):
             notes=f'Migrate Sai CDP {old_cdp_id} to Dai CDP {new_cdp_id}',
             counterparty=CPT_SAI,
         )
-        return event, []
+        return event, [], CPT_SAI
 
-    def decoding_rules(self) -> list[Callable]:
+    def decoding_rules(self) -> list[EventDecoderFunction]:
         return [
             self._decode_sai_cdp_migration,
         ]

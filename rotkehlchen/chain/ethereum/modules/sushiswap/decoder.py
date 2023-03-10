@@ -9,6 +9,7 @@ from rotkehlchen.chain.ethereum.modules.uniswap.v2.common import (
     decode_uniswap_v2_like_swap,
     enrich_uniswap_v2_like_lp_tokens_transfers,
 )
+from rotkehlchen.chain.evm.decoding.decoder import EventDecoderFunction
 from rotkehlchen.chain.evm.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.evm.decoding.structures import ActionItem
 from rotkehlchen.chain.evm.structures import EvmTxReceiptLog
@@ -34,7 +35,7 @@ class SushiswapDecoder(DecoderInterface):
             decoded_events: list[HistoryBaseEntry],
             action_items: list[ActionItem],  # pylint: disable=unused-argument
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
-    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
         if tx_log.topics[0] == SWAP_SIGNATURE and transaction.to_address == SUSHISWAP_ROUTER:
             return decode_uniswap_v2_like_swap(
                 tx_log=tx_log,
@@ -45,7 +46,7 @@ class SushiswapDecoder(DecoderInterface):
                 ethereum_inquirer=self.evm_inquirer,  # type: ignore[arg-type]  # is ethereum
                 notify_user=self.notify_user,
             )
-        return None, []
+        return None, [], None
 
     def _maybe_decode_v2_liquidity_addition_and_removal(  # pylint: disable=no-self-use
             self,
@@ -55,7 +56,7 @@ class SushiswapDecoder(DecoderInterface):
             decoded_events: list[HistoryBaseEntry],
             action_items: list[ActionItem],  # pylint: disable=unused-argument
             all_logs: list[EvmTxReceiptLog],
-    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
         if tx_log.topics[0] == MINT_SIGNATURE:
             return decode_uniswap_like_deposit_and_withdrawals(
                 tx_log=tx_log,
@@ -82,7 +83,7 @@ class SushiswapDecoder(DecoderInterface):
                 init_code_hash=SUSHISWAP_V2_INIT_CODE_HASH,
                 tx_hash=transaction.tx_hash,
             )
-        return None, []
+        return None, [], None
 
     @staticmethod
     def _maybe_enrich_lp_tokens_transfers(
@@ -106,7 +107,7 @@ class SushiswapDecoder(DecoderInterface):
 
     # -- DecoderInterface methods
 
-    def decoding_rules(self) -> list[Callable]:
+    def decoding_rules(self) -> list[EventDecoderFunction]:
         return [
             self._maybe_decode_v2_swap,
             self._maybe_decode_v2_liquidity_addition_and_removal,

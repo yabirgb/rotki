@@ -38,7 +38,7 @@ def decode_uniswap_v2_like_swap(
         database: 'DBHandler',
         ethereum_inquirer: 'EthereumInquirer',
         notify_user: Callable[[HistoryBaseEntry, str], None],
-) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
     """Common logic for decoding uniswap v2 like protocols (uniswap and sushiswap atm)
 
     Decode trade for uniswap v2 like amm. The approach is to read the events and detect the ones
@@ -66,7 +66,7 @@ def decode_uniswap_v2_like_swap(
     if pool_token.symbol in exclude_amms.values():
         # If the symbol for the current counterparty matches the expected symbol for another
         # counterparty skip the decoding using this rule.
-        return None, []
+        return None, [], None
 
     # When the router chains multiple swaps in one transaction only the last swap has
     # the buyer in the topic. In that case we know it is the last swap and the receiver is
@@ -89,6 +89,7 @@ def decode_uniswap_v2_like_swap(
         if event.asset == A_ETH and event.event_type == HistoryEventType.RECEIVE:
             received_eth += event.balance.amount
 
+    counterparty_found = False
     for event in decoded_events:
         # When we look for the spend event we have to take into consideration the case
         # where not all the ETH is converted. The ETH that is not converted is returned
@@ -97,7 +98,7 @@ def decode_uniswap_v2_like_swap(
             crypto_asset = event.asset.resolve_to_crypto_asset()
         except (UnknownAsset, WrongAssetType):
             notify_user(event, counterparty)
-            return None, []
+            return None, [], None
 
         if (
             event.event_type == HistoryEventType.SPEND and
@@ -114,6 +115,7 @@ def decode_uniswap_v2_like_swap(
             event.counterparty = counterparty
             event.notes = f'Swap {event.balance.amount} {crypto_asset.symbol} in {counterparty} from {event.location_label}'  # noqa: E501
             out_event = event
+            counterparty_found = True
         elif (
             (maybe_buyer == transaction.from_address or event.asset == A_ETH) and
             event.event_type in (HistoryEventType.RECEIVE, HistoryEventType.TRANSFER) and
@@ -127,6 +129,7 @@ def decode_uniswap_v2_like_swap(
             event.counterparty = counterparty
             event.notes = f'Receive {event.balance.amount} {crypto_asset.symbol} in {counterparty} from {event.location_label}'  # noqa: E501
             in_event = event
+            counterparty_found = True
         elif (
             event.event_type == HistoryEventType.RECEIVE and
             event.balance.amount != asset_normalized_value(
@@ -143,9 +146,10 @@ def decode_uniswap_v2_like_swap(
             event.event_subtype = HistoryEventSubType.NONE
             event.counterparty = counterparty
             event.notes = f'Refund of {event.balance.amount} {crypto_asset.symbol} in {counterparty} due to price change'  # noqa: E501
+            counterparty_found = True
 
     maybe_reshuffle_events(out_event=out_event, in_event=in_event)
-    return None, []
+    return None, [], counterparty if counterparty_found is True else None
 
 
 def decode_uniswap_like_deposit_and_withdrawals(
@@ -159,7 +163,7 @@ def decode_uniswap_like_deposit_and_withdrawals(
         factory_address: ChecksumEvmAddress,
         init_code_hash: str,
         tx_hash: EVMTxHash,
-) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
     """
     This is a common logic for Uniswap V2 like AMMs e.g Sushiswap.
     This method decodes a liquidity addition or removal to Uniswap V2 pool.
@@ -211,7 +215,7 @@ def decode_uniswap_like_deposit_and_withdrawals(
             token1 = resolved_eth if token1 == A_WETH else token1
 
     if token0 is None or token1 is None:
-        return None, []
+        return None, [], None
 
     amount0 = asset_normalized_value(amount0_raw, token0)
     amount1 = asset_normalized_value(amount1_raw, token1)
@@ -279,7 +283,7 @@ def decode_uniswap_like_deposit_and_withdrawals(
                 pool_address=pool_address,
             )
 
-    return None, new_action_items
+    return None, new_action_items, None
 
 
 def enrich_uniswap_v2_like_lp_tokens_transfers(

@@ -10,6 +10,7 @@ from rotkehlchen.chain.ethereum.modules.uniswap.utils import decode_basic_uniswa
 from rotkehlchen.chain.ethereum.utils import asset_normalized_value
 from rotkehlchen.chain.evm.constants import ZERO_ADDRESS
 from rotkehlchen.chain.evm.decoding.constants import CPT_GAS
+from rotkehlchen.chain.evm.decoding.decoder import EventDecoderFunction
 from rotkehlchen.chain.evm.decoding.interfaces import DecoderInterface
 from rotkehlchen.chain.evm.decoding.structures import ActionItem
 from rotkehlchen.chain.evm.structures import EvmTxReceiptLog
@@ -177,14 +178,14 @@ class Uniswapv3Decoder(DecoderInterface):
             decoded_events: list[HistoryBaseEntry],
             action_items: list[ActionItem],  # pylint: disable=unused-argument
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
-    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem]]:
+    ) -> tuple[Optional[HistoryBaseEntry], list[ActionItem], Optional[str]]:
         """
         Detect some basic uniswap v3 events. This method doesn't ensure the order of the events
         and other things, but just labels some of the events as uniswap v3 events.
         The order should be ensured by the post-decoding rules.
         """
         if tx_log.topics[0] != SWAP_SIGNATURE:
-            return None, []
+            return None, [], None
 
         # Uniswap V3 represents the delta of tokens in the pool with a signed integer
         # for each token. In the transaction we have the difference of tokens in the pool
@@ -276,6 +277,7 @@ class Uniswapv3Decoder(DecoderInterface):
             transaction: EvmTransaction,
             decoded_events: list[HistoryBaseEntry],
             all_logs: list[EvmTxReceiptLog],  # pylint: disable=unused-argument
+            counterparties: set[str],  # pylint: disable=unused-argument
     ) -> list[HistoryBaseEntry]:
         """
         Ensures that if an auto router (either v1 or v2) is used, events have correct order and
@@ -539,7 +541,7 @@ class Uniswapv3Decoder(DecoderInterface):
         return False
     # -- DecoderInterface methods
 
-    def decoding_rules(self) -> list[Callable]:
+    def decoding_rules(self) -> list[EventDecoderFunction]:
         return [
             self._maybe_decode_v3_swap,
         ]
