@@ -2,7 +2,8 @@ import json
 import logging
 import sys
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Final
+from sqlite3 import IntegrityError
+from typing import TYPE_CHECKING, Any, Final, Literal, Union, overload
 
 import requests
 
@@ -26,6 +27,7 @@ log = RotkehlchenLogsAdapter(logger)
 LAST_DATA_UPDATES_KEY: Final = 'last_data_updates_ts'
 SPAM_ASSETS_URL = 'https://raw.githubusercontent.com/rotki/data/{branch}/updates/spam_assets/v{version}.json'  # noqa: E501
 RPC_NODES_URL = 'https://raw.githubusercontent.com/rotki/data/{branch}/updates/rpc_nodes/v{version}.json'  # noqa: E501
+CONTRACTS_URL = 'https://raw.githubusercontent.com/rotki/data/{branch}/updates/contracts/v{version}.json'  # noqa: E501
 
 
 class UpdateType(Enum):
@@ -154,29 +156,90 @@ class RotkiDataUpdater:
             new_default_nodes=new_default_nodes,
         )
 
+    def update_contracts(self, local_version: int, to_version: int) -> None:
+        """
+        Updates evm contracts and ABIs in globaldb. For contracts' abi what we do is check if is
+        already present in the db and the get its id or add it and get the row id. Then when
+        adding the contract data to the table the virtual id assigned in the update file is
+        translated to the local abi id.
+        """
+        for version in range(local_version + 1, to_version + 1):
+            success, updated_contracts = self._get_file_content(
+                file_url=CONTRACTS_URL.format(branch=self.branch, version=version),
+                update_type=UpdateType.CONTRACTS,
+            )
+            if success is False:
+                return
+
+            log.info(f'Applying update for contracts to v{version}')
+            remote_id_to_local_id = {}
+            with GlobalDBHandler().conn.read_ctx() as cursor:
+                for single_abi_data in updated_contracts['abis_data']:
+                    serialized_abi = json.dumps(single_abi_data['value'], separators=(',', ':'))
+
+                    # check if the abi is already present in the database
+                    existing_abi_id = cursor.execute(
+                        'SELECT id FROM contract_abi WHERE value=?',
+                        (serialized_abi,),
+                    ).fetchone()
+
+                    if existing_abi_id is not None:
+                        abi_id = existing_abi_id[0]
+                    else:
+                        with GlobalDBHandler().conn.write_ctx() as write_cursor:
+                            write_cursor.execute(
+                                'INSERT INTO contract_abi(name, value) VALUES(?, ?)',
+                                (single_abi_data['name'], serialized_abi),
+                            )
+                            abi_id = write_cursor.lastrowid
+                    # store a mapping of the virtual id to the id in the user's globaldb
+                    remote_id_to_local_id[single_abi_data['id']] = abi_id
+
+            new_contracts_data = []
+            for single_contract_data in updated_contracts['contracts_data']:
+                new_contracts_data.append((
+                    single_contract_data['address'],
+                    single_contract_data['chain_id'],
+                    single_contract_data.get('name'),
+                    remote_id_to_local_id[single_contract_data['abi']],
+                    single_contract_data.get('deployed_block'),
+                ))
+
+            try:
+                with GlobalDBHandler().conn.write_ctx() as write_cursor:
+                    write_cursor.executemany(
+                        'INSERT INTO contract_data(address, chain_id, name, abi, deployed_block) VALUES(?, ?, ?, ?, ?)',  # noqa: E501
+                        new_contracts_data,
+                    )
+            except IntegrityError as e:
+                log.error(
+                    f'Got error while updating contracts info at version {version}: {str(e)}',
+                )
+                return
+
+            with self.user_db.conn.write_ctx() as write_cursor:
+                write_cursor.execute(
+                    'INSERT OR REPLACE INTO settings(name, value) VALUES (?, ?)',
+                    (UpdateType.CONTRACTS.serialize(), version),
+                )
+
     def check_for_updates(self) -> None:
         """Retrieve the information about the latest available update"""
         remote_information = self._get_remote_info_json()
 
-        # Get latest applied versions
-        with self.user_db.conn.read_ctx() as cursor:
-            local_spam_assets_version = self._check_for_last_version(
-                cursor=cursor,
-                update_type=UpdateType.SPAM_ASSETS,
-            )
-            local_rpc_nodes_version = self._check_for_last_version(
-                cursor=cursor,
-                update_type=UpdateType.RPC_NODES,
-            )
+        for update_type in UpdateType:
+            # Get latest applied version
+            with self.user_db.conn.read_ctx() as cursor:
+                local_version = self._check_for_last_version(
+                    cursor=cursor,
+                    update_type=update_type,
+                )
 
-        # Update all remote data
-        latest_spam_assets_version = remote_information[UpdateType.SPAM_ASSETS.value]['latest']
-        if local_spam_assets_version < latest_spam_assets_version:
-            self.update_spam_assets(local_spam_assets_version, latest_spam_assets_version)
-
-        latest_rpc_nodes_version = remote_information[UpdateType.RPC_NODES.value]['latest']
-        if local_rpc_nodes_version < latest_rpc_nodes_version:
-            self.update_rpc_nodes(latest_rpc_nodes_version)
+            # Update all remote data
+            latest_version = remote_information[update_type.value]['latest']
+            if local_version < latest_version:
+                update_function = getattr(self, f'update_{update_type.value}')
+                update_function(local_version=local_version, to_version=latest_version)
 
         with self.user_db.user_write() as cursor:
             cursor.execute(  # remember last time data updates were detected
@@ -194,10 +257,26 @@ class RotkiDataUpdater:
         return int(found_version[0]) if found_version is not None else 0
 
     @staticmethod
+    @overload
+    def _get_file_content(
+            file_url: str,
+            update_type: Literal[UpdateType.SPAM_ASSETS, UpdateType.RPC_NODES],
+    ) -> tuple[bool, list[dict[str, Any]]]:
+        ...
+
+    @staticmethod
+    @overload
+    def _get_file_content(
+            file_url: str,
+            update_type: Literal[UpdateType.CONTRACTS],
+    ) -> tuple[bool, dict[str, Any]]:
+        ...
+
+    @staticmethod
     def _get_file_content(
             file_url: str,
             update_type: UpdateType,
-    ) -> tuple[bool, list[dict[str, Any]]]:
+    ) -> tuple[bool, Union[list[dict[str, Any]], dict[str, Any]]]:
         """Retrieves the content of data to be updated.
 
         Returns True/False for success along with the content.
