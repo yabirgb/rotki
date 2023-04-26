@@ -20,6 +20,7 @@ import {
   type HistoryEventRequestPayload,
   HistoryEventsCollectionResponse,
   type NewHistoryEvent,
+  type OnlineHistoryEventsRequestPayload,
   type TransactionEventRequestPayload,
   type TransactionRequestPayload
 } from '@/types/history/events';
@@ -201,6 +202,20 @@ export const useHistoryEventsApi = () => {
     return HistoryEventsCollectionResponse.parse(handleResponse(response));
   };
 
+  const queryOnlineHistoryEvents = async (
+    payload: OnlineHistoryEventsRequestPayload
+  ): Promise<PendingTask> => {
+    const response = await api.instance.post<ActionResult<PendingTask>>(
+      '/history/events/query',
+      snakeCaseTransformer(payload),
+      {
+        validateStatus: validStatus
+      }
+    );
+
+    return handleResponse(response);
+  };
+
   return {
     fetchEvmTransactionsTask,
     deleteEvmTransactions,
@@ -213,6 +228,7 @@ export const useHistoryEventsApi = () => {
     addTransactionHash,
     getTransactionTypeMappings,
     getHistoryEventCounterpartiesData,
-    fetchHistoryEvents
+    fetchHistoryEvents,
+    queryOnlineHistoryEvents
   };
 };

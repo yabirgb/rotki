@@ -73,6 +73,27 @@ export const HistoryEventDetail = z
 
 export type HistoryEventDetail = z.infer<typeof HistoryEventDetail>;
 
+export const HistoryEventEntryType = {
+  EVM_EVENT: 'evm event',
+  HISTORY_EVENT: 'history event',
+  ETH_WITHDRAWAL_EVENT: 'eth withdrawal event',
+  ETH_BLOCK_EVENT: 'eth block event'
+};
+
+export const CommonHistoryEventFields = z.object({
+  identifier: z.number(),
+  eventIdentifier: z.string(),
+  sequenceIndex: z.number().or(z.string()),
+  timestamp: z.number(),
+  location: z.string(),
+  asset: z.string(),
+  balance: Balance,
+  eventType: z.string().nullish(),
+  eventSubtype: z.string().nullish(),
+  locationLabel: z.string().nullish(),
+  notes: z.string().nullish()
+});
+
 export const HistoryEvent = z.object({
   identifier: z.number().nullish(),
   eventIdentifier: z.string(),
@@ -142,3 +163,14 @@ export type HistoryEventsCollectionResponse = z.infer<
 >;
 
 export interface HistoryEventEntry extends HistoryEvent, HistoryEventMeta {}
+
+export enum OnlineHistoryEventsQueryType {
+  ETH_WITHDRAWALS = 'eth_withdrawals',
+  BLOCK_PRODUCTIONS = 'block_productions',
+  EXCHANGES = 'exchanges'
+}
+
+export interface OnlineHistoryEventsRequestPayload {
+  readonly asyncQuery: boolean;
+  readonly queryType: OnlineHistoryEventsQueryType;
+}

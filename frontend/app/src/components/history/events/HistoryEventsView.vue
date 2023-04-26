@@ -117,6 +117,7 @@ const { isTaskRunning } = useTaskStore();
 
 const {
   refreshTransactions,
+  queryOnlineEvents,
   fetchTransactionEvents,
   deleteTransactionEvent,
   fetchHistoryEvents
@@ -358,6 +359,7 @@ const { isLoading: isSectionLoading } = useStatusStore();
 const sectionLoading = isSectionLoading(Section.TX);
 
 const eventTaskLoading = isTaskRunning(TaskType.TX_EVENTS);
+const onlineHistoryEventsLoading = isTaskRunning(TaskType.QUERY_ONLINE_EVENTS);
 const { isAllFinished: isQueryingTxsFinished } = toRefs(
   useTxQueryStatusStore()
 );
@@ -365,7 +367,8 @@ const { isAllFinished: isQueryingTxsFinished } = toRefs(
 const shouldFetchEventsRegularly = logicOr(
   sectionLoading,
   not(isQueryingTxsFinished),
-  eventTaskLoading
+  eventTaskLoading,
+  onlineHistoryEventsLoading
 );
 
 const anyLoading = logicOr(
@@ -411,8 +414,13 @@ const txChains = useArrayMap(txEvmChains, x => x.id);
 
 onMounted(async () => {
   await fetchData();
-  await refreshTransactions(get(onlyChains));
+  refresh();
 });
+
+const refresh = (userInitiated = false) => {
+  startPromise(refreshTransactions(get(onlyChains), userInitiated));
+  startPromise(queryOnlineEvents());
+};
 
 onUnmounted(() => {
   pause();
@@ -458,9 +466,9 @@ const fetchDataAndRefreshEvents = async (
       </v-btn>
       <template #title>
         <refresh-button
-          :loading="sectionLoading"
+          :loading="sectionLoading || onlineHistoryEventsLoading"
           :tooltip="tc('transactions.refresh_tooltip')"
-          @refresh="refreshTransactions(onlyChains, true)"
+          @refresh="refresh(true)"
         />
         {{ usedTitle }}
       </template>

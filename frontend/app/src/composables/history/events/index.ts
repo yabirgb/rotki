@@ -16,6 +16,7 @@ import {
   type HistoryEventRequestPayload,
   type HistoryEventsCollectionResponse,
   type NewHistoryEvent,
+  OnlineHistoryEventsQueryType,
   type TransactionHashAndEvmChainPayload,
   type TransactionRequestPayload
 } from '@/types/history/events';
@@ -41,7 +42,8 @@ export const useHistoryEvents = () => {
     addTransactionEvent: addTransactionEventCaller,
     editTransactionEvent: editTransactionEventCaller,
     addTransactionHash: addTransactionHashCaller,
-    fetchHistoryEvents: fetchHistoryEventsCaller
+    fetchHistoryEvents: fetchHistoryEventsCaller,
+    queryOnlineHistoryEvents
   } = useHistoryEventsApi();
 
   const { awaitTask, isTaskRunning } = useTaskStore();
@@ -140,6 +142,39 @@ export const useHistoryEvents = () => {
     } catch (e) {
       logger.error(e);
       resetStatus();
+    }
+  };
+
+  const queryOnlineEvent = async (queryType: OnlineHistoryEventsQueryType) => {
+    const taskType = TaskType.QUERY_ONLINE_EVENTS;
+
+    const { taskId } = await queryOnlineHistoryEvents({
+      asyncQuery: true,
+      queryType
+    });
+
+    // TODO: use translation
+    const taskMeta = {
+      title: 'query online events',
+      description: `query online events for ${queryType}`
+    };
+
+    try {
+      await awaitTask<boolean, TaskMeta>(taskId, taskType, taskMeta, true);
+    } catch (e: any) {
+      logger.error(e);
+    }
+  };
+
+  const queryOnlineEvents = async (): Promise<void> => {
+    try {
+      await Promise.all([
+        queryOnlineEvent(OnlineHistoryEventsQueryType.ETH_WITHDRAWALS),
+        queryOnlineEvent(OnlineHistoryEventsQueryType.BLOCK_PRODUCTIONS),
+        queryOnlineEvent(OnlineHistoryEventsQueryType.EXCHANGES)
+      ]);
+    } catch (e) {
+      logger.error(e);
     }
   };
 
@@ -329,6 +364,7 @@ export const useHistoryEvents = () => {
     editTransactionEvent,
     deleteTransactionEvent,
     addTransactionHash,
-    fetchHistoryEvents
+    fetchHistoryEvents,
+    queryOnlineEvents
   };
 };
