@@ -2,7 +2,7 @@ import logging
 import urllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union, cast
 
 import webargs
 from eth_utils import to_checksum_address
@@ -11,6 +11,7 @@ from marshmallow.exceptions import ValidationError
 from marshmallow.utils import is_iterable_but_not_string
 from werkzeug.datastructures import FileStorage
 
+from rotkehlchen.api.v1.types import IncludeExcludeFilterData
 from rotkehlchen.assets.asset import (
     Asset,
     AssetWithNameAndType,
@@ -64,6 +65,51 @@ from rotkehlchen.utils.mixins.enums import (
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
+
+
+class IncludeExcludeListField(fields.Field):
+    """ A field that accepts an object like the following and deserializes it to the proper types.
+    {
+        "values": [val1, val2, val3],
+        "behaviour": "exclude"
+    }
+    Eventually, this object will be used to create a filter query to the db, to return all the db
+    table entries where this field's value is not in [val1, val2, val3]. The behaviour key
+    can be either "include" or "exclude" and it defaults to "include" if not present.
+    """
+    def __init__(
+            self,
+            values_field: 'SerializableEnumField',
+            *args: Any,
+            **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.values_field = values_field
+
+    def _deserialize(
+            self,
+            value: dict[str, Union[list, str]],
+            attr: Optional[str],
+            data: Any,
+            **kwargs: Any,
+    ) -> IncludeExcludeFilterData:
+
+        if 'behaviour' not in value:
+            # If for any reason the behaviour key is not given, we use the default behaviour.
+            value['behaviour'] = 'include'
+
+        values = value['values']
+        behaviour = value['behaviour']
+
+        if behaviour not in ['include', 'exclude']:
+            raise ValidationError("Behaviour must be either 'include' or 'exclude'.")
+
+        deserialized_values = DelimitedOrNormalList(self.values_field).deserialize(values)
+        deserialized_behaviour = cast(Literal['IN', 'NOT IN'], 'IN' if behaviour == 'include' else 'NOT IN')  # noqa: E501
+        return IncludeExcludeFilterData(
+            values=deserialized_values,
+            behaviour=deserialized_behaviour,
+        )
 
 
 class DelimitedOrNormalList(webargs.fields.DelimitedList):
