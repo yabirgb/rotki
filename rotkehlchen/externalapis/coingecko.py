@@ -684,6 +684,70 @@ class Coingecko(HistoricalPriceOracleInterface, PenalizablePriceOracleMixin):
                 f'processing the result.',
             )
             return ZERO_PRICE, False
+        
+    def can_do_batch_queries(self) -> bool:
+        return True
+        
+    def batch_query_current_price(
+            self,
+            from_assets: list[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> dict[AssetWithOracles, tuple[Price, bool]]:
+        """Returns a simple price for from_asset to to_asset in coingecko and `False` value
+        since it never tries to match main currency.
+
+        Uses the simple/price endpoint of coingecko. If to_asset is not part of the
+        coingecko simple vs currencies or if from_asset is not supported in coingecko
+        price zero is returned.
+
+        May raise:
+        - RemoteError if there is a problem querying coingecko
+        """
+        vs_currency = Coingecko.check_vs_currencies(
+            from_asset=Asset('BTC'),
+            to_asset=to_asset,
+            location='simple price',
+        )
+        if not vs_currency:
+            return {from_asset: (ZERO_PRICE, False) for from_asset in from_assets}
+
+        assets_to_coingecko_ids = {}
+        for from_asset in from_assets:
+            try:
+                assets_to_coingecko_ids[from_asset] = from_asset.to_coingecko()
+            except UnsupportedAsset:
+                log.warning(
+                    f'Tried to query coingecko simple price from {from_asset.identifier} '
+                    f'to {to_asset.identifier}. But from_asset is not supported in coingecko',
+                )
+
+        result = self._query(
+            module='simple/price',
+            options={
+                'ids': ','.join(assets_to_coingecko_ids.values()),
+                'vs_currencies': vs_currency,
+            })
+
+        # https://github.com/PyCQA/pylint/issues/4739
+        prices_output = {}
+        for from_asset in from_assets:
+            from_coingecko_id = assets_to_coingecko_ids.get(from_asset)
+            if from_coingecko_id is None:
+                prices_output[from_asset] = (ZERO_PRICE, False)
+                continue
+
+            try:
+                prices_output[from_asset] = (Price(FVal(result[from_coingecko_id][vs_currency])), False)
+            except KeyError as e:
+                log.warning(
+                    f'Queried coingecko simple price from {from_asset.identifier} '
+                    f'to {to_asset.identifier}. But got key error for {e!s} when '
+                    f'processing the result.',
+                )
+                prices_output[from_asset] = (ZERO_PRICE, False)
+
+        return prices_output
 
     def can_query_history(
             self,

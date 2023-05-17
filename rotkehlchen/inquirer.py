@@ -432,6 +432,7 @@ class Inquirer():
             to_asset: Asset,
             coming_from_latest_price: bool,
             skip_onchain: bool = False,
+            query_oracles_not_batching: bool = True,
             match_main_currency: bool = False,
     ) -> tuple[Price, CurrentPriceOracle, bool]:
         """
@@ -639,24 +640,14 @@ class Inquirer():
             coming_from_latest_price=coming_from_latest_price,
             match_main_currency=match_main_currency,
         )
-
-    @staticmethod
-    def _find_usd_price(
+        
+    def _find_usd_price_special_cases(
             asset: Asset,
             ignore_cache: bool = False,
             skip_onchain: bool = False,
             coming_from_latest_price: bool = False,
             match_main_currency: bool = False,
     ) -> tuple[Price, CurrentPriceOracle, bool]:
-        """Returns the current price of the asset, oracle that was used and hether returned price
-        is in main currency.
-
-        Returns ZERO_PRICE if all options have been exhausted and errors are logged in the logs.
-        `coming_from_latest_price` is used by manual latest price oracle to handle price loops.
-        """
-        if asset == A_USD:
-            return Price(ONE), CurrentPriceOracle.FIAT, False
-
         instance = Inquirer()
         cache_key = (asset, A_USD)
         if ignore_cache is False:
@@ -740,8 +731,79 @@ class Inquirer():
         if asset == A_KFEE:
             # KFEE is a kraken special asset where 1000 KFEE = 10 USD
             return Price(FVal(0.01)), CurrentPriceOracle.FIAT, False
+        
+        return ZERO_PRICE, CurrentPriceOracle.FIAT, False
 
-        price, oracle, used_main_currency = instance._query_oracle_instances(
+    @staticmethod
+    def _query_oracle_instances_batches(
+            from_assets: Iterable[Asset],
+            to_asset: Asset,
+            coming_from_latest_price: bool,
+            skip_onchain: bool = False,
+            match_main_currency: bool = False,
+    ) -> dict[Asset, Price]:
+        """
+        Query oracle instances.
+        `coming_from_latest_price` is used by manual latest price oracle to handle price loops.
+        """
+        instance = Inquirer()
+        to_asset = to_asset.resolve_to_asset_with_oracles()
+        assets = {asset.resolve_to_asset_with_oracles() for asset in from_assets}
+        result = {}
+
+        for oracle_instance in instance._oracle_instances_not_onchain:
+            if len(assets) == 0:
+                break
+
+            if (
+                isinstance(oracle_instance, CurrentPriceOracleInterface) and
+                (
+                    oracle_instance.rate_limited_in_last(DEFAULT_RATE_LIMIT_WAITING_TIME) is True or  # noqa: E501
+                    isinstance(oracle_instance, PenalizablePriceOracleMixin) and oracle_instance.is_penalized() is True or  # noqa: E501
+                    oracle_instance.can_do_batch_queries() is False
+                )
+            ):
+                continue
+
+            oracle_result = oracle_instance.batch_query_current_price(
+                from_assets=assets,  # type: ignore  # type is guaranteed by the if above  # noqa: E501
+                to_asset=to_asset,  # type: ignore  # type is guaranteed by the if above
+                match_main_currency=match_main_currency,
+            )
+
+            result |= {asset: price_info[0] for asset, price_info in oracle_result.items()}
+            assets -= {asset for asset, price_info in result.items() if price_info != ZERO}
+
+        return result
+
+    @staticmethod
+    def _find_usd_price(
+            asset: Asset,
+            ignore_cache: bool = False,
+            skip_onchain: bool = False,
+            coming_from_latest_price: bool = False,
+            match_main_currency: bool = False,
+    ) -> tuple[Price, CurrentPriceOracle, bool]:
+        """Returns the current price of the asset, oracle that was used and hether returned price
+        is in main currency.
+
+        Returns ZERO_PRICE if all options have been exhausted and errors are logged in the logs.
+        `coming_from_latest_price` is used by manual latest price oracle to handle price loops.
+        """
+        if asset == A_USD:
+            return Price(ONE), CurrentPriceOracle.FIAT, False
+
+        price, oracle, used_main_currency = Inquirer._find_usd_price_special_cases(
+            asset=asset,
+            ignore_cache=ignore_cache,
+            skip_onchain=skip_onchain,
+            coming_from_latest_price=coming_from_latest_price,
+            match_main_currency=match_main_currency,  
+        )
+        if price != ZERO_PRICE:
+            return price, oracle, used_main_currency
+
+        price, oracle, used_main_currency = Inquirer._query_oracle_instances(
             from_asset=asset,
             to_asset=A_USD,
             coming_from_latest_price=coming_from_latest_price,
@@ -749,6 +811,47 @@ class Inquirer():
             match_main_currency=match_main_currency,
         )
         return price, oracle, used_main_currency
+    
+    @staticmethod
+    def find_usd_price_batched(
+            assets: set[Asset],
+            ignore_cache: bool = False,
+            skip_onchain: bool = False,
+            coming_from_latest_price: bool = False,
+            match_main_currency: bool = False,
+    ) -> dict[Asset, Price]:
+        """Returns the current price of the asset, oracle that was used and hether returned price
+        is in main currency.
+
+        Returns ZERO_PRICE if all options have been exhausted and errors are logged in the logs.
+        `coming_from_latest_price` is used by manual latest price oracle to handle price loops.
+        """
+        prices: dict[Asset, Price] = {}
+        pending_assets = set()
+        for asset in assets:
+            if asset == A_USD:
+                prices[asset] = Price(ONE)
+            else:
+                price, _, _ = Inquirer._find_usd_price_special_cases(
+                    asset=asset,
+                    ignore_cache=ignore_cache,
+                    skip_onchain=skip_onchain,
+                    coming_from_latest_price=coming_from_latest_price,
+                    match_main_currency=match_main_currency,  
+                )
+                if price != ZERO_PRICE:
+                    prices[asset] = price
+                else:
+                    pending_assets.add(asset)
+
+        prices |= Inquirer._query_oracle_instances_batches(
+            from_assets=pending_assets,
+            to_asset=A_USD,
+            coming_from_latest_price=coming_from_latest_price,
+            skip_onchain=skip_onchain,
+            match_main_currency=match_main_currency,
+        )
+        return prices
 
     def find_uniswap_v2_lp_price(
             self,

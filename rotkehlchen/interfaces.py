@@ -36,6 +36,17 @@ class CurrentPriceOracleInterface(metaclass=abc.ABCMeta):
         for the current oracle
         2. Whether returned price is in main currency
         """
+        
+    def can_do_batch_queries(self) -> bool:
+        return False
+
+    def batch_query_current_price(
+            self,
+            from_assets: list[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> dict[AssetWithOracles, tuple[Price, bool]]:
+        return {}
 
 
 class HistoricalPriceOracleInterface(CurrentPriceOracleInterface):

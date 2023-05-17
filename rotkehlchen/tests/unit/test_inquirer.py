@@ -36,6 +36,7 @@ from rotkehlchen.inquirer import (
     CURRENT_PRICE_CACHE_SECS,
     DEFAULT_RATE_LIMIT_WAITING_TIME,
     CurrentPriceOracle,
+    Inquirer,
     _query_currency_converterapi,
 )
 from rotkehlchen.interfaces import HistoricalPriceOracleInterface
@@ -570,3 +571,12 @@ def test_find_protocol_price_falllback_to_oracle(inquirer_defi):
     with yearn_patch:
         price = inquirer_defi.find_usd_price(yvusdc)
     assert price is not None and price != ZERO
+
+
+def test_batch_queries(inquirer: Inquirer):
+    inquirer.set_oracles_order([CurrentPriceOracle.COINGECKO, CurrentPriceOracle.CRYPTOCOMPARE])
+    prices = inquirer.find_usd_price_batched(
+        assets={A_BTC, A_1INCH, A_DAI, A_ETH, A_KFEE}
+    )
+    print(prices)
+    assert False

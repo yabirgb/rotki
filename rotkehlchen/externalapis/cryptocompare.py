@@ -440,6 +440,42 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleInterface, P
         )
         result = self._api_query(path=query_path)
         return result
+    
+    def can_do_batch_queries(self) -> bool:
+        return True
+    
+    def batch_query_current_price(
+            self,
+            from_assets: list[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> dict[AssetWithOracles, tuple[Price, bool]]:
+        try:
+            cc_to_asset_symbol = to_asset.to_cryptocompare()
+        except UnsupportedAsset as e:
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
+
+        from_asset_to_cryptocompare = {}
+        for from_asset in from_assets:
+            try:
+                from_asset_to_cryptocompare[from_asset] = from_asset.to_cryptocompare()
+            except UnsupportedAsset as e:
+                raise PriceQueryUnsupportedAsset(e.identifier) from e
+
+        symbols_query_string = ','.join(from_asset_to_cryptocompare.values())
+        query_path = f'pricemulti?fsyms={symbols_query_string}&tsyms={cc_to_asset_symbol}'
+        result = self._api_query(path=query_path)
+        # Up until 23/09/2020 cryptocompare may return {} due to bug.
+        # Handle that case by assuming 0 if that happens
+        prices = {}
+        for from_asset in from_assets:
+            cryptocompare_id = from_asset_to_cryptocompare.get(from_asset)
+            if cryptocompare_id is None or cryptocompare_id not in result:
+                prices[from_asset] = (ZERO_PRICE, False)
+                continue
+            
+            prices[from_asset] = (Price(FVal(result[cryptocompare_id][cc_to_asset_symbol])), False)
+        return prices
 
     def query_current_price(
             self,
