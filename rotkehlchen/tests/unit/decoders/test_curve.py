@@ -827,7 +827,7 @@ def test_gauge_deposit(
         type=WSMessageType.REFRESH_BALANCES,
         data={
             'type': 'blockchain_balances',
-            'blockchain': 'eth',
+            'blockchain': 'ETH',
         },
     )
     expected_events = [

@@ -836,7 +836,7 @@ class EVMTransactionDecoder(metaclass=ABCMeta):
                 message_type=WSMessageType.REFRESH_BALANCES,
                 data={
                     'type': 'blockchain_balances',
-                    'blockchain': self.evm_inquirer.chain_id.to_blockchain().serialize(),
+                    'blockchain': self.evm_inquirer.chain_id.to_blockchain().value,
                 },
             )
 
