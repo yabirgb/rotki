@@ -54,7 +54,7 @@ def test_add_optimism_blockchain_account(rotkehlchen_api_server):
     result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_balances = result['per_account']['OPTIMISM'][TEST_ADDY]
+    account_balances = result['per_account']['optimism'][TEST_ADDY]
     assert 'liabilities' in account_balances
     asset_eth = account_balances['assets']['ETH']
     assert FVal(asset_eth['amount']) >= ZERO
@@ -124,7 +124,7 @@ def test_add_optimism_blockchain_account(rotkehlchen_api_server):
         result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_balances = result['per_account']['OPTIMISM'][TEST_ADDY]
+    account_balances = result['per_account']['optimism'][TEST_ADDY]
     assert 'liabilities' in account_balances
     assert len(account_balances['assets']) == len(optimism_tokens) + 1
     for asset_id in ('ETH', *optimism_tokens):

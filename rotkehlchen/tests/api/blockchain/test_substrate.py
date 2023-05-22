@@ -80,7 +80,7 @@ def test_add_ksm_blockchain_account(rotkehlchen_api_server):
     result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_balances = result['per_account']['KSM'][SUBSTRATE_ACC1_KSM_ADDR]
+    account_balances = result['per_account']['ksm'][SUBSTRATE_ACC1_KSM_ADDR]
     assert 'liabilities' in account_balances
     asset_ksm = account_balances['assets']['KSM']
     assert FVal(asset_ksm['amount']) >= ZERO
@@ -126,8 +126,8 @@ def test_remove_ksm_blockchain_account(rotkehlchen_api_server):
         result = assert_proper_response_with_result(response)
 
     # Check per account
-    assert SUBSTRATE_ACC2_KSM_ADDR not in result['per_account']['KSM']
-    account_balances = result['per_account']['KSM'][SUBSTRATE_ACC1_KSM_ADDR]
+    assert SUBSTRATE_ACC2_KSM_ADDR not in result['per_account']['ksm']
+    account_balances = result['per_account']['ksm'][SUBSTRATE_ACC1_KSM_ADDR]
     assert 'liabilities' in account_balances
     asset_ksm = account_balances['assets']['KSM']
     assert FVal(asset_ksm['amount']) >= ZERO

@@ -717,11 +717,11 @@ def test_balances_caching_mixup(
             task_id=task_id_eth,
             timeout=ASYNC_TASK_WAIT_TIMEOUT * 2,
         )
-        assert result_eth['per_account']['ETH'][ethereum_accounts[0]]['assets']['ETH']['amount'] == '1'  # noqa: E501
-        assert result_eth['per_account']['ETH'][ethereum_accounts[0]]['assets'][A_RDN.identifier]['amount'] == '2'  # noqa: E501
+        assert result_eth['per_account']['eth'][ethereum_accounts[0]]['assets']['ETH']['amount'] == '1'  # noqa: E501
+        assert result_eth['per_account']['eth'][ethereum_accounts[0]]['assets'][A_RDN.identifier]['amount'] == '2'  # noqa: E501
         assert result_eth['totals']['assets']['ETH']['amount'] == '1'
         assert result_eth['totals']['assets'][A_RDN.identifier]['amount'] == '2'
-        assert result_eth['per_account']['ETH'][ethereum_accounts[0]]['assets'][A_RDN.identifier]['amount'] == '2'  # noqa: E501
+        assert result_eth['per_account']['eth'][ethereum_accounts[0]]['assets'][A_RDN.identifier]['amount'] == '2'  # noqa: E501
         assert result_btc['per_account'] == {}
         assert result_btc['totals']['assets'] == {}
         assert result_btc['totals']['liabilities'] == {}
@@ -761,13 +761,13 @@ def test_query_ksm_balances(rotkehlchen_api_server):
             result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_1_balances = result['per_account']['KSM'][SUBSTRATE_ACC1_KSM_ADDR]
+    account_1_balances = result['per_account']['ksm'][SUBSTRATE_ACC1_KSM_ADDR]
     assert 'liabilities' in account_1_balances
     asset_ksm = account_1_balances['assets']['KSM']
     assert FVal(asset_ksm['amount']) >= ZERO
     assert FVal(asset_ksm['usd_value']) >= ZERO
 
-    account_2_balances = result['per_account']['KSM'][SUBSTRATE_ACC2_KSM_ADDR]
+    account_2_balances = result['per_account']['ksm'][SUBSTRATE_ACC2_KSM_ADDR]
     assert 'liabilities' in account_2_balances
     asset_ksm = account_2_balances['assets']['KSM']
     assert FVal(asset_ksm['amount']) >= ZERO
@@ -813,13 +813,13 @@ def test_query_avax_balances(rotkehlchen_api_server):
             result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_1_balances = result['per_account']['AVAX'][AVALANCHE_ACC1_AVAX_ADDR]
+    account_1_balances = result['per_account']['avax'][AVALANCHE_ACC1_AVAX_ADDR]
     assert 'liabilities' in account_1_balances
     asset_avax = account_1_balances['assets']['AVAX']
     assert FVal(asset_avax['amount']) >= ZERO
     assert FVal(asset_avax['usd_value']) >= ZERO
 
-    account_2_balances = result['per_account']['AVAX'][AVALANCHE_ACC2_AVAX_ADDR]
+    account_2_balances = result['per_account']['avax'][AVALANCHE_ACC2_AVAX_ADDR]
     assert 'liabilities' in account_2_balances
     asset_avax = account_2_balances['assets']['AVAX']
     assert FVal(asset_avax['amount']) >= ZERO

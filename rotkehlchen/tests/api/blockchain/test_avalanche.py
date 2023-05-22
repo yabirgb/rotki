@@ -71,7 +71,7 @@ def test_add_avax_blockchain_account(rotkehlchen_api_server):
     result = assert_proper_response_with_result(response)
 
     # Check per account
-    account_balances = result['per_account']['AVAX'][AVALANCHE_ACC1_AVAX_ADDR]
+    account_balances = result['per_account']['avax'][AVALANCHE_ACC1_AVAX_ADDR]
     assert 'liabilities' in account_balances
     asset_avax = account_balances['assets']['AVAX']
     assert FVal(asset_avax['amount']) >= ZERO
@@ -114,8 +114,8 @@ def test_remove_avax_blockchain_account(rotkehlchen_api_server):
         result = assert_proper_response_with_result(response)
 
     # Check per account
-    assert AVALANCHE_ACC2_AVAX_ADDR not in result['per_account']['AVAX']
-    account_balances = result['per_account']['AVAX'][AVALANCHE_ACC1_AVAX_ADDR]
+    assert AVALANCHE_ACC2_AVAX_ADDR not in result['per_account']['avax']
+    account_balances = result['per_account']['avax'][AVALANCHE_ACC1_AVAX_ADDR]
     assert 'liabilities' in account_balances
     asset_avax = account_balances['assets']['AVAX']
     assert FVal(asset_avax['amount']) >= ZERO

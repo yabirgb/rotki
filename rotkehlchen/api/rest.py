@@ -1804,7 +1804,7 @@ class RestAPI():
 
         result = defaultdict(list)
         for chain, address in added_accounts:
-            result[chain.value].append(address)
+            result[chain.serialize()].append(address)
         return _wrap_in_ok_result(result)
 
     @async_api_call()

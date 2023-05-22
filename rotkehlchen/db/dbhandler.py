@@ -3059,7 +3059,7 @@ class DBHandler:
                         name=entry[1],
                         endpoint=entry[2],
                         owned=bool(entry[3]),
-                        blockchain=SupportedBlockchain(entry[6]),  # type: ignore
+                        blockchain=SupportedBlockchain.deserialize(entry[6]),  # type: ignore
                     ),
                     weight=FVal(entry[4]),
                     active=bool(entry[5]),

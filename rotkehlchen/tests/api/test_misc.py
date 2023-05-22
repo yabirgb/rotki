@@ -209,7 +209,7 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'https://cloudflare-eth.com/'
             assert node['owned'] is False
-            assert node['blockchain'] == 'ETH'
+            assert node['blockchain'] == 'eth'
             break
 
     # Try to add etherscan as node
@@ -271,7 +271,7 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'ewarwae'
             assert node['owned'] is True
-            assert node['blockchain'] == 'ETH'
+            assert node['blockchain'] == 'eth'
             break
 
     # try to edit a node's name
@@ -298,7 +298,7 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'ewarwae'
             assert node['owned'] is True
-            assert node['blockchain'] == 'ETH'
+            assert node['blockchain'] == 'eth'
             break
 
     # add a new node

@@ -126,7 +126,7 @@ def test_booster_deposit(
         type=WSMessageType.REFRESH_BALANCES,
         data={
             'type': 'blockchain_balances',
-            'blockchain': 'ETH',
+            'blockchain': 'eth',
         },
     )
     expected_events = [

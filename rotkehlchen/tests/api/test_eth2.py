@@ -347,11 +347,11 @@ def test_eth2_add_eth1_account(rotkehlchen_api_server):
         ))
         result = assert_proper_response_with_result(response)
         per_acc = result['per_account']
-        assert FVal(per_acc['ETH'][new_account]['assets']['ETH']['amount']) > ZERO
-        assert FVal(per_acc['ETH2'][validator_pubkey]['assets']['ETH2']['amount']) > FVal('32')
+        assert FVal(per_acc['eth'][new_account]['assets']['ETH']['amount']) > ZERO
+        assert FVal(per_acc['eth2'][validator_pubkey]['assets']['ETH2']['amount']) > FVal('32')
         totals = result['totals']['assets']
-        assert FVal(totals['ETH']['amount']) > ZERO
-        assert FVal(totals['ETH2']['amount']) > FVal('32')
+        assert FVal(totals['eth']['amount']) > ZERO
+        assert FVal(totals['eth2']['amount']) > FVal('32')
 
 
 @pytest.mark.parametrize('ethereum_accounts', [[
@@ -783,7 +783,7 @@ def test_query_eth2_balances(rotkehlchen_api_server, query_all_balances):
         outcome = assert_proper_response_with_result(response)
 
     assert len(outcome['per_account']) == 1  # only ETH2
-    per_acc = outcome['per_account']['ETH2']
+    per_acc = outcome['per_account']['eth2']
     assert len(per_acc) == 2
     # hope they don't get slashed ;(
     amount_proportion = FVal('34.600348623') * ownership_proportion
@@ -812,7 +812,7 @@ def test_query_eth2_balances(rotkehlchen_api_server, query_all_balances):
     outcome = assert_proper_response_with_result(response)
 
     assert len(outcome['per_account']) == 1  # only ETH2
-    per_acc = outcome['per_account']['ETH2']
+    per_acc = outcome['per_account']['eth2']
     assert len(per_acc) == 3
     amount_proportion = FVal('34.600348623') * ownership_proportion
     assert FVal(per_acc[v0_pubkey]['assets']['ETH2']['amount']) >= base_amount

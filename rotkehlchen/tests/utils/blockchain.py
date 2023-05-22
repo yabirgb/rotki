@@ -42,7 +42,7 @@ def assert_btc_balances_result(
         assert len(per_account) == 2
     else:
         assert len(per_account) == 1
-    per_account = per_account['BTC']
+    per_account = per_account['btc']
     assert len(per_account) == 1  # make sure we only have standalone accounts in these tests
     standalone = per_account['standalone']
     msg = 'standalone results num does not match number of btc accounts'
@@ -91,7 +91,7 @@ def assert_eth_balances_result(
             assert len(per_account) == 2
         else:
             assert len(per_account) == 1
-        per_account = per_account['ETH']
+        per_account = per_account['eth']
         assert len(per_account) == len(eth_accounts)
         for idx, account in enumerate(eth_accounts):
             expected_amount = from_wei(FVal(eth_balances[idx]))
@@ -121,7 +121,7 @@ def assert_eth_balances_result(
         totals = result['totals']['assets']
 
     if expected_liabilities is not None:
-        per_account = result['per_account']['ETH']
+        per_account = result['per_account']['eth']
         for token, balances in expected_liabilities.items():
             total_amount = ZERO
             for idx, account in enumerate(eth_accounts):

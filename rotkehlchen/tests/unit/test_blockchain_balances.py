@@ -106,7 +106,7 @@ def test_recalculate_totals(blockchain_balances):
 def test_serialize(blockchain_balances):
     a, address1, address2, _, xpub_data = blockchain_balances
     expected_serialized_dict = {
-        'BTC': {
+        'btc': {
             'standalone': {
                 '12wxFzpjdymPk3xnHmdDLCTXUT9keY3XRd': {'amount': '1', 'usd_value': '1'},
                 '16zNpyv8KxChtjXnE5nYcPqcXcrSQXX2JW': {'amount': '1', 'usd_value': '1'},
@@ -124,7 +124,7 @@ def test_serialize(blockchain_balances):
                     },
                     'derivation_path': 'm/0',
                     'xpub': xpub_data.xpub.xpub}]},
-        'ETH': {
+        'eth': {
             address1: {
                 'assets': {
                     'ETH': {'amount': '1', 'usd_value': '1'},
@@ -132,7 +132,7 @@ def test_serialize(blockchain_balances):
                 'liabilities': {},
             },
         },
-        'OPTIMISM': {
+        'optimism': {
             address2: {
                 'assets': {
                     'ETH': {'amount': '1', 'usd_value': '1'},
@@ -146,9 +146,9 @@ def test_serialize(blockchain_balances):
 
     # change something and see it is also reflected in the serialized dict
     a.optimism[address2].assets[OPTIMISM_USDC_TOKEN] = Balance(amount=100, usd_value=100)
-    expected_serialized_dict['OPTIMISM'][address2]['assets'][OPTIMISM_USDC_TOKEN.serialize()] = {'amount': '100', 'usd_value': '100'}  # noqa: E501
+    expected_serialized_dict['optimism'][address2]['assets'][OPTIMISM_USDC_TOKEN.serialize()] = {'amount': '100', 'usd_value': '100'}  # noqa: E501
     a.eth[address1].assets.pop('ETH')
-    expected_serialized_dict['ETH'][address1] = {'assets': {}, 'liabilities': {}}
+    expected_serialized_dict['eth'][address1] = {'assets': {}, 'liabilities': {}}
     assert a.serialize(given_chain=None) == expected_serialized_dict
 
 

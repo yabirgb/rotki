@@ -73,7 +73,7 @@ def test_add_same_evm_account_for_multiple_chains(rotkehlchen_api_server):
 
     for chain in ('ETH', 'AVAX'):
         # Check per account
-        account_balances = result['per_account'][chain][AVALANCHE_ACC1_AVAX_ADDR]
+        account_balances = result['per_account'][chain.lower()][AVALANCHE_ACC1_AVAX_ADDR]
         assert 'liabilities' in account_balances
         asset_token = account_balances['assets'][chain]
         assert FVal(asset_token['amount']) >= ZERO
@@ -254,9 +254,9 @@ def test_add_multievm_accounts(rotkehlchen_api_server):
 
     result = assert_proper_response_with_result(response)
     assert result == {
-        'ETH': [common_account, contract_account],
-        'AVAX': [common_account],
-        'OPTIMISM': [common_account],
+        'eth': [common_account, contract_account],
+        'avax': [common_account],
+        'optimism': [common_account],
     }
 
     # Now get accounts to make sure they are all input correctly

@@ -42,7 +42,7 @@ class XpubData(NamedTuple):
     def serialize(self) -> dict[str, Any]:
         return {
             'xpub': self.xpub.xpub,
-            'blockchain': self.blockchain.value,
+            'blockchain': self.blockchain.serialize(),
             'derivation_path': self.derivation_path,
             'label': self.label,
             'tags': self.tags,
