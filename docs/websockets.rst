@@ -259,10 +259,10 @@ If at some point backend detects that balances need to be refreshed, it will sen
         "type": "refresh_balances",
         "data": {
             "type": "blockchain_balances",
-            "blockchain": "OPTIMISM"
+            "blockchain": "optimism"
         }
     }
 
 
 - ``type``: Balances section that needs a refresh. Valid values are: ``blockchain_balances``.
-- ``blockchain``: Returned only for section: ``blockchain_balances``. The blockchain for which balances need to be refreshed. Valid values are: ``OPTIMISM``, ``ETH``.
+- ``blockchain``: Returned only for section: ``blockchain_balances``. The blockchain for which balances need to be refreshed. Valid values are: ``optimism``, ``eth``.

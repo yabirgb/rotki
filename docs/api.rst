@@ -795,7 +795,7 @@ Adding information for web3 nodes
                 "owned": false,
                 "weight": "40.00",
                 "active": true,
-                "blockchain": "ETH"
+                "blockchain": "eth"
             },
             {
                 "identifier": 2,
@@ -804,7 +804,7 @@ Adding information for web3 nodes
                 "owned": false,
                 "weight": "20.00",
                 "active": true,
-                "blockchain": "ETH"
+                "blockchain": "eth"
             },
             {
                 "identifier": 3,
@@ -813,7 +813,7 @@ Adding information for web3 nodes
                 "owned": false,
                 "weight": "20.00",
                 "active": true,
-                "blockchain": "ETH"
+                "blockchain": "eth"
             },
             {
                 "identifier": 4,
@@ -822,7 +822,7 @@ Adding information for web3 nodes
                 "owned": false,
                 "weight": "20.00",
                 "active": true,
-                "blockchain": "ETH"
+                "blockchain": "eth"
             }
         ],
         "message": ""
@@ -2710,7 +2710,7 @@ Querying onchain balances
       {
           "result": {
               "per_account": {
-                  "BTC": {
+                  "btc": {
                       "standalone": {
                           "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
                               "amount": "0.5", "usd_value": "3770.075"
@@ -2739,7 +2739,7 @@ Querying onchain balances
                                   }
                           }}]
                    },
-                   "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
+                   "eth": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
                        "assets": {
                            "ETH": {"amount": "10", "usd_value": "1650.53"},
                            "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "15", "usd_value": "15.21"}
@@ -2748,7 +2748,7 @@ Querying onchain balances
                            "eip155:1/erc20:0x6B175474E89094C44Da98b954EedeAC495271d0F": {"amount": "20", "usd_value": "20.35"}
                        }
                   }},
-                   "ETH2": { "0x9675faa8d15665e30d31dc10a332828fa15e2c7490f7d1894d9092901b139801ce476810f8e1e0c7658a9abdb9c4412e": {
+                   "eth2": { "0x9675faa8d15665e30d31dc10a332828fa15e2c7490f7d1894d9092901b139801ce476810f8e1e0c7658a9abdb9c4412e": {
                        "assets": {
                            "ETH2": {"amount": "33.12", "usd_value": "45243.21"},
                        },
@@ -9238,12 +9238,12 @@ Adding EVM accounts to all EVM chains
 
       {
         "result": {
-            "ETH": [
+            "eth": [
                 "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B",
                 "0x19b0AD50E768D2376C6BA7de32F426ecE4e03e0b"
             ],
-            "AVAX": ["0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B"],
-            "OPTIMISM": ["0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B"]
+            "avax": ["0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B"],
+            "optimism": ["0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B"]
         },
         "message": ""
       }
@@ -9400,61 +9400,10 @@ Adding BTC/BCH xpubs
       Content-Type: application/json
 
       {
-          "result": {
-              "per_account": {
-                  "BTC": {
-                      "standalone": {
-                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
-                              "amount": "0.5", "usd_value": "3770.075"
-                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
-                              "amount": "0.5", "usd_value": "3770.075"
-                      }},
-                      "xpubs": [{
-                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
-                              "derivation_path": "m/0/0",
-                              "addresses": {
-                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  },
-                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  }
-                          }}, {
-                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
-                              "derivation_path": "m",
-                              "addresses": {
-                                  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  },
-                                  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
-                                      "amount": "0.5", "usd_value": "3770.075"
-                                  }
-                          }}]
-                   },
-                   "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
-                       "assets": {
-                           "ETH": {"amount": "10", "usd_value": "1755.53"},
-                           "GNO": {"amount": "1", "usd_value": "50"},
-                           "RDN": {"amount": "1", "usd_value": "1.5"}
-                       },
-                      "liabilities": {}
-                  }}
-              },
-              "totals": {
-                  "assets": {
-                      "BTC": {"amount": "1", "usd_value": "7540.15"},
-                      "ETH": {"amount": "10", "usd_value": "1650.53"},
-                      "RDN": {"amount": "1", "usd_value": "1.5"},
-                      "GNO": {"amount": "1", "usd_value": "50"}
-                  },
-                  "liabilities": {
-                      "DAI": {"amount": "10", "usd_value": "10.2"}
-                  }
-          },
+          "result": True,
           "message": ""
       }
 
-   :resjson object result: An object containing the ``"per_account"`` and ``"totals"`` keys as also defined `here <blockchain_balances_result_>`_.
    :statuscode 200: Xpub successfully added
    :statuscode 400: Provided JSON or data is in some way malformed. The accounts to add contained invalid addresses or were an empty list.
    :statuscode 409: User is not logged in. Some error occurred when re-querying the balances after addition. Provided tags do not exist. Check message for details.
