@@ -16,6 +16,7 @@ from rotkehlchen.accounting.structures.eth2 import (
 from rotkehlchen.chain.ethereum.modules.eth2.constants import CPT_ETH2
 from rotkehlchen.chain.ethereum.modules.eth2.eth2 import FREE_VALIDATORS_LIMIT
 from rotkehlchen.chain.ethereum.modules.eth2.structures import Eth2Validator
+from rotkehlchen.constants.assets import A_ETH, A_ETH2
 from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.db.filtering import HistoryEventFilterQuery
 from rotkehlchen.db.history_events import DBHistoryEvents
@@ -347,8 +348,8 @@ def test_eth2_add_eth1_account(rotkehlchen_api_server):
         ))
         result = assert_proper_response_with_result(response)
         per_acc = result['per_account']
-        assert FVal(per_acc['eth'][new_account]['assets']['ETH']['amount']) > ZERO
-        assert FVal(per_acc['eth2'][validator_pubkey]['assets']['ETH2']['amount']) > FVal('32')
+        assert FVal(per_acc['eth'][new_account]['assets'][A_ETH.identifier]['amount']) > ZERO
+        assert FVal(per_acc['eth2'][validator_pubkey]['assets'][A_ETH2.identifier]['amount']) > FVal('32')  # noqa: E501
         totals = result['totals']['assets']
         assert FVal(totals['eth']['amount']) > ZERO
         assert FVal(totals['eth2']['amount']) > FVal('32')

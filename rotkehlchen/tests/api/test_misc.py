@@ -160,9 +160,10 @@ def test_manage_nodes(rotkehlchen_api_server):
     """Test that list of nodes can be correctly updated and queried"""
     database = rotkehlchen_api_server.rest_api.rotkehlchen.data.db
     blockchain = SupportedBlockchain.ETHEREUM
+    blockchain_key = blockchain.serialize()
     nodes_at_start = len(database.get_rpc_nodes(blockchain=blockchain, only_active=True))
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     assert len(result) == 5
@@ -176,20 +177,20 @@ def test_manage_nodes(rotkehlchen_api_server):
 
     # try to delete a node
     response = requests.delete(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={'identifier': 2},
     )
     assert_proper_response(response)
     # check that is not anymore in the returned list
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     assert not any(node['name'] == 'cloudflare' for node in result)
 
     # now try to add it again
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'name': 'cloudflae',
             'endpoint': 'https://cloudflare-eth.com/',
@@ -200,7 +201,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     )
     assert_proper_response(response)
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     for node in result:
@@ -209,12 +210,12 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'https://cloudflare-eth.com/'
             assert node['owned'] is False
-            assert node['blockchain'] == 'eth'
+            assert node['blockchain'] == blockchain_key
             break
 
     # Try to add etherscan as node
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'name': 'etherscan',
             'endpoint': 'ewarwae',
@@ -231,7 +232,7 @@ def test_manage_nodes(rotkehlchen_api_server):
 
     # try to edit an unknown node
     response = requests.patch(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'identifier': 666,
             'name': '1inch',
@@ -249,7 +250,7 @@ def test_manage_nodes(rotkehlchen_api_server):
 
     # try to edit a node's endpoint
     response = requests.patch(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'identifier': 4,
             'name': 'ankr',
@@ -261,7 +262,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     )
     assert_proper_response(response)
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     for node in result:
@@ -271,12 +272,12 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'ewarwae'
             assert node['owned'] is True
-            assert node['blockchain'] == 'eth'
+            assert node['blockchain'] == blockchain_key
             break
 
     # try to edit a node's name
     response = requests.patch(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'identifier': 4,
             'name': 'anchor',
@@ -288,7 +289,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     )
     assert_proper_response(response)
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     for node in result:
@@ -298,12 +299,12 @@ def test_manage_nodes(rotkehlchen_api_server):
             assert node['active'] is True
             assert node['endpoint'] == 'ewarwae'
             assert node['owned'] is True
-            assert node['blockchain'] == 'eth'
+            assert node['blockchain'] == blockchain_key
             break
 
     # add a new node
     response = requests.put(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'name': 'my_super_node',
             'endpoint': 'ewarwae',
@@ -315,7 +316,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     result = assert_proper_response_with_result(response)
     # set owned to false and see that we have the expected amount of nodes
     response = requests.patch(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'identifier': 5,
             'name': 'myetherwallet',
@@ -327,7 +328,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     )
     assert nodes_at_start - len(database.get_rpc_nodes(blockchain=blockchain, only_active=True)) == 0  # noqa: E501
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     # Check that the rebalancing didn't get affected by the owned node
@@ -338,7 +339,7 @@ def test_manage_nodes(rotkehlchen_api_server):
 
     # Try to edit etherscan weight
     response = requests.patch(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
         json={
             'identifier': 1,
             'name': 'etherscan',
@@ -365,7 +366,7 @@ def test_manage_nodes(rotkehlchen_api_server):
     # and now let's replicate https://github.com/rotki/rotki/issues/4769 by
     # editing all nodes to have 0% weight.
     response = requests.get(
-        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain='ETH'),
+        api_url_for(rotkehlchen_api_server, 'rpcnodesresource', blockchain=blockchain_key),
     )
     result = assert_proper_response_with_result(response)
     for node in result:
