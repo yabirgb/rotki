@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 from flask import Blueprint, Request, Response, request as flask_request
 from flask.views import MethodView
-from marshmallow import Schema
+from marshmallow import Schema, ValidationError
 from marshmallow.utils import missing
 from webargs.flaskparser import parser, use_kwargs
 from webargs.multidictproxy import MultiDictProxy
@@ -309,6 +309,62 @@ def load_view_args_file_data(request: Request, schema: Schema) -> MultiDictProxy
     file_data = parser.load_files(request, schema)
     data = _combine_parser_data(view_args_data, file_data, schema)
     return data
+
+
+def allow_async_validation() -> Callable:
+    """
+    Decorator to be used when validation should happen as an async task.
+
+    This decorator should be used after resource_parser.use_args using the argument
+    allow_async_validation=True. The validation and any possible error will be handled inside
+    the task spawned and if validation succeeds then the endpoint logic will be executed in the
+    same gevent task.
+    """
+    def _do_async_validation(
+            rotki,
+            view: BaseMethodView,
+            method: Callable,
+            schema: Schema,
+            raw_data: dict[str, Any],
+            *args: Any,
+            **kwargs: Any,
+    ):
+        """Do the validation and return error if it fails, otherwise execute the endpoint logic"""
+        try:
+            data = schema.load(raw_data)
+            kwargs.update(data)
+        except ValidationError as e:
+            return {
+                'result': None,
+                'message': str(e),
+                'status_code': HTTPStatus.BAD_REQUEST,
+            }
+        kwargs.pop('async_query')  # async query has been already handled so it can be removed
+        return method(view, *args, **kwargs)
+
+    def _allow_async_validation(f: Callable) -> Callable:
+        """Determine if the logic needs to be executed in a async or sync way"""
+        @wraps(f)
+        def wrapper(view: BaseMethodView, *args: Any, **kwargs: Any) -> Any:
+            if (async_validation := kwargs.pop('do_async_validation', None)) is None:
+                kwargs.pop('async_query', None)  # we already know that it won't be async
+                print(args, kwargs)
+                return f(view, *args, **kwargs)
+
+            schema = async_validation['schema']
+            raw_data = async_validation['data']
+            return view.rest_api._query_async(
+                command=_do_async_validation,
+                view=view,
+                method=f,
+                schema=schema,
+                raw_data=raw_data,
+                **kwargs,
+            )
+
+
+        return wrapper
+    return _allow_async_validation
 
 
 def require_loggedin_user() -> Callable:
@@ -1455,12 +1511,14 @@ class EvmAccountsResource(BaseMethodView):
         )
 
     @require_loggedin_user()
-    @resource_parser.use_kwargs(make_put_schema, location='json_and_query')
-    def put(
-            self,
-            accounts: list[dict[str, Any]],
-            async_query: bool,
-    ) -> Response:
+    @resource_parser.use_args(
+        make_put_schema,
+        location='json_and_query',
+        allow_async_validation=True,
+        as_kwargs=True,
+    )
+    @allow_async_validation()
+    def put(self, accounts: list[dict[str, Any]]) -> Response:
         account_data = [
             SingleBlockchainAccountData[ChecksumEvmAddress](
                 address=entry['address'],
@@ -1468,10 +1526,7 @@ class EvmAccountsResource(BaseMethodView):
                 tags=entry['tags'],
             ) for entry in accounts
         ]
-        return self.rest_api.add_evm_accounts(
-            account_data=account_data,
-            async_query=async_query,
-        )
+        return self.rest_api.add_evm_accounts(account_data=account_data)
 
     @require_loggedin_user()
     @use_kwargs(post_schema, location='json_and_query')

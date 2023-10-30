@@ -24,6 +24,7 @@ class ResourceReadingParser(FlaskParser):
             validate: Optional[ValidateArg] = None,
             error_status_code: Optional[int] = None,
             error_headers: Optional[Mapping[str, str]] = None,
+            allow_async_validation: Optional[bool] = False,
     ) -> Callable:
         """Decorator that injects parsed arguments into a view function or method.
 
@@ -57,6 +58,7 @@ class ResourceReadingParser(FlaskParser):
                     validate=validate,
                     error_status_code=error_status_code,
                     error_headers=error_headers,
+                    allow_async_validation=allow_async_validation,
                 )
                 args, kwargs = self._update_args_kwargs(
                     args, kwargs, parsed_args, as_kwargs, arg_name,
@@ -79,11 +81,14 @@ class ResourceReadingParser(FlaskParser):
             validate: Optional[ValidateArg] = None,
             error_status_code: Optional[int] = None,
             error_headers: Optional[Mapping[str, str]] = None,
+            allow_async_validation: Optional[bool] = False,
     ) -> dict[str, Any]:
         """Main request parsing method.
 
         Different from core parser is that we also get the resource object and
-        pass it to the schema
+        pass it to the schema.
+
+        If allow_async_validation is set to True then 
         """
         req = req if req is not None else self.get_default_request()
         location = location or self.location
@@ -96,6 +101,17 @@ class ResourceReadingParser(FlaskParser):
             location_data = self._load_location_data(
                 schema=schema, req=req, location=location,
             )
+            if allow_async_validation and location_data.get('async_query', False) is True:
+                # If the validation is async instead of returning the loaded data from the schema
+                # we return the schema and the raw data so the validation can be executed in
+                # the spawned task
+                return {
+                    'do_async_validation': {
+                        'schema': schema,
+                        'data': location_data,
+                    },
+                }
+
             data = schema.load(location_data)
             self._validate_arguments(data, validators)
         except ma_exceptions.ValidationError as error:
@@ -123,7 +139,6 @@ class ResourceReadingParser(FlaskParser):
         schema = argmap(resource_object)  # type: ignore
 
         return schema
-
 
 class IgnoreKwargAfterPostLoadParser(FlaskParser):
     """A version of FlaskParser that does not augment with kwarg arguments after post_load"""
