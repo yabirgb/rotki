@@ -1,3 +1,7 @@
+mod db;
+
 fn main() {
-    println!("42")
+    let database = db::handler::Database::new().unwrap();
+    database.unlock();
+    db::tasks::query_spam_transactions(&database);
 }
