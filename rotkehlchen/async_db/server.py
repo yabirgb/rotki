@@ -1,7 +1,11 @@
-# moddified from https://github.com/booksbyus/zguide/blob/master/examples/Python/asyncio_ioloop/asyncsrv.py
-
 import asyncio
+import json
+import sqlite3
 import sys
+from typing import Any
+import aiosqlite
+
+import concurrent.futures
 
 import zmq
 from zmq.asyncio import Context, Poller
@@ -10,37 +14,14 @@ FRONTEND_ADDR = 'tcp://*:5570'
 #FRONTEND_ADDR = 'inproc://frontend'
 BACKEND_ADDR = 'inproc://backend'
 
-
-class Client:
-    """A client that generates requests."""
-
-    def __init__(self, context: Context, id: int):
-        self.context = context
-        self.id = id
-
-    async def run_client(self):
-        socket = self.context.socket(zmq.REQ)
-        identity = 'client-%d' % self.id
-        socket.connect(FRONTEND_ADDR)
-        print('Client %s started' % (identity))
-        reqs = 0
-        while True:
-            reqs = reqs + 1
-            msg = f'request # {self.id}.{reqs}'
-            msg = msg.encode('utf-8')
-            await socket.send(msg)
-            print(f'Client {self.id} sent request: {reqs}')
-            msg = await socket.recv()
-            print(f'Client {identity} received: {msg}')
-            await asyncio.sleep(1)
-
-
 class Server:
     """A server to set up and initialize clients and request handlers"""
 
     def __init__(self, loop: asyncio.BaseEventLoop, context: Context):
         self.loop = loop
         self.context = context
+
+        self.connection = sqlite3.connect('rotkehlchen/data/global.db', check_same_thread=False)
 
     def run_server(self):
         tasks = []
@@ -51,34 +32,41 @@ class Server:
         task = run_proxy(frontend, backend)
         tasks.append(task)
 
-        # Start up the workers.
         for idx in range(5):
-            worker = Worker(self.context, idx)
+            worker = Worker(self.context, idx, self.connection, self.loop)
             task = asyncio.Task(worker.run_worker())
             tasks.append(task)
 
-        # Start up the clients.
-        tasks += [asyncio.Task(Client(self.context, idx).run_client()) for idx in range(3)]
         return tasks
 
 
 class Worker:
     """A request handler"""
 
-    def __init__(self, context: Context, idx: int):
+    def __init__(self, context: Context, idx: int, connection: sqlite3.Connection, loop: asyncio.BaseEventLoop):
         self.context = context
         self.idx = idx
+        self.connection = connection
+        self.loop = loop
+        self.pool = concurrent.futures.ThreadPoolExecutor()
+
+    def query(self, query: str, bindings: list[Any]) -> list[Any]:
+        cursor = self.connection.cursor()
+        output = cursor.execute(query, bindings).fetchall()
+        cursor.close()
+        return output
 
     async def run_worker(self):
         worker = self.context.socket(zmq.DEALER)
         worker.connect(BACKEND_ADDR)
         print(f'Worker {self.idx} started')
         while True:
-            ident, part2, msg = await worker.recv_multipart()
+            response = await worker.recv_multipart()
+            ident, msg = response
             print(f'Worker {self.idx} received {msg} from {ident.hex()}')
-            await asyncio.sleep(0.5)
-            await worker.send_multipart([ident, part2, msg])
-        worker.close()
+            data = json.loads(msg)
+            output = await self.loop.run_in_executor(self.pool, self.query, data['query'], data['bindings'])
+            await worker.send_multipart([ident, json.dumps({'response': output}).encode()])
 
 
 async def run_proxy(socket_from: zmq.Socket, socket_to: zmq.Socket):
@@ -106,15 +94,11 @@ def run(loop: asyncio.BaseEventLoop):
 def main():
     """main function"""
     print('(main) starting')
-    args = sys.argv[1:]
-    if len(args) != 0:
-        sys.exit(__doc__)
     try:
         loop = asyncio.get_event_loop()
         run(loop)
     except KeyboardInterrupt:
         print('\nFinished (interrupted)')
-
 
 if __name__ == '__main__':
     main()
