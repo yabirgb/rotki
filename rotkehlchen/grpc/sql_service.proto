@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package sql_service;
+
+import "google/protobuf/wrappers.proto";
+
+enum NullValue { NULL_VALUE = 0; }
+
+service SQLService {
+  rpc ExecuteQuery (QueryRequest) returns (QueryResponse) {}
+}
+
+message QueryRequest {
+  string query = 1;
+  repeated Binding bindings = 2;
+}
+
+message Binding {
+  oneof binding {
+    google.protobuf.StringValue string_value = 1;
+    google.protobuf.Int32Value int_value = 2;
+    google.protobuf.BoolValue bool_value = 3;
+    NullValue null_value = 4;
+  }
+}
+
+message QueryResponse {
+  repeated Row rows = 1;
+}
+
+message Row {
+  repeated Value value = 1;
+}
+
+message Value {
+  oneof value {
+    google.protobuf.StringValue string_value = 1;
+    google.protobuf.Int32Value int_value = 2;
+    google.protobuf.BoolValue bool_value = 3;
+    NullValue null_value = 4;
+    google.protobuf.FloatValue float_value = 5;
+  }
+}
