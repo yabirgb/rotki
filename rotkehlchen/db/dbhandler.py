@@ -1,5 +1,7 @@
 import json
 import logging
+from multiprocessing import Process
+import multiprocessing
 import os
 import re
 import shutil
@@ -8,6 +10,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
+import time
 from typing import Any, Literal, Optional, Unpack, cast, overload
 
 from gevent.lock import Semaphore
@@ -58,6 +61,8 @@ from rotkehlchen.db.constants import (
     USER_CREDENTIAL_MAPPING_KEYS,
 )
 from rotkehlchen.db.drivers.gevent import DBConnection, DBConnectionType, DBCursor
+from rotkehlchen.db.drivers.server import SQLiteManager
+from rotkehlchen.db.drivers.client import Client
 from rotkehlchen.db.evmtx import DBEvmTx
 from rotkehlchen.db.filtering import (
     AssetMovementsFilterQuery,
@@ -176,6 +181,15 @@ DB_BACKUP_RE = re.compile(r'(\d+)_rotkehlchen_db_v(\d+).backup')
 
 # https://stackoverflow.com/questions/4814167/storing-time-series-data-relational-or-non
 # http://www.sql-join.com/sql-join-types
+
+def spawn_server():
+    writer_address = ('127.0.0.1', 50000)
+    authkey = b'123'
+    server = SQLiteManager(address=writer_address, authkey=authkey)
+    server.register('execute', server.execute)
+    server.register('get_conn', server.get_conn)
+    server.register('get_lock', server.get_lock)
+    server.get_server().serve_forever()
 
 
 class DBHandler:
@@ -318,6 +332,28 @@ class DBHandler:
                         is_modifiable=True,
                     ),
                 )
+
+    def _connect_writer_server(self, password: str) -> None:
+        writer_address = ('127.0.0.1', 50000)
+        authkey = b'123'
+        ctx = multiprocessing.get_context('spawn')
+        p = ctx.Process(target=spawn_server)
+        p.start()
+        self.writer_server = p
+        tries = 1
+        while tries < 3:
+            try:
+                self.writer_client = Client(address=writer_address, authkey=authkey)
+                self.writer_client.connect()
+                password_for_sqlcipher = protect_password_sqlcipher(self.password)
+                self.writer_client.execute(f'PRAGMA key="{password_for_sqlcipher}";')
+                self.writer_client.get_conn().commit()
+            except Exception as e:
+                tries += 1
+                if tries > 3:
+                    p.kill()
+                    raise
+        log.info('Writer server spawned')
 
     def _run_actions_after_first_connection(self) -> None:
         """Perform the actions that are needed after the first DB connection
@@ -504,6 +540,9 @@ class DBHandler:
             raise AuthenticationError(
                 'Wrong password or invalid/corrupt database for user',
             ) from e
+        
+        if conn_attribute == 'conn':
+            self._connect_writer_server(password=self.password)
 
         setattr(self, conn_attribute, conn)
 
@@ -547,6 +586,7 @@ class DBHandler:
         conn = getattr(self, conn_attribute, None)
         if conn:
             conn.close()
+            self.writer_server.kill()
             setattr(self, conn_attribute, None)
 
     def export_unencrypted(self, temppath: Path) -> None:
