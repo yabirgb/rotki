@@ -367,8 +367,8 @@ export class SubprocessHandler {
       this.stdioListeners.outOff();
       this.stdioListeners.errOff();
     }
-    if (process.platform === 'win32')
-      await this.terminateWindowsProcesses(restart);
+    // if (process.platform === 'win32')
+    //  await this.terminateWindowsProcesses(restart);
 
     if (client)
       await this.terminateBackend(client);

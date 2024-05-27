@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
 
 
+
+def default_signal_handler(signal) -> None:  # type: ignore
+    log.debug(f'Received signal {signal}' )
+
+
 class RotkehlchenServer:
     def __init__(self) -> None:
         """Initializes the backend server
@@ -59,6 +64,9 @@ class RotkehlchenServer:
             gevent.hub.signal(signal.SIGQUIT, self.shutdown)  # type: ignore[attr-defined,unused-ignore]  # pylint: disable=no-member  # linters don't understand the os.name check
         gevent.hub.signal(signal.SIGINT, self.shutdown)
         gevent.hub.signal(signal.SIGTERM, self.shutdown)
+        log.debug(f'All handled signals are : {[x.name for x in signal.Signals if x not in {signal.SIGQUIT, signal.SIGINT, signal.SIGTERM}]}')
+        for sig in [x.name for x in signal.Signals if x not in {signal.SIGQUIT, signal.SIGINT, signal.SIGTERM}]:
+            gevent.hub.signal(signal.Signals[sig], lambda: default_signal_handler(sig))
         # The api server's RestAPI starts rotki main loop
         self.api_server.start(
             host=self.args.api_host,
