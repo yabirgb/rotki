@@ -6,13 +6,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
-import { type App, type BrowserWindow, app, ipcMain } from 'electron';
+import { type App, type BrowserWindow, ipcMain } from 'electron';
 import psList from 'ps-list';
-import { type Task, tasklist } from 'tasklist';
 import { BackendCode } from '@/electron-main/backend-code';
 import { DEFAULT_PORT, selectPort } from '@/electron-main/port-utils';
 import { assert } from '@/utils/assertions';
-import { wait } from '@/utils/backoff';
 import { checkIfDevelopment } from '@/utils/env-utils';
 import type { BackendOptions } from '@/electron-main/ipc';
 import type stream from 'node:stream';
@@ -118,6 +116,7 @@ export class SubprocessHandler {
     ------------------`;
     this.logToFile(startupMessage);
     this.listenForMessages();
+    console.log(this.executable);
   }
 
   private _port?: number;
@@ -531,84 +530,4 @@ export class SubprocessHandler {
     }
   }
 
-  private async terminateWindowsProcesses(restart: boolean) {
-    // For win32 we got two problems:
-    // 1. pyProc.kill() does not work due to SIGTERM not really being a signal
-    //    in Windows
-    // 2. the onefile pyinstaller packaging creates two executables.
-    // https://github.com/pyinstaller/pyinstaller/issues/2483
-    //
-    // So the solution is to not let the application close, get all
-    // pids and kill them before we close the app
-
-    this.logToFile('Starting windows process termination');
-    const executable = this.executable;
-    if (!executable) {
-      this.logToFile('No rotki-core executable detected');
-      return;
-    }
-
-    const tasks: Task[] = await tasklist();
-    this.logToFile(`Currently running: ${tasks.length} tasks`);
-
-    const pids = tasks
-      .filter(task => task.imageName === executable)
-      .map(task => task.pid);
-    this.logToFile(
-      `Detected the following running rotki-core processes: ${pids.join(', ')}`,
-    );
-
-    const args = ['/f', '/t'];
-
-    for (const pid of pids)
-      args.push('/PID', pid.toString());
-
-    this.logToFile(
-      `Preparing to call "taskill ${args.join(
-        ' ',
-      )}" on the rotki-core processes`,
-    );
-
-    const taskKill = spawn('taskkill', args);
-
-    return new Promise<void>((resolve, reject) => {
-      taskKill.on('exit', () => {
-        this.logToFile('Call to taskkill exited');
-        if (!restart)
-          app.exit();
-
-        this.waitForTermination(tasks, pids).then(resolve, reject);
-      });
-
-      taskKill.on('error', (err) => {
-        this.logToFile(`Call to taskkill failed:\n\n ${err.toString()}`);
-        if (!restart)
-          app.exit();
-
-        resolve();
-      });
-
-      setTimeout(() => resolve, 15000);
-    });
-  }
-
-  private async waitForTermination(tasks: Task[], processes: number[]) {
-    function stillRunning(): number {
-      return tasks.filter(({ pid }) => processes.includes(pid)).length;
-    }
-
-    let running = stillRunning();
-    if (running === 0)
-      return;
-
-    for (let i = 0; i < 10; i++) {
-      this.logToFile(
-        `The ${running} processes are still running. Waiting for 2 seconds`,
-      );
-      await wait(2000);
-      running = stillRunning();
-      if (stillRunning.length === 0)
-        break;
-    }
-  }
 }
