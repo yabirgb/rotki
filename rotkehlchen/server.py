@@ -1,8 +1,10 @@
 import logging
 import os
 import signal
+import sys
 
 import gevent
+import gevent.signal
 
 from rotkehlchen.api.server import APIServer, RestAPI
 from rotkehlchen.args import app_args
@@ -11,11 +13,6 @@ from rotkehlchen.rotkehlchen import Rotkehlchen
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
-
-
-
-def default_signal_handler(signal) -> None:  # type: ignore
-    log.debug(f'Received signal {signal}' )
 
 
 class RotkehlchenServer:
@@ -46,10 +43,11 @@ class RotkehlchenServer:
             cors_domain_list=domain_list,
         )
 
-    def shutdown(self) -> None:
+    def shutdown(self, *args, **kwargs) -> None:
         log.debug('Shutdown initiated')
         self.api_server.stop()
         self.stop_event.set()
+        sys.exit(signal.SIGTERM)
 
     def main(self) -> None:
         # disable printing hub exceptions in stderr. With using the hub to do various
@@ -64,9 +62,12 @@ class RotkehlchenServer:
             gevent.hub.signal(signal.SIGQUIT, self.shutdown)  # type: ignore[attr-defined,unused-ignore]  # pylint: disable=no-member  # linters don't understand the os.name check
         gevent.hub.signal(signal.SIGINT, self.shutdown)
         gevent.hub.signal(signal.SIGTERM, self.shutdown)
-        log.debug(f'All handled signals are : {[x.name for x in signal.Signals if x not in {signal.SIGQUIT, signal.SIGINT, signal.SIGTERM}]}')
-        for sig in [x.name for x in signal.Signals if x not in {signal.SIGQUIT, signal.SIGINT, signal.SIGTERM}]:
-            gevent.hub.signal(signal.Signals[sig], lambda: default_signal_handler(sig))
+
+        if sys.platform == 'win32':
+            import win32api  # pylint: disable=import-outside-toplevel  # isort:skip
+            win32api.SetConsoleCtrlHandler(self.shutdown, True)
+            gevent.hub.signal(signal.SIGABRT, self.shutdown)
+
         # The api server's RestAPI starts rotki main loop
         self.api_server.start(
             host=self.args.api_host,
