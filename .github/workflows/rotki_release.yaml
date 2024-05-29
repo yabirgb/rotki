@@ -260,9 +260,6 @@ jobs:
         run: |
           echo "::group::packaging dependencies"
           pip3 install --upgrade uv
-          pip3 install virtualenv
-          python3 -m virtualenv ~/venv
-          source ~/venv/bin/activate
           uv pip install --system -r requirements_packaging.txt
           echo "::endgroup::"
           ./package.py --build full
