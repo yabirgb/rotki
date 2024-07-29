@@ -2,6 +2,8 @@
 Changelog
 =========
 
+* :bug:`-` Prevent a recursion querying the price of a token that has itself in the list of underlying tokens.
+
 * :release:`1.34.1 <2024-07-24>`
 * :bug:`-` Eigenlayer LST pending withdrawals that have been completed should no longer count as user balance.
 * :bug:`-` Assets section will now show correct number of assets on any page when excluding ignored assets.

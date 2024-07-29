@@ -751,19 +751,28 @@ class Inquirer:
                 return price, oracle, False
 
             if is_known_protocol is True or underlying_tokens is not None:
-                result, oracle = get_underlying_asset_price(asset)
-                if result is not None:
-                    usd_price = Price(result)
-                    Inquirer.set_cached_price(
-                        cache_key=cache_key,
-                        cached_price=CachedPriceEntry(
-                            price=usd_price,
-                            time=ts_now(),
-                            oracle=oracle,
-                            used_main_currency=False,  # function is for usd only, so it doesn't matter  # noqa: E501
-                        ),
+                if (
+                    underlying_tokens is not None and
+                    asset.evm_address in (x.address for x in underlying_tokens)
+                ):
+                    Inquirer._msg_aggregator.add_error(
+                        f'Token {asset} has itself as underlying token. Please edit the '
+                        'asset to fix it.',
                     )
-                    return usd_price, oracle, False
+                else:
+                    result, oracle = get_underlying_asset_price(asset)
+                    if result is not None:
+                        usd_price = Price(result)
+                        Inquirer.set_cached_price(
+                            cache_key=cache_key,
+                            cached_price=CachedPriceEntry(
+                                price=usd_price,
+                                time=ts_now(),
+                                oracle=oracle,
+                                used_main_currency=False,  # function is for usd only, so it doesn't matter  # noqa: E501
+                            ),
+                        )
+                        return usd_price, oracle, False
                 # else known protocol on-chain query failed. Continue to external oracles
 
         # BSQ is a special asset that doesn't have oracle information but its custom API
