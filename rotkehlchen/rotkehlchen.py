@@ -516,10 +516,7 @@ class Rotkehlchen:
         if not self.user_is_logged_in:
             return
         user = self.data.username
-        log.info(
-            'Logging out user',
-            user=user,
-        )
+        log.info('Logging out user', user=user)
 
         self.deactivate_premium_status()
         self.greenlet_manager.clear()
@@ -537,13 +534,24 @@ class Rotkehlchen:
         # Make sure no messages leak to other user sessions
         self.msg_aggregator.consume_errors()
         self.msg_aggregator.consume_warnings()
+        self.task_manager.clear()  # type: ignore  # task_manage is not None here
         self.task_manager = None
 
+        # release the locks in the globaldb. We saw that when killing
+        # a greenlet the locks are not released. We have locks in the
+        # chain aggregator that gets removed in this function and the
+        # db connections. The user db gets replaced but the globaldb
+        # doesn't so just in case we release the locks. It won't raise
+        # errors if the lock is over-released
+        # https://www.gevent.org/api/gevent.lock.html#gevent.lock.Semaphore.release
+        # The killall that happens in this logic can trigger a greenlet switch as per
+        # https://github.com/gevent/gevent/issues/1473#issuecomment-548327614
+        GlobalDBHandler().packaged_db_lock.release()
+        GlobalDBHandler().conn.transaction_lock.release()
+        GlobalDBHandler().conn.in_callback.release()
+
         self.user_is_logged_in = False
-        log.info(
-            'User successfully logged out',
-            user=user,
-        )
+        log.info('User successfully logged out', user=user)
 
     def logout(self) -> None:
         if self.task_manager is None:  # no user logged in?
