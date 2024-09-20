@@ -1,7 +1,7 @@
 import json
 import logging
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Sequence
 
 import requests
 
@@ -196,6 +196,50 @@ class Defillama(HistoricalPriceOracleInterface, PenalizablePriceOracleMixin):
         # step in the chain of prices
         rate_price = Inquirer.find_price(from_asset=A_USD, to_asset=to_asset)
         return Price(usd_price * rate_price), False
+    
+    def query_multiple_current_price(
+            self,
+            from_assets: Sequence[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> tuple[tuple[AssetWithOracles, Price, bool], set[AssetWithOracles]]:
+        """
+        Returns:
+        - tuple of (assets, price, bool) for found prices
+        - tuple of unknown prices
+        May raise:
+        - RemoteError if there is a problem querying defillama
+        """
+        assets_ids = {}
+        failed_assets = set()
+        for from_asset in from_assets:
+            try:
+                assets_ids[self._get_asset_id(from_asset)] = from_asset
+            except UnsupportedAsset:
+                log.warning(
+                    f'Tried to query current price using Defillama from {from_asset} to '
+                    f'{to_asset} but {from_asset} is not an EVM token and is not '
+                    f'supported by defillama',
+                )
+                failed_assets.add(from_asset)
+
+        result = self._query(
+            module='prices',
+            subpath=f'current/{",".join(assets_ids.keys())}',
+        )
+        prices = []
+        for coin_id, from_asset in assets_ids.items():
+            usd_price = self._deserialize_price(result, coin_id, from_asset, to_asset)
+
+            if usd_price == ZERO or to_asset == A_USD:
+                prices.append(from_asset, usd_price, False)
+            else:
+                # We got the price in usd but that is not what we need we should query
+                # for the next step in the chain of prices
+                rate_price = Inquirer.find_price(from_asset=A_USD, to_asset=to_asset)
+                prices.append(from_asset, Price(usd_price * rate_price), False)
+
+        return prices, failed_assets
 
     def can_query_history(
             self,

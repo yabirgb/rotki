@@ -1,7 +1,7 @@
 import json
 import logging
 from http import HTTPStatus
-from typing import Any, Literal, NamedTuple, overload
+from typing import Any, Literal, NamedTuple, Sequence, overload
 
 import requests
 
@@ -720,6 +720,56 @@ class Coingecko(HistoricalPriceOracleWithCoinListInterface, PenalizablePriceOrac
                 f'processing the result.',
             )
             return ZERO_PRICE, False
+        
+    def query_multiple_current_price(
+            self,
+            from_assets: Sequence[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> tuple[list[tuple[AssetWithOracles, Price, bool]], set[AssetWithOracles]]:
+        """
+        Returns:
+        - tuple of (assets, price, bool) for found prices
+        - tuple of unknown prices
+        May raise:
+        - RemoteError if there is a problem querying defillama
+        """
+        assets_ids = {}
+        failed_assets = set()
+        vs_currency = Coingecko.check_vs_currencies(
+            from_asset=from_asset,
+            to_asset=to_asset,
+            location='simple price',
+        )
+        if vs_currency is None:
+            return [], set(from_assets)
+
+        for from_asset in from_assets:
+            try:
+                assets_ids[from_asset.to_coingecko()] = from_asset
+            except UnsupportedAsset:
+                log.warning(
+                    f'Tried to query current price using Defillama from {from_asset} to '
+                    f'{to_asset} but {from_asset} is not an EVM token and is not '
+                    f'supported by defillama',
+                )
+                failed_assets.add(from_asset)
+
+        result = self._query(
+            module='simple/price',
+            options={
+                'ids': ','.join(assets_ids),
+                'vs_currencies': vs_currency,
+            })
+
+        prices = []
+        for coin_id, from_asset in assets_ids.items():
+            try:
+                prices.append(from_asset, Price(FVal(result[coin_id][vs_currency])), False)
+            except KeyError:
+                failed_assets.add(from_asset)
+
+        return prices, failed_assets
 
     def can_query_history(
             self,

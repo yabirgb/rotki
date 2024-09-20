@@ -491,6 +491,53 @@ class Cryptocompare(ExternalServiceWithApiKey, HistoricalPriceOracleWithCoinList
             return ZERO_PRICE, False
 
         return Price(FVal(result[cc_to_asset_symbol])), False
+    
+    def query_current_price(
+            self,
+            from_asset: AssetWithOracles,
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+            handling_special_case: bool = False,
+    ) -> tuple[Price, bool]:
+        """Returns the current price of an asset compared to another asset and `False` value
+        since it never tries to match main currency.
+
+        - May raise RemoteError if there is a problem reaching the cryptocompare server
+        or with reading the response returned by the server
+        - May raise PriceQueryUnsupportedAsset if from/to assets are not known to cryptocompare
+        """
+        special_asset = (
+            from_asset.identifier in CRYPTOCOMPARE_SPECIAL_CASES or
+            to_asset.identifier in CRYPTOCOMPARE_SPECIAL_CASES
+        )
+        if special_asset and not handling_special_case:
+            price = self._special_case_handling(
+                method_name='query_current_price',
+                from_asset=from_asset,
+                to_asset=to_asset,
+                match_main_currency=False,
+            )
+            return price, False
+
+        try:
+            cc_from_asset_symbol = from_asset.to_cryptocompare()
+            cc_to_asset_symbol = to_asset.to_cryptocompare()
+        except UnsupportedAsset as e:
+            raise PriceQueryUnsupportedAsset(e.identifier) from e
+
+        result = self._api_query(
+            path='price',
+            params={
+                'fsym': cc_from_asset_symbol,
+                'tsyms': cc_to_asset_symbol,
+            },
+        )
+        # Up until 23/09/2020 cryptocompare may return {} due to bug.
+        # Handle that case by assuming 0 if that happens
+        if cc_to_asset_symbol not in result:
+            return ZERO_PRICE, False
+
+        return Price(FVal(result[cc_to_asset_symbol])), False
 
     def query_endpoint_pricehistorical(
             self,

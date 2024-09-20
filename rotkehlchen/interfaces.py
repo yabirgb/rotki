@@ -3,7 +3,7 @@ import json
 import logging
 from contextlib import suppress
 from json import JSONDecodeError
-from typing import Any, Final
+from typing import Any, Final, Sequence
 
 from rotkehlchen.assets.asset import Asset, AssetWithOracles
 from rotkehlchen.globaldb.cache import (
@@ -84,7 +84,15 @@ class HistoricalPriceOracleInterface(CurrentPriceOracleInterface, abc.ABC):
         - NoPriceForGivenTimestamp
         - RemoteError
         """
-
+    
+    @abc.abstractmethod
+    def query_multiple_current_price(
+            self,
+            from_assets: Sequence[AssetWithOracles],
+            to_asset: AssetWithOracles,
+            match_main_currency: bool,
+    ) -> tuple[list[tuple[AssetWithOracles, Price, bool]], set[AssetWithOracles]]:
+        ...
 
 class HistoricalPriceOracleWithCoinListInterface(HistoricalPriceOracleInterface, abc.ABC):
     """Historical Price Oracle with a cacheable list of all coins"""

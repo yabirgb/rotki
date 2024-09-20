@@ -706,6 +706,87 @@ class Inquirer:
             coming_from_latest_price=coming_from_latest_price,
             match_main_currency=match_main_currency,
         )
+    
+    @handle_recursion_error()
+    def find_multiple_price_and_oracle(
+            self,
+            from_assets: list[Asset],
+            to_asset: Asset,
+            ignore_cache: bool = False,
+            skip_onchain: bool = False,
+            coming_from_latest_price: bool = False,
+            match_main_currency: bool = False,
+    ) -> tuple[Price, CurrentPriceOracle, bool]:
+        """
+        Wrapper around _find_price to include oracle queried when getting price and
+        flag that shows whether returned price is in main currency.
+        """
+        from_assets_resolved = []
+        for from_asset in from_assets:
+            if from_asset.is_asset_with_oracles() is True:
+                from_assets_resolved.append(from_asset.resolve_to_asset_with_oracles())
+
+        to_asset = to_asset.resolve_to_asset_with_oracles()
+        oracles = self._oracles_not_onchain
+        oracle_instances = self._oracle_instances_not_onchain
+        assert oracles is not None
+        assert oracle_instances is not None
+        assets_to_price = {}
+        pending_assets = set(from_assets_resolved)
+        price = ZERO_PRICE
+        oracle_queried = CurrentPriceOracle.BLOCKCHAIN
+        used_main_currency = False
+        is_error = False
+        for oracle, oracle_instance in zip(oracles, oracle_instances, strict=True):
+            if (
+                isinstance(oracle_instance, CurrentPriceOracleInterface) and
+                (
+                    oracle_instance.rate_limited_in_last(DEFAULT_RATE_LIMIT_WAITING_TIME) is True or  # noqa: E501
+                    (isinstance(oracle_instance, PenalizablePriceOracleMixin) and oracle_instance.is_penalized() is True)  # noqa: E501
+                )
+            ):
+                continue
+
+            try:
+                price, used_main_currency, is_error = oracle_instance.query_multiple_current_price(
+                    from_assets=pending_assets,
+                    to_asset=to_asset,
+                    match_main_currency=match_main_currency,
+                )
+            except (DefiPoolError, PriceQueryUnsupportedAsset, RemoteError) as e:
+                log.warning(
+                    f'Current price oracle {oracle_instance} failed to request {to_asset!s} '
+                    f'price for {from_asset.identifier} due to: {e!s}.',
+                )
+            except RecursionError:
+                # We have to catch recursion error only at the top level since otherwise we get to
+                # recursion level MAX - 1, and after calling some other function may run into it again.  # noqa: E501
+                if coming_from_latest_price is True:
+                    raise
+
+                # else
+                # Infinite loop can happen if user creates a loop of manual current prices
+                # (e.g. said that 1 BTC costs 2 ETH and 1 ETH costs 5 BTC).
+                Inquirer._msg_aggregator.add_warning(
+                    f'Was not able to find price from {from_asset!s} to {to_asset!s} since your '
+                    f'manual latest prices form a loop. For now, other oracles will be used.',
+                )
+                is_error = False
+
+            if is_error:
+                continue
+
+            if price != ZERO_PRICE:
+                oracle_queried = oracle
+                log.debug(
+                    f'Current price oracle {oracle} got price',
+                    from_asset=from_asset,
+                    to_asset=to_asset,
+                    price=price,
+                )
+                break
+
+        return price, oracle_queried, used_main_currency    
 
     @staticmethod
     @handle_recursion_error(return_price_only=True)
