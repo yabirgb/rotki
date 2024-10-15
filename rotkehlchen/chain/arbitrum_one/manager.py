@@ -8,6 +8,7 @@ from .tokens import ArbitrumOneTokens
 from .transactions import ArbitrumOneTransactions
 
 if TYPE_CHECKING:
+    from rotkehlchen.history.manager import TaskManager
 
     from .node_inquirer import ArbitrumOneInquirer
 
@@ -17,6 +18,7 @@ class ArbitrumOneManager(EvmManager, CurveManagerMixin):
     def __init__(
             self,
             node_inquirer: 'ArbitrumOneInquirer',
+            task_manager: 'TaskManager',
     ) -> None:
         transactions = ArbitrumOneTransactions(
             arbitrum_one_inquirer=node_inquirer,
@@ -33,6 +35,7 @@ class ArbitrumOneManager(EvmManager, CurveManagerMixin):
                 database=node_inquirer.database,
                 arbitrum_inquirer=node_inquirer,
                 transactions=transactions,
+                task_manager=task_manager,
             ),
             accounting_aggregator=ArbitrumOneAccountingAggregator(
                 node_inquirer=node_inquirer,

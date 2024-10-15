@@ -48,6 +48,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.events.structures.evm_event import EvmProduct
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.tasks.assets import maybe_detect_new_tokens
 from rotkehlchen.types import (
@@ -103,6 +104,17 @@ class EventDecoderFunction(Protocol):
         ...
 
 
+def disable_task_manager(func):
+    def wrapper(self: 'EVMTransactionDecoder', *args, **kwargs):
+        self.task_manager.decoding_counter += 1
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self.task_manager.decoding_counter -= 1
+
+    return wrapper
+
+
 @dataclass(init=True, repr=True, eq=True, order=False, unsafe_hash=False, frozen=True)
 class DecodingRules:
     address_mappings: dict[ChecksumEvmAddress, tuple[Any, ...]]
@@ -147,6 +159,7 @@ class EVMTransactionDecoder(ABC):
             event_rules: list[EventDecoderFunction],
             misc_counterparties: list[CounterpartyDetails],
             base_tools: BaseDecoderTools,
+            task_manager: TaskManager,
             dbevmtx_class: type[DBEvmTx] = DBEvmTx,
             addresses_exceptions: dict[ChecksumEvmAddress, int] | None = None,
             exceptions_mappings: dict[str, 'Asset'] | None = None,
@@ -204,6 +217,7 @@ class EVMTransactionDecoder(ABC):
         # Recursively check all submodules to get all decoder address mappings and rules
         self.rules += self._recursively_initialize_decoders(self.chain_modules_root)
         self.undecoded_tx_query_lock = Semaphore()
+        self.task_manager = task_manager
 
     def _add_builtin_decoders(self, rules: DecodingRules) -> None:
         """Adds decoders that should be built-in for every EVM decoding run
@@ -600,6 +614,7 @@ class EVMTransactionDecoder(ABC):
         events = sorted(events, key=lambda x: x.sequence_index, reverse=False)
         return events, refresh_balances, reload_decoders  # Propagate for post processing in the caller  # noqa: E501
 
+    @disable_task_manager
     def get_and_decode_undecoded_transactions(
             self,
             limit: int | None = None,
@@ -650,6 +665,7 @@ class EVMTransactionDecoder(ABC):
         )
         return events
 
+    @disable_task_manager
     def decode_transaction_hashes(
             self,
             ignore_cache: bool,
@@ -1216,6 +1232,7 @@ class EVMTransactionDecoderWithDSProxy(EVMTransactionDecoder, ABC):
             event_rules: list[EventDecoderFunction],
             misc_counterparties: list[CounterpartyDetails],
             base_tools: BaseDecoderToolsWithDSProxy,
+            task_manager: TaskManager,
     ):
         super().__init__(
             database=database,
@@ -1225,6 +1242,7 @@ class EVMTransactionDecoderWithDSProxy(EVMTransactionDecoder, ABC):
             event_rules=event_rules,
             misc_counterparties=misc_counterparties,
             base_tools=base_tools,
+            task_manager=task_manager,
         )
         self.evm_inquirer: EvmNodeInquirerWithDSProxy  # Set explicit type
         self.base: BaseDecoderToolsWithDSProxy  # Set explicit type

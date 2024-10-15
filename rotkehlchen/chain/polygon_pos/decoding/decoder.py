@@ -1,6 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Final
 
+from rotkehlchen.tasks.manager import TaskManager
 from rotkehlchen.chain.evm.decoding.base import BaseDecoderTools
 from rotkehlchen.chain.evm.decoding.decoder import EVMTransactionDecoder
 from rotkehlchen.chain.polygon_pos.modules.monerium.constants import V1_TO_V2_MONERIUM_MAPPINGS
@@ -27,6 +28,7 @@ class PolygonPOSTransactionDecoder(EVMTransactionDecoder):
             database: 'DBHandler',
             polygon_pos_inquirer: 'PolygonPOSInquirer',
             transactions: 'PolygonPOSTransactions',
+            task_manager: TaskManager
     ):
         super().__init__(
             database=database,
@@ -43,6 +45,7 @@ class PolygonPOSTransactionDecoder(EVMTransactionDecoder):
             ),
             addresses_exceptions=dict.fromkeys(POLYGON_MONERIUM_LEGACY_ADDRESSES, MONERIUM_V2_CONTRACTS_BLOCK),  # noqa: E501
             exceptions_mappings=V1_TO_V2_MONERIUM_MAPPINGS,
+            task_manager=task_manager,
         )
 
     # -- methods that need to be implemented by child classes --

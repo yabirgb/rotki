@@ -364,43 +364,65 @@ class Rotkehlchen:
                 database=self.data.db,
             )
             blockchain_accounts = self.data.db.get_blockchain_accounts(cursor)
+        
+        self.data_updater = RotkiDataUpdater(
+            msg_aggregator=self.msg_aggregator,
+            user_db=self.data.db,
+        )
+
+        self.task_manager = TaskManager(
+            max_tasks_num=DEFAULT_MAX_TASKS_NUM,
+            greenlet_manager=self.greenlet_manager,
+            api_task_greenlets=self.api_task_greenlets,
+            database=self.data.db,
+            cryptocompare=self.cryptocompare,
+            premium_sync_manager=self.premium_sync_manager,
+            chains_aggregator=None,
+            exchange_manager=self.exchange_manager,
+            deactivate_premium=self.deactivate_premium_status,
+            activate_premium=self.activate_premium_status,
+            query_balances=self.query_balances,
+            msg_aggregator=self.msg_aggregator,
+            data_updater=self.data_updater,
+            username=user,
+        )
 
         # Initialize blockchain querying modules
         ethereum_inquirer = EthereumInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        ethereum_manager = EthereumManager(ethereum_inquirer)
+        ethereum_manager = EthereumManager(ethereum_inquirer, task_manager=self.task_manager)
         optimism_inquirer = OptimismInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        optimism_manager = OptimismManager(optimism_inquirer)
+        optimism_manager = OptimismManager(optimism_inquirer, task_manager=self.task_manager)
         polygon_pos_inquirer = PolygonPOSInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        polygon_pos_manager = PolygonPOSManager(polygon_pos_inquirer)
+        polygon_pos_manager = PolygonPOSManager(polygon_pos_inquirer, task_manager=self.task_manager)
         arbitrum_one_inquirer = ArbitrumOneInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        arbitrum_one_manager = ArbitrumOneManager(arbitrum_one_inquirer)
+        arbitrum_one_manager = ArbitrumOneManager(arbitrum_one_inquirer, task_manager=self.task_manager)
         base_inquirer = BaseInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        base_manager = BaseManager(base_inquirer)
+        base_manager = BaseManager(base_inquirer, task_manager=self.task_manager)
         gnosis_inquirer = GnosisInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        gnosis_manager = GnosisManager(gnosis_inquirer)
+        gnosis_manager = GnosisManager(gnosis_inquirer, task_manager=self.task_manager)
         scroll_inquirer = ScrollInquirer(
             greenlet_manager=self.greenlet_manager,
             database=self.data.db,
         )
-        scroll_manager = ScrollManager(scroll_inquirer)
+        scroll_manager = ScrollManager(scroll_inquirer, task_manager=self.task_manager)
         kusama_manager = SubstrateManager(
             chain=SupportedBlockchain.KUSAMA,
             msg_aggregator=self.msg_aggregator,
@@ -485,26 +507,7 @@ class Rotkehlchen:
             exchange_manager=self.exchange_manager,
             chains_aggregator=self.chains_aggregator,
         )
-        self.data_updater = RotkiDataUpdater(
-            msg_aggregator=self.msg_aggregator,
-            user_db=self.data.db,
-        )
-        self.task_manager = TaskManager(
-            max_tasks_num=DEFAULT_MAX_TASKS_NUM,
-            greenlet_manager=self.greenlet_manager,
-            api_task_greenlets=self.api_task_greenlets,
-            database=self.data.db,
-            cryptocompare=self.cryptocompare,
-            premium_sync_manager=self.premium_sync_manager,
-            chains_aggregator=self.chains_aggregator,
-            exchange_manager=self.exchange_manager,
-            deactivate_premium=self.deactivate_premium_status,
-            activate_premium=self.activate_premium_status,
-            query_balances=self.query_balances,
-            msg_aggregator=self.msg_aggregator,
-            data_updater=self.data_updater,
-            username=user,
-        )
+
 
         self.migration_manager.maybe_migrate_data()
         self.assets_updater = AssetsUpdater(self.msg_aggregator)
@@ -517,6 +520,7 @@ class Rotkehlchen:
 
         self.addressbook_prioritizer = NamePrioritizer(self.data.db)  # Initialize here since it's reused by the api for addressbook endpoints.  # noqa: E501
         self.user_is_logged_in = True
+        self.task_manager.chains_aggregator = self.chains_aggregator
         log.debug('User unlocking complete')
 
     def _logout(self) -> None:

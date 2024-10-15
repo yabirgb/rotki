@@ -9,6 +9,7 @@ from rotkehlchen.chain.evm.decoding.types import CounterpartyDetails
 from rotkehlchen.chain.evm.l2_with_l1_fees.types import L2WithL1FeesTransaction
 from rotkehlchen.db.l2withl1feestx import DBL2WithL1FeesTx
 from rotkehlchen.fval import FVal
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.utils.misc import from_wei
 
@@ -35,6 +36,7 @@ class L2WithL1FeesTransactionDecoder(EVMTransactionDecoder, ABC):
             event_rules: list[EventDecoderFunction],
             misc_counterparties: list[CounterpartyDetails],
             base_tools: BaseDecoderTools,
+            task_manager: TaskManager,
             dbevmtx_class: type[DBL2WithL1FeesTx] = DBL2WithL1FeesTx,
     ):
         super().__init__(
@@ -46,6 +48,7 @@ class L2WithL1FeesTransactionDecoder(EVMTransactionDecoder, ABC):
             misc_counterparties=misc_counterparties,
             base_tools=base_tools,
             dbevmtx_class=dbevmtx_class,
+            task_manager=task_manager,
         )
 
     def _calculate_gas_burned(self, tx: L2WithL1FeesTransaction) -> FVal:  # type: ignore[override]

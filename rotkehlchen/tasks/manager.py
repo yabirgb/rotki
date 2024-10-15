@@ -148,6 +148,7 @@ class TaskManager:
         self.premium_sync_manager: Optional[PremiumSyncManager] = premium_sync_manager
         self.data_updater = data_updater
         self.username = username
+        self.decoding_counter = 0
 
         self.potential_tasks: list[Callable[[], Optional[list[gevent.Greenlet]]]] = [
             self._maybe_schedule_cryptocompare_query,
@@ -961,8 +962,10 @@ class TaskManager:
             return
 
         with self.schedule_lock:
-            if self.should_schedule:  # adding this check here to protect against going to schedule during logout/shutdown once task manager has been cleared and DB has been deleted  # noqa: E501
+            if self.should_schedule and self.decoding_counter == 0:  # adding this check here to protect against going to schedule during logout/shutdown once task manager has been cleared and DB has been deleted  # noqa: E501
                 self._schedule()
+            else:
+                log.debug(f'Wont schedule task manager {self.should_schedule=} {self.decoding_counter=}')
 
     def clear(self) -> None:
         """Ensure that no task is kept referenced. Used when removing the task manager"""

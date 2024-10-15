@@ -7,6 +7,7 @@ from rotkehlchen.chain.evm.decoding.base import BaseDecoderTools
 from rotkehlchen.chain.evm.decoding.decoder import EVMTransactionDecoder
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.db.arbitrum_one_tx import DBArbitrumOneTx
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import ChecksumEvmAddress
 
@@ -30,6 +31,7 @@ class ArbitrumOneTransactionDecoder(EVMTransactionDecoder):
             database: 'DBHandler',
             arbitrum_inquirer: 'ArbitrumOneInquirer',
             transactions: 'ArbitrumOneTransactions',
+            task_manager: TaskManager,
     ):
         self.transaction_type_mappings: dict[int, list[tuple[int, Callable]]] = defaultdict(list)
         super().__init__(
@@ -46,6 +48,7 @@ class ArbitrumOneTransactionDecoder(EVMTransactionDecoder):
                 address_is_exchange_fn=self._address_is_exchange,
             ),
             dbevmtx_class=DBArbitrumOneTx,
+            task_manager=task_manager,
         )
 
     def _chain_specific_post_decoding_rules(

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from rotkehlchen.chain.evm.manager import CurveManagerMixin, EvmManager
+from rotkehlchen.history.manager import TaskManager
 
 from .accountant import GnosisAccountingAggregator
 from .decoding.decoder import GnosisTransactionDecoder
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
 
 class GnosisManager(EvmManager, CurveManagerMixin):
 
-    def __init__(self, node_inquirer: 'GnosisInquirer') -> None:
+    def __init__(self, node_inquirer: 'GnosisInquirer', task_manager: TaskManager) -> None:
         transactions = GnosisTransactions(
             gnosis_inquirer=node_inquirer,
             database=node_inquirer.database,
@@ -29,6 +30,7 @@ class GnosisManager(EvmManager, CurveManagerMixin):
                 database=node_inquirer.database,
                 gnosis_inquirer=node_inquirer,
                 transactions=transactions,
+                task_manager=task_manager,
             ),
             accounting_aggregator=GnosisAccountingAggregator(
                 node_inquirer=node_inquirer,

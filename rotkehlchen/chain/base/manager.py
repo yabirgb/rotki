@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from rotkehlchen.chain.evm.manager import CurveManagerMixin, EvmManager
+from rotkehlchen.history.manager import TaskManager
 
 from .accountant import BaseAccountingAggregator
 from .decoding.decoder import BaseTransactionDecoder
@@ -17,6 +18,7 @@ class BaseManager(EvmManager, CurveManagerMixin):
     def __init__(
             self,
             node_inquirer: 'BaseInquirer',
+            task_manager: TaskManager,
     ) -> None:
         transactions = BaseTransactions(
             base_inquirer=node_inquirer,
@@ -33,6 +35,7 @@ class BaseManager(EvmManager, CurveManagerMixin):
                 database=node_inquirer.database,
                 base_inquirer=node_inquirer,
                 transactions=transactions,
+                task_manager=task_manager,
             ),
             accounting_aggregator=BaseAccountingAggregator(
                 node_inquirer=node_inquirer,

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from rotkehlchen.chain.evm.manager import CurveManagerMixin, EvmManager
+from rotkehlchen.history.manager import TaskManager
 
 from .accountant import OptimismAccountingAggregator
 from .decoding.decoder import OptimismTransactionDecoder
@@ -17,6 +18,7 @@ class OptimismManager(EvmManager, CurveManagerMixin):
     def __init__(
             self,
             node_inquirer: 'OptimismInquirer',
+            task_manager: TaskManager,
     ) -> None:
         transactions = OptimismTransactions(
             optimism_inquirer=node_inquirer,
@@ -33,6 +35,7 @@ class OptimismManager(EvmManager, CurveManagerMixin):
                 database=node_inquirer.database,
                 optimism_inquirer=node_inquirer,
                 transactions=transactions,
+                task_manager=task_manager,
             ),
             accounting_aggregator=OptimismAccountingAggregator(
                 node_inquirer=node_inquirer,

@@ -17,6 +17,7 @@ from rotkehlchen.chain.evm.structures import EvmTxReceiptLog
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.assets import A_1INCH, A_ETH, A_GTC
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import ChecksumEvmAddress, EvmTransaction
 
@@ -39,6 +40,7 @@ class EthereumTransactionDecoder(EVMTransactionDecoderWithDSProxy):
             database: 'DBHandler',
             ethereum_inquirer: 'EthereumInquirer',
             transactions: 'EthereumTransactions',
+            task_manager: TaskManager,
     ):
         super().__init__(
             database=database,
@@ -62,6 +64,7 @@ class EthereumTransactionDecoder(EVMTransactionDecoderWithDSProxy):
                 is_non_conformant_erc721_fn=self._is_non_conformant_erc721,
                 address_is_exchange_fn=self._address_is_exchange,
             ),
+            task_manager=task_manager,
         )
 
     def _maybe_enrich_transfers(

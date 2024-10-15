@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from rotkehlchen.chain.ethereum.transactions import EthereumTransactions
 from rotkehlchen.chain.evm.manager import CurveManagerMixin, EvmManager
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 
 from .accountant import EthereumAccountingAggregator
@@ -21,6 +22,7 @@ class EthereumManager(EvmManager, CurveManagerMixin):
     def __init__(
             self,
             node_inquirer: 'EthereumInquirer',
+            task_manager: TaskManager,
     ) -> None:
         transactions = EthereumTransactions(
             ethereum_inquirer=node_inquirer,
@@ -37,6 +39,7 @@ class EthereumManager(EvmManager, CurveManagerMixin):
                 database=node_inquirer.database,
                 ethereum_inquirer=node_inquirer,
                 transactions=transactions,
+                task_manager=task_manager,
             ),
             accounting_aggregator=EthereumAccountingAggregator(
                 node_inquirer=node_inquirer,

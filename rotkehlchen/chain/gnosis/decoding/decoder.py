@@ -6,6 +6,7 @@ from rotkehlchen.chain.evm.decoding.decoder import EVMTransactionDecoder
 from rotkehlchen.chain.gnosis.modules.monerium.constants import V1_TO_V2_MONERIUM_MAPPINGS
 from rotkehlchen.chain.gnosis.tokens import GNOSIS_MONERIUM_LEGACY_ADDRESSES
 from rotkehlchen.constants.assets import A_XDAI
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import ChecksumEvmAddress
 
@@ -27,6 +28,7 @@ class GnosisTransactionDecoder(EVMTransactionDecoder):
             database: 'DBHandler',
             gnosis_inquirer: 'GnosisInquirer',
             transactions: 'GnosisTransactions',
+            task_manager: TaskManager,
     ):
         super().__init__(
             database=database,
@@ -43,6 +45,7 @@ class GnosisTransactionDecoder(EVMTransactionDecoder):
             ),
             addresses_exceptions=dict.fromkeys(GNOSIS_MONERIUM_LEGACY_ADDRESSES, MONERIUM_V2_CONTRACTS_BLOCK),  # noqa: E501
             exceptions_mappings=V1_TO_V2_MONERIUM_MAPPINGS,
+            task_manager=task_manager,
         )
 
     # -- methods that need to be implemented by child classes --

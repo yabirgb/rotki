@@ -5,6 +5,7 @@ from rotkehlchen.chain.evm.decoding.base import BaseDecoderToolsWithDSProxy
 from rotkehlchen.chain.evm.l2_with_l1_fees.decoding.decoder import L2WithL1FeesTransactionDecoder
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.db.l2withl1feestx import DBL2WithL1FeesTx
+from rotkehlchen.history.manager import TaskManager
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import ChecksumEvmAddress
 
@@ -24,6 +25,7 @@ class OptimismTransactionDecoder(L2WithL1FeesTransactionDecoder):
             database: 'DBHandler',
             optimism_inquirer: 'OptimismInquirer',
             transactions: 'OptimismTransactions',
+            task_manager: TaskManager,
     ):
         super().__init__(
             database=database,
@@ -39,6 +41,7 @@ class OptimismTransactionDecoder(L2WithL1FeesTransactionDecoder):
                 address_is_exchange_fn=self._address_is_exchange,
             ),
             dbevmtx_class=DBL2WithL1FeesTx,
+            task_manager=task_manager,
         )
 
     # -- methods that need to be implemented by child classes --

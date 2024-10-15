@@ -1,6 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
+from rotkehlchen.tasks.manager import TaskManager
 from rotkehlchen.chain.evm.decoding.base import BaseDecoderTools
 from rotkehlchen.chain.evm.l2_with_l1_fees.decoding.decoder import L2WithL1FeesTransactionDecoder
 from rotkehlchen.constants.assets import A_ETH
@@ -23,6 +24,7 @@ class ScrollTransactionDecoder(L2WithL1FeesTransactionDecoder):
             database: 'DBHandler',
             scroll_inquirer: 'ScrollInquirer',
             transactions: 'ScrollTransactions',
+            task_manager: TaskManager
     ):
         super().__init__(
             database=database,
@@ -37,6 +39,7 @@ class ScrollTransactionDecoder(L2WithL1FeesTransactionDecoder):
                 is_non_conformant_erc721_fn=self._is_non_conformant_erc721,
                 address_is_exchange_fn=self._address_is_exchange,
             ),
+            task_manager=task_manager,
         )
 
     # -- methods that need to be implemented by child classes --
