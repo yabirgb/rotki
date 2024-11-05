@@ -19,6 +19,7 @@ from rotkehlchen.globaldb.cache import (
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
+    YEARN_STAKING_PROTOCOL,
     YEARN_VAULTS_V2_PROTOCOL,
     YEARN_VAULTS_V3_PROTOCOL,
     CacheType,
@@ -27,6 +28,7 @@ from rotkehlchen.types import (
 )
 
 if TYPE_CHECKING:
+    from rotkehlchen.chain.ethereum.node_inquirer import EthereumInquirer
     from rotkehlchen.db.dbhandler import DBHandler
 
 YDAEMON_API: Final[str] = 'https://ydaemon.yearn.fi/rotki'  # contains v2 and v3 vaults
@@ -145,7 +147,7 @@ def _query_yearn_vault_count() -> int:
     return data['numberOfVaults']
 
 
-def query_yearn_vaults(db: 'DBHandler') -> None:
+def query_yearn_vaults(db: 'DBHandler', ethereum_inquirer: 'EthereumInquirer') -> None:
     """Query yearn API and ensure that all the tokens exist locally. If they exist but the protocol
     is not the correct one, then the asset will be edited.
 
@@ -205,6 +207,21 @@ def query_yearn_vaults(db: 'DBHandler') -> None:
                 )],
                 encounter=TokenEncounterInfo(description=f'Querying {vault_type} balances', should_notify=False),  # noqa: E501
             )
+            if (staking_address := vault.get('staking')) is not None:
+                get_or_create_evm_token(
+                    userdb=db,
+                    evm_address=staking_address,
+                    evm_inquirer=ethereum_inquirer,
+                    chain_id=ChainID.ETHEREUM,
+                    protocol=YEARN_STAKING_PROTOCOL,
+                    underlying_tokens=[UnderlyingToken(
+                        address=vault_token.evm_address,
+                        token_kind=EvmTokenKind.ERC20,
+                        weight=ONE,
+                    )],
+                    encounter=TokenEncounterInfo(description='Querying yearn vaults', should_notify=False),  # noqa: E501
+                )
+
         except KeyError as e:
             log.error(
                 f'Failed to store token information for yearn {vault_type} vault due to '
