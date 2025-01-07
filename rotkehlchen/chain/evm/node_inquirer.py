@@ -264,6 +264,26 @@ class EvmNodeInquirer(ABC, LockableQueryMixIn):
             rpc_nodes = self.database.get_rpc_nodes(blockchain=self.blockchain, only_active=True)
             self.connect_to_multiple_nodes(rpc_nodes)
 
+    def try_connection_to_one_node(self) -> bool:
+        """Attempt the connection to at least one web3 node
+        Returns true if success
+        """
+        if self.connected_to_any_web3():
+            return True
+
+        rpc_nodes = self.database.get_rpc_nodes(blockchain=self.blockchain, only_active=True)
+        for node in rpc_nodes:
+            if node.node_info.name == self.etherscan_node_name:
+                continue
+
+            success, _ = self.attempt_connect(node=node.node_info, connectivity_check=True)
+            if success:
+                log.debug(f'Successfully connected node {node.node_info.name} when trying to connect to any node.')  # noqa: E501
+                return True
+
+        log.error('Could not stablish a connection to any node')
+        return False
+
     def connected_to_any_web3(self) -> bool:
         return len(self.web3_mapping) != 0
 
@@ -577,8 +597,8 @@ class EvmNodeInquirer(ABC, LockableQueryMixIn):
 
         # no node in the call order list was successfully queried
         log.error(
-            f'Failed to query {method!s} after trying the following '
-            f'nodes: {[x.node_info.name for x in call_order]}',
+            f'Failed to query {method.__name__} after trying the following '
+            f'nodes: {[x.node_info.name for x in call_order]} with arguments {kwargs}',
         )
         raise RemoteError(
             f'Please check your network and confirm sufficient nodes are connected for {self.blockchain!s}.',  # noqa: E501

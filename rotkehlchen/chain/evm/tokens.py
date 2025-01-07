@@ -115,7 +115,7 @@ def get_chunk_size_call_order(evm_inquirer: 'EvmNodeInquirer') -> tuple[int, lis
     We also return the nodes call order. In the case of having web3 nodes available we
     skip etherscan because chunk size is too big for etherscan.
     """
-    if evm_inquirer.connected_to_any_web3():
+    if evm_inquirer.try_connection_to_one_node():
         chunk_size = OTHER_MAX_TOKEN_CHUNK_LENGTH
         call_order = evm_inquirer.default_call_order(skip_etherscan=True)
     else:

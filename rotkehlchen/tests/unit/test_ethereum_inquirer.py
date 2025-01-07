@@ -12,6 +12,7 @@ from rotkehlchen.chain.evm.decoding.kyber.constants import KYBER_AGGREGATOR_SWAP
 from rotkehlchen.chain.evm.decoding.thegraph.constants import GRAPH_DELEGATION_TRANSFER_ABI
 from rotkehlchen.chain.evm.node_inquirer import _query_web3_get_logs
 from rotkehlchen.chain.evm.structures import EvmTxReceipt, EvmTxReceiptLog
+from rotkehlchen.chain.evm.tokens import get_chunk_size_call_order
 from rotkehlchen.chain.evm.types import WeightedNode, string_to_evm_address
 from rotkehlchen.db.evmtx import DBEvmTx
 from rotkehlchen.errors.misc import EventNotInABI, RemoteError
@@ -601,7 +602,9 @@ def test_get_logs_anonymous(ethereum_inquirer, ethereum_manager_connect_at_start
 
 @pytest.mark.vcr(filter_query_parameters=['apikey'])
 @pytest.mark.parametrize('ethereum_manager_connect_at_start', [(INFURA_ETH_NODE,)])
-def test_contract_call_raises_on_non_checksum_token_address(ethereum_inquirer):
+def test_contract_call_raises_on_non_checksum_token_address(
+    ethereum_inquirer: 'EthereumInquirer',
+) -> None:
     """Check that contract calls fail properly when given a non-checksum token address.
 
     Validates that a RemoteError is raised with appropriate message when providing
@@ -614,3 +617,9 @@ def test_contract_call_raises_on_non_checksum_token_address(ethereum_inquirer):
             method_name='tokens_balance',
             arguments=['0xBCaBdc5eBd28dC9d1629210f92D27171852eBa53', [token_address]],
         )
+
+
+@pytest.mark.parametrize('ethereum_manager_connect_at_start', [(INFURA_ETH_NODE,)])
+def test_connection_made(ethereum_inquirer: 'EthereumInquirer') -> None:
+    order = get_chunk_size_call_order(ethereum_inquirer)
+    print(ethereum_inquirer.get_block_by_number.__name__)
