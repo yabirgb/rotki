@@ -19,6 +19,7 @@ mod database;
 mod globaldb;
 mod icons;
 mod logging;
+mod chain;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         coingecko,
         userdb: Arc::new(RwLock::new(DBHandler::new())),
         active_tasks: Arc::new(Mutex::new(HashSet::<String>::new())),
+        evm_aggregator: Arc::new(Mutex::new(chain::evm::aggregator::EvmChainAggregator::new()))
     });
 
     let stateless_routes = Router::new().route("/health", routing::get(api::health::status));

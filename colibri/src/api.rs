@@ -12,6 +12,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::coingecko;
 use crate::database::DBHandler;
 use crate::globaldb;
+use crate::chain::evm::aggregator;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -20,4 +21,5 @@ pub struct AppState {
     pub coingecko: Arc<coingecko::Coingecko>,
     pub userdb: Arc<RwLock<DBHandler>>,
     pub active_tasks: Arc<Mutex<HashSet<String>>>,
+    pub evm_aggregator: Arc<Mutex<aggregator::EvmChainAggregator>>,
 }

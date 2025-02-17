@@ -34,7 +34,14 @@ pub async fn unlock_user(
         .join("rotkehlchen.db");
 
     match db.unlock(db_path, payload.password).await {
-        Ok(_) => (StatusCode::OK, "Ok").into_response(),
+        Ok(_) => {
+            let mut aggregator = state.evm_aggregator.lock().await;
+            match aggregator.init_nodes(db.client.as_ref().unwrap()).await {
+                Ok(_) => (StatusCode::OK, "Ok").into_response(),
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to unlock user due to {}", e)).into_response(),
+            }
+
+        },
         Err(err) => (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
     }
 }
