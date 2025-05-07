@@ -1043,12 +1043,12 @@ class TaskManager:
         Used during logout to make sure no task is being scheduled at the same time
         as logging out
         """
-        if self.should_schedule is False:
-            return
+        # if self.should_schedule is False:
+        #     return
 
-        with self.schedule_lock:
-            if self.should_schedule:  # adding this check here to protect against going to schedule during logout/shutdown once task manager has been cleared and DB has been deleted  # noqa: E501
-                self._schedule()
+        # with self.schedule_lock:
+        #     if self.should_schedule:  # adding this check here to protect against going to schedule during logout/shutdown once task manager has been cleared and DB has been deleted  # noqa: E501
+        #         self._schedule()
 
     def clear(self) -> None:
         """Ensure that no task is kept referenced. Used when removing the task manager"""

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import argparse
+from concurrent.futures import Future
 import contextlib
 import logging
 import os
@@ -164,7 +165,7 @@ class Rotkehlchen:
                 f'The given data directory {self.data_dir} is not readable or writable',
             )
         self.main_loop_spawned = False
-        self.api_task_greenlets: list[gevent.Greenlet] = []
+        self.api_task_greenlets: dict[int, Future] = dict()
         self.msg_aggregator = MessagesAggregator()
         self.greenlet_manager = GreenletManager(msg_aggregator=self.msg_aggregator)
         self.rotki_notifier = RotkiNotifier()
