@@ -994,6 +994,7 @@ class Rotkehlchen:
         balances: dict[str, dict[Asset, Balance]] = {}
         problem_free = True
         for exchange in self.exchange_manager.iterate_exchanges():
+            log.debug(f'<>>>> Iterating {exchange}')
             exchange_balances, error_msg = exchange.query_balances(ignore_cache=ignore_cache)
             # If we got an error, disregard that exchange but make sure we don't save data
             if not isinstance(exchange_balances, dict):
@@ -1013,6 +1014,7 @@ class Rotkehlchen:
                     )
 
         liabilities: dict[Asset, Balance]
+        log.debug(f'<>>>> Querying balances')
         try:
             blockchain_result = self.chains_aggregator.query_balances(
                 blockchain=None,

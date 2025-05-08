@@ -1,4 +1,3 @@
-import gevent
 from gevent import monkey  # isort:skip
 monkey.patch_all()  # isort:skip
 import logging
@@ -12,7 +11,6 @@ from rotkehlchen.server import RotkehlchenServer
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
 
-gevent.resolver = 'ares'
 
 
 def main() -> None:

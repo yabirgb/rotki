@@ -991,7 +991,9 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
 
         # Query native token balances
         manager = cast('EvmManager', self.get_chain_manager(chain))
+        log.debug(f'!>>>>! {chain}')
         native_token_usd_price = Inquirer.find_usd_price(manager.node_inquirer.native_token)
+        log.debug(f'!>>>>2! {chain}')
         chain_balances = self.balances.get(chain)
         for account, balance in manager.node_inquirer.get_multi_balance(accounts).items():
             chain_balances[account] = BalanceSheet(

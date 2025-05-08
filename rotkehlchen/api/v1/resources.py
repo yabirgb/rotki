@@ -973,7 +973,11 @@ class AssetsMappingResource(BaseMethodView):
     @require_loggedin_user()  # since it uses the user DB too
     @use_kwargs(post_schema, location='json')
     def post(self, identifiers: list[str]) -> Response:
-        return self.rest_api.get_assets_mappings(identifiers=identifiers)
+        return self.rest_api.execute_sync_task(
+            self.rest_api.get_assets_mappings,
+            self.rest_api,
+            identifiers=identifiers,
+        )
 
 
 class AssetsSearchResource(BaseMethodView):
@@ -1377,7 +1381,10 @@ class StatisticsNetvalueResource(BaseMethodView):
     @require_loggedin_user()
     @use_kwargs(get_schema, location='json_and_query')
     def get(self, include_nfts: bool) -> Response:
-        return self.rest_api.query_netvalue_data(include_nfts=include_nfts)
+        return self.rest_api.execute_sync_task(
+            self.rest_api.query_netvalue_data,
+            include_nfts=include_nfts,
+        )
 
 
 class StatisticsAssetBalanceResource(BaseMethodView):

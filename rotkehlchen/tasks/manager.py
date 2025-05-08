@@ -1043,6 +1043,7 @@ class TaskManager:
         Used during logout to make sure no task is being scheduled at the same time
         as logging out
         """
+        return
         if self.should_schedule is False:
             return
 

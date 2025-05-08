@@ -413,6 +413,7 @@ class APIServer:
         )
 
         self.rest_api = rest_api
+        self.rest_api.app = flask_app
         self.rotki_notifier = ws_notifier
         self.flask_app = flask_app
         self.blueprint = blueprint
