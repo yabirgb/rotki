@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from http import HTTPStatus
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args, overload
 from zipfile import BadZipFile, ZipFile
 
 import gevent
@@ -44,6 +44,7 @@ from rotkehlchen.api.rest_helpers.history_events import edit_grouped_events_with
 from rotkehlchen.api.rest_helpers.wrap import calculate_wrap_score
 from rotkehlchen.api.v1.types import IncludeExcludeFilterData
 from rotkehlchen.api.websockets.typedefs import ProgressUpdateSubType, WSMessageType
+from rotkehlchen.api.workers import RestAPIWorker
 from rotkehlchen.assets.asset import (
     Asset,
     AssetWithNameAndType,
@@ -402,27 +403,21 @@ def register_post_download_cleanup(temp_file: Path) -> None:
         return response
 
 
-class RestAPI:
+class RestAPI(RestAPIWorker):
     """ The Object holding the logic that runs inside all the API calls"""
     def __init__(self, rotkehlchen: Rotkehlchen) -> None:
+        super().__init__()
         self.rotkehlchen = rotkehlchen
         self.stop_event = Event()
         mainloop_greenlet = self.rotkehlchen.start()
         mainloop_greenlet.link_exception(self._handle_killed_greenlets)
         # Greenlets that will be waited for when we shutdown (just main loop)
         self.waited_greenlets = [mainloop_greenlet]
-        self.task_lock = Semaphore()
         self.login_lock = Semaphore()
-        self.task_id = 0
-        self.task_results: dict[int, Any] = {}
+
+        self._start_worker_thread()
 
     # - Private functions not exposed to the API
-    def _new_task_id(self) -> int:
-        with self.task_lock:
-            task_id = self.task_id
-            self.task_id += 1
-        return task_id
-
     def _write_task_result(self, task_id: int, result: Any) -> None:
         with self.task_lock:
             self.task_results[task_id] = result
@@ -464,20 +459,12 @@ class RestAPI:
 
     def _do_query_async(self, command: Callable, task_id: int, **kwargs: Any) -> None:
         log.debug(f'Async task with task id {task_id} started')
-        result = command(self, **kwargs)
+        result = command(**kwargs)
         self._write_task_result(task_id, result)
 
     def _query_async(self, command: Callable, **kwargs: Any) -> Response:
-        task_id = self._new_task_id()
-        greenlet = gevent.spawn(
-            self._do_query_async,
-            command,
-            task_id,
-            **kwargs,
-        )
-        greenlet.task_id = task_id
-        greenlet.link_exception(self._handle_killed_greenlets)
-        self.rotkehlchen.api_task_greenlets.append(greenlet)
+        task_id = self.submit_task(func=command, **kwargs)
+        # self.rotkehlchen.api_task_greenlets.append(greenlet)
         return api_response(_wrap_in_ok_result({'task_id': task_id}), status_code=HTTPStatus.OK)
 
     # - Public functions not exposed via the rest api
@@ -515,58 +502,45 @@ class RestAPI:
 
     def query_tasks_outcome(self, task_id: int | None) -> Response:
         if task_id is None:
-            # If no task id is given return list of all pending and completed tasks
-            completed = []
-            pending = []
-            for greenlet in self.rotkehlchen.api_task_greenlets:
-                task_id = greenlet.task_id
-                if task_id in self.task_results:
-                    completed.append(task_id)
-                else:
-                    pending.append(task_id)
-
-            result = _wrap_in_ok_result({'pending': pending, 'completed': completed})
+            log.debug(f'>>>> {self.running_greenlets}')
+            result = _wrap_in_ok_result(self.get_tasks_status())
             return api_response(result=result, status_code=HTTPStatus.OK)
 
-        with self.task_lock:
-            for idx, greenlet in enumerate(self.rotkehlchen.api_task_greenlets):
-                if greenlet.task_id == task_id:
-                    if task_id in self.task_results:
-                        # Task has completed and we just got the outcome
-                        function_response = self.task_results.pop(int(task_id), None)
-                        # The result of the original request
-                        result = function_response['result']
-                        # The message of the original request
-                        message = function_response['message']
-                        status_code = function_response.get('status_code')
-                        ret = {'result': result, 'message': message}
-                        returned_task_result = {
-                            'status': 'completed',
-                            'outcome': process_result(ret),
-                        }
-                        if status_code:
-                            returned_task_result['status_code'] = status_code
-                        result_dict = {
-                            'result': returned_task_result,
-                            'message': '',
-                        }
-                        # Also remove the greenlet from the api tasks
-                        self.rotkehlchen.api_task_greenlets.pop(idx)
-                        return api_response(result=result_dict, status_code=HTTPStatus.OK)
+        with self._task_lock:
+            if task_id not in self.task_results:
+                # The task has not been found
+                result_dict = {
+                    'result': {'status': 'not-found', 'outcome': None},
+                    'message': f'No task with id {task_id} found',
+                }
+                return api_response(result=result_dict, status_code=HTTPStatus.NOT_FOUND)
 
-                    # else task is still pending and the greenlet is running
-                    result_dict = {
-                        'result': {'status': 'pending', 'outcome': None},
-                        'message': f'The task with id {task_id} is still pending',
-                    }
-                    return api_response(result=result_dict, status_code=HTTPStatus.OK)
+            # Task has completed and we just got the outcome
+            if self.task_results[task_id]['status'] == 'completed':
+                function_response = self.task_results.pop(task_id)
+                self.running_greenlets.pop(task_id)
+                # The result of the original request
+                returned_task_result = {
+                    'status': 'completed',
+                    'outcome': process_result({
+                        'result': function_response['data']['result'],
+                        'message': function_response['data']['message'],
+                    }),
+                }
+                if (status_code := function_response['data'].get('status_code')):
+                    returned_task_result['status_code'] = status_code
 
-        # The task has not been found
+                return api_response(result={
+                    'result': returned_task_result,
+                    'message': '',
+                }, status_code=HTTPStatus.OK)
+
+        # else task is still pending and the greenlet is running
         result_dict = {
-            'result': {'status': 'not-found', 'outcome': None},
-            'message': f'No task with id {task_id} found',
+            'result': {'status': 'pending', 'outcome': None},
+            'message': f'The task with id {task_id} is still pending',
         }
-        return api_response(result=result_dict, status_code=HTTPStatus.NOT_FOUND)
+        return api_response(result=result_dict, status_code=HTTPStatus.OK)
 
     def delete_async_task(self, task_id: int) -> Response:
         """Tries to find and cancel the async task with the given task id"""
@@ -679,7 +653,7 @@ class RestAPI:
             api_key: ApiKey,
             api_secret: ApiSecret | None,
             passphrase: str | None,
-            kraken_account_type: Optional['KrakenAccountType'],
+            kraken_account_type: 'KrakenAccountType | None',
             binance_markets: list[str] | None,
     ) -> Response:
         result = None
@@ -708,7 +682,7 @@ class RestAPI:
             api_key: ApiKey | None,
             api_secret: ApiSecret | None,
             passphrase: str | None,
-            kraken_account_type: Optional['KrakenAccountType'],
+            kraken_account_type: 'KrakenAccountType | None',
             binance_markets: list[str] | None,
     ) -> Response:
         edited, msg = self.rotkehlchen.exchange_manager.edit_exchange(

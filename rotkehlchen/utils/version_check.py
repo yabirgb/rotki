@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def get_system_spec() -> dict[str, str]:
     """Collect information about the system and installation."""
     if sys.platform == 'darwin':
-        system_info = f'macOS {platform.mac_ver()[0]} {platform.architecture()[0]}'
+        system_info = 'macOS '
     else:
         system_info = '{} {} {} {}'.format(
             platform.system(),
@@ -25,8 +25,8 @@ def get_system_spec() -> dict[str, str]:
 
     return {
         'rotkehlchen': version('rotkehlchen'),
-        'python_implementation': platform.python_implementation(),
-        'python_version': platform.python_version(),
+        'python_implementation': '',
+        'python_version': '',
         'system': system_info,
     }
 

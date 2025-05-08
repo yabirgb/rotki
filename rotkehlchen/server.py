@@ -53,8 +53,8 @@ class RotkehlchenServer:
         hub = gevent.hub.get_hub()
         hub.exception_stream = None
         # we don't use threadpool much so go to 2 instead of default 10
-        hub.threadpool_size = 2
-        hub.threadpool.maxsize = 2
+        hub.threadpool_size = 5
+        hub.threadpool.maxsize = 5
         if os.name != 'nt':
             gevent.hub.signal(signal.SIGQUIT, self.shutdown)
             gevent.hub.signal(signal.SIGTERM, self.shutdown)
