@@ -609,6 +609,7 @@ class HistoryEventSchema(
 
     # EthStakingEvent only
     validator_indices = DelimitedOrNormalList(fields.Integer(), load_default=None)
+    match_exact_events = fields.Boolean(load_default=True)
 
     @validates_schema
     def validate_history_event_schema(
@@ -721,7 +722,10 @@ class HistoryEventSchema(
 
     def generate_fields_post_validation(self, data: dict[str, Any]) -> dict[str, Any]:
         """Generates extra fields that will be returned after validation"""
-        return {'group_by_event_ids': data['group_by_event_ids']}
+        return {
+            'group_by_event_ids': data['group_by_event_ids'],
+            'match_exact_events': data['match_exact_events'],
+        }
 
 
 class CreateHistoryEventSchema(Schema):

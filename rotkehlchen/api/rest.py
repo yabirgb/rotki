@@ -3658,6 +3658,7 @@ class RestAPI:
             self,
             filter_query: HistoryBaseEntryFilterQuery,
             group_by_event_ids: bool,
+            match_exact_events: bool,
     ) -> Response:
         dbevents = DBHistoryEvents(self.rotkehlchen.data.db)
         has_premium = False
@@ -3672,7 +3673,7 @@ class RestAPI:
                 filter_query=filter_query,
                 has_premium=has_premium,
                 group_by_event_ids=group_by_event_ids,
-                match_exact_events=True,  # set to True since the frontend requests the event_identifiers manually in their second call to this endpoint  # noqa: E501
+                match_exact_events=match_exact_events,  # set to True since the frontend requests the event_identifiers manually in their second call to this endpoint  # noqa: E501
                 entries_limit=entries_limit if entries_limit != -1 else None,
             )
             entries_total = self.rotkehlchen.data.db.get_entries_count(

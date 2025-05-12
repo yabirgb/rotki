@@ -347,44 +347,71 @@ class DBHistoryEvents:
     ) -> tuple[str, list]:
         """Returns the sql queries and bindings for the history events without pagination."""
         base_suffix = f'{HISTORY_BASE_ENTRY_FIELDS}, {EVM_EVENT_FIELDS}, {ETH_STAKING_EVENT_FIELDS} {ALL_EVENTS_DATA_JOIN}'  # noqa: E501
+        ignored_asset_filter = ''
         if (ignore_asset_filter := maybe_filter_ignore_asset(filter_query, include_ignored_assets=True)) != '':  # noqa: E501
-            ignore_asset_filter = (
-                f' WHERE event_identifier NOT IN '
-                f'(SELECT DISTINCT event_identifier FROM history_events {ignore_asset_filter})'
+            ignored_asset_filter = f"""
+            filtered_ids AS (
+              SELECT
+                r.event_identifier
+              FROM {'recent_ids' if has_premium else 'history_events'} AS r
+              WHERE r.event_identifier NOT IN (
+                SELECT he.event_identifier
+                FROM history_events he
+                {ignore_asset_filter}
+              )
             )
+            """
 
-        premium_base_suffix = f'{base_suffix} {ignore_asset_filter}'
-        free_base_suffix = (
-            f'* FROM (SELECT {base_suffix}) WHERE event_identifier IN ('
-            f'SELECT DISTINCT event_identifier FROM history_events {ignore_asset_filter} '
-            'ORDER BY timestamp DESC,sequence_index ASC LIMIT ?)'  # free query only select the last LIMIT groups  # noqa: E501
+        filters, query_bindings = filter_query.prepare(with_pagination=True, with_group_by=match_exact_events is False)
+
+        query_filter_from = 'history_events'
+        if ignored_asset_filter:
+            query_filter_from = 'filtered_ids'
+        elif not has_premium:
+            query_filter_from = 'recent_ids'
+
+        query_filter = f"""
+        query_filer AS (
+            SELECT {'history_events_identifier' if match_exact_events else 'event_identifier'}
+            FROM {query_filter_from}
+            JOIN (SELECT {base_suffix} {filters} )
+            AS inner_filter USING(event_identifier) {"GROUP BY event_identifier" if not match_exact_events else ""}
         )
-
-        if group_by_event_ids:
-            filters, query_bindings = filter_query.prepare(
-                with_group_by=True,
-                with_pagination=False,
-                without_ignored_asset_filter=True,
-            )
-            prefix = 'SELECT COUNT(*), *'
-        else:
-            filters, query_bindings = filter_query.prepare(with_pagination=False)
-            prefix = 'SELECT *'
+        """
 
         if has_premium:
-            suffix, limit = premium_base_suffix, []
+            with_filters = f'WITH {",".join([x for x in (ignored_asset_filter, query_filter) if len(x)])}'
+            limit = []
         else:
-            suffix, limit = free_base_suffix, [entries_limit]
-
-        if match_exact_events is False:
-            # In this case we want to return all the events in the group and not only the ones
-            # in the filter
-            return (
-                f'{prefix} FROM (SELECT {base_suffix} WHERE event_identifier IN (SELECT event_identifier FROM (SELECT {suffix}) {filters}))',  # noqa: E501
-                limit + query_bindings,
+            free_base_filter = """
+            recent_ids AS (
+              SELECT
+                event_identifier
+              FROM history_events
+              GROUP BY event_identifier
+              ORDER BY timestamp DESC,
+                       sequence_index ASC
+              LIMIT ?
             )
+            """
+            with_filters = f'WITH {",".join([x for x in (free_base_filter, ignored_asset_filter, query_filter) if len(x)])}'
+            limit = [entries_limit]
 
-        return f'{prefix} FROM (SELECT {suffix}) {filters}', limit + query_bindings
+        order_by = 'timestamp DESC, sequence_index ASC, history_events_identifier DESC'
+        if filter_query.order_by is not None:
+            order_by = filter_query.order_by.prepare()
+
+        base_query = f"""
+        {with_filters} SELECT {base_suffix}
+        WHERE {"history_events_identifier" if match_exact_events else "event_identifier"}
+        IN query_filer {order_by}
+        """
+
+        if group_by_event_ids:
+            return f'SELECT COUNT(*), * FROM ({base_query})', limit + query_bindings
+
+        return base_query, limit + query_bindings
+
 
     @overload
     def get_history_events(
@@ -488,9 +515,12 @@ class DBHistoryEvents:
             match_exact_events=match_exact_events,
             entries_limit=FREE_HISTORY_EVENTS_LIMIT,
         )
-        if filter_query.pagination is not None:
+        if match_exact_events is True and filter_query.pagination is not None:
             base_query = f'SELECT * FROM ({base_query}) {filter_query.pagination.prepare()}'
 
+        log.debug(base_query)
+        log.debug(filters_bindings)
+        log.debug('-----')
         ethereum_tracked_accounts: set[ChecksumEvmAddress] | None = None
         cursor.execute(base_query, filters_bindings)
         output: list[HistoryBaseEntry] | list[tuple[int, HistoryBaseEntry]] = []
@@ -559,6 +589,8 @@ class DBHistoryEvents:
             if group_by_event_ids is True:
                 output.append((entry[0], deserialized_event))  # type: ignore
             else:
+                log.debug(f'---->{deserialized_event.event_identifier} - {deserialized_event.sequence_index}' )
+                log.debug(entry)
                 output.append(deserialized_event)  # type: ignore
 
         if failed_to_deserialize:
