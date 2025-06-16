@@ -13,14 +13,18 @@ import logging
 from collections import defaultdict, deque
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, Literal, NamedTuple, Optional, Tuple
 
 import polars as pl
 
+from rotkehlchen.accounting.rules import AccountingRulesManager
+from rotkehlchen.chain.evm.accounting.structures import TxAccountingTreatment
+from rotkehlchen.chain.evm.decoding.constants import CPT_GAS
+from rotkehlchen.history.events.structures.evm_event import EvmEvent
 from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.constants.assets import A_EUR
-from rotkehlchen.constants.misc import ZERO
+from rotkehlchen.constants.misc import ONE, ZERO
 from rotkehlchen.data_handler import DataHandler
 from rotkehlchen.db.filtering import HistoryEventFilterQuery
 from rotkehlchen.db.history_events import DBHistoryEvents
@@ -42,9 +46,33 @@ from rotkehlchen.history.types import HistoricalPriceOracle
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter, configure_logging, add_logging_level, TRACE
 from rotkehlchen.tests.utils.args import default_args
-from rotkehlchen.types import Location, Timestamp, SPAM_PROTOCOL
+from rotkehlchen.types import EVM_CHAINS_WITH_TRANSACTIONS, Location, Timestamp, SPAM_PROTOCOL
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import timestamp_to_iso8601, ts_ms_to_sec
+from rotkehlchen.externalapis.alchemy import Alchemy
+from rotkehlchen.globaldb.manual_price_oracles import ManualCurrentOracle
+from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV2Oracle, UniswapV3Oracle
+
+from rotkehlchen.externalapis.beaconchain.service import BeaconChain
+from rotkehlchen.chain.arbitrum_one.manager import ArbitrumOneManager
+from rotkehlchen.chain.arbitrum_one.node_inquirer import ArbitrumOneInquirer
+from rotkehlchen.chain.avalanche.manager import AvalancheManager
+from rotkehlchen.chain.base.manager import BaseManager
+from rotkehlchen.chain.base.node_inquirer import BaseInquirer
+from rotkehlchen.chain.binance_sc.manager import BinanceSCManager
+from rotkehlchen.chain.binance_sc.node_inquirer import BinanceSCInquirer
+from rotkehlchen.chain.ethereum.manager import EthereumManager
+from rotkehlchen.chain.ethereum.node_inquirer import EthereumInquirer
+from rotkehlchen.chain.gnosis.manager import GnosisManager
+from rotkehlchen.chain.gnosis.node_inquirer import GnosisInquirer
+from rotkehlchen.chain.optimism.manager import OptimismManager
+from rotkehlchen.chain.optimism.node_inquirer import OptimismInquirer
+from rotkehlchen.chain.polygon_pos.manager import PolygonPOSManager
+from rotkehlchen.chain.polygon_pos.node_inquirer import PolygonPOSInquirer
+from rotkehlchen.chain.scroll.manager import ScrollManager
+from rotkehlchen.chain.scroll.node_inquirer import ScrollInquirer
+from rotkehlchen.externalapis.etherscan import Etherscan
+
 
 # Configure logging
 add_logging_level('TRACE', TRACE)
@@ -74,6 +102,7 @@ class TaxableEvent(NamedTuple):
     price_received_eur: Optional[FVal]
     value_received_eur: Optional[FVal]
     is_fiat_received: bool
+    is_fiat_sold: bool
     # Fee info
     fee_amount: Optional[FVal]
     fee_asset: Optional[str]
@@ -120,37 +149,102 @@ class EventProcessor:
         
         # Cache for prices
         self.price_cache: Dict[Tuple[str, Timestamp], FVal] = {}
+        self.rules = AccountingRulesManager(self.data.db, None, None)
+        self.rules._query_db_rules()
     
     def _init_price_sources(self):
         """Initialize price sources and historian."""
         self.cryptocompare = Cryptocompare(database=self.data.db)
         self.coingecko = Coingecko(database=self.data.db)
         self.defillama = Defillama(database=self.data.db)
-        
+        self.alchemy = Alchemy(database=self.data.db)
+
+        etherscan = Etherscan(
+            database=self.data.db,
+            msg_aggregator=self.msg_aggregator,
+        )
+        self.beaconchain = BeaconChain(database=self.data.db, msg_aggregator=self.msg_aggregator)
+        self.etherscan = etherscan
+
+
+
+        chain_managers = [
+            EthereumManager(
+                node_inquirer=(ethereum_inquirer := EthereumInquirer(
+                    greenlet_manager=self.greenlet_manager,
+                    database=self.data.db,
+                    etherscan=etherscan,
+                )),
+                beacon_chain=self.beaconchain,
+            ),
+            OptimismManager(OptimismInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            PolygonPOSManager(PolygonPOSInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            ArbitrumOneManager(ArbitrumOneInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            BaseManager(BaseInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            GnosisManager(GnosisInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            ScrollManager(ScrollInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            )),
+            BinanceSCManager(BinanceSCInquirer(
+                greenlet_manager=self.greenlet_manager,
+                database=self.data.db,
+                etherscan=etherscan,
+            ))
+        ]
+
+
+
         self.inquirer = Inquirer(
             data_dir=self.data.db.user_data_dir.parent,
             cryptocompare=self.cryptocompare,
             coingecko=self.coingecko,
             defillama=self.defillama,
-            alchemy=None,
-            manualcurrent=None,
+            alchemy=self.alchemy,
+            manualcurrent=ManualCurrentOracle(),
             msg_aggregator=self.msg_aggregator,
         )
+
+        self.inquirer.inject_evm_managers([
+            (chain.to_chain_id(), manager)
+            for chain, manager in zip(EVM_CHAINS_WITH_TRANSACTIONS, chain_managers)
+        ])
         
         self.price_historian = PriceHistorian(
             data_directory=self.data.db.user_data_dir.parent,
             cryptocompare=self.cryptocompare,
             coingecko=self.coingecko,
             defillama=self.defillama,
-            alchemy=None,
-            uniswapv2=None,
-            uniswapv3=None,
+            alchemy=self.alchemy,
+            uniswapv2=(uniswap_v2_oracle := UniswapV2Oracle()),
+            uniswapv3=(uniswap_v3_oracle := UniswapV3Oracle()),
         )
         
         self.price_historian.set_oracles_order([
             HistoricalPriceOracle.DEFILLAMA,
             HistoricalPriceOracle.CRYPTOCOMPARE,
-            HistoricalPriceOracle.COINGECKO,
+            HistoricalPriceOracle.ALCHEMY,
         ])
     
     def query_price(self, asset: Asset, timestamp: Timestamp) -> FVal:
@@ -178,172 +272,96 @@ class EventProcessor:
         grouped = defaultdict(list)
         
         for event in events:
-            if event.event_identifier:
-                grouped[event.event_identifier].append(event)
-            else:
-                # Single events without identifier
-                grouped[f'single_{event.timestamp}_{id(event)}'] = [event]
-        
+            grouped[event.event_identifier].append(event)
+
         # Sort events within each group by sequence_index
-        for event_id, event_list in grouped.items():
-            event_list.sort(key=lambda e: (e.timestamp, getattr(e, 'sequence_index', 0)))
+        for event_list in grouped.values():
+            event_list.sort(key=lambda e: e.sequence_index)
         
         return grouped
     
     def _is_fiat_asset(self, asset: Asset) -> bool:
         """Check if an asset is fiat currency."""
-        fiat_symbols = {'EUR', 'USD', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'}
-        return asset.resolve().symbol in fiat_symbols
+        return asset.is_fiat()
     
-    def _process_swap(self, events: List[HistoryBaseEntry]) -> Optional[TaxableEvent]:
+    def _process_swap(
+            self,
+            out_event: HistoryBaseEntry,
+            in_event: HistoryBaseEntry,
+            fee_event: HistoryBaseEntry | None = None,
+    ) -> Optional[TaxableEvent]:
         """Process a swap transaction (multiple events with same identifier)."""
-        out_events = []
-        in_events = []
-        fee_events = []
-        
-        for event in events:
-            # Skip spam assets
-            if hasattr(event, 'asset') and event.asset.is_evm_token():
-                token = event.asset.resolve_to_evm_token()
-                if token.protocol == SPAM_PROTOCOL:
-                    continue
-            
-            direction = event.maybe_get_direction()
-            if direction is None or direction == EventDirection.NEUTRAL:
-                continue
-            
-            if hasattr(event, 'event_subtype') and event.event_subtype == HistoryEventSubType.FEE:
-                fee_events.append(event)
-            elif direction == EventDirection.OUT:
-                out_events.append(event)
-            elif direction == EventDirection.IN:
-                in_events.append(event)
-        
-        # Must have at least one OUT and one IN for a valid swap
-        if not out_events or not in_events:
-            return None
-        
         # Use the first OUT event as the main event
-        main_out = out_events[0]
-        main_in = in_events[0]
-        
-        timestamp = ts_ms_to_sec(main_out.timestamp)
-        
+        timestamp = out_event.get_timestamp_in_sec()
+
+        if (out_asset_id := GlobalDBHandler.get_collection_main_asset(out_event.asset.identifier)) is None:
+            out_asset_id = out_event.asset.identifier
+
+        if (in_asset_id := GlobalDBHandler.get_collection_main_asset(in_event.asset.identifier)) is None:
+            in_asset_id = in_event.asset.identifier
+
+        out_asset = Asset(out_asset_id).resolve()
+        in_asset = Asset(in_asset_id).resolve()
+
         # Calculate values
-        out_price = self.query_price(main_out.asset, timestamp)
-        out_value = main_out.amount * out_price
+        out_price = self.query_price(out_asset, timestamp)
+        out_value = out_event.amount * out_price
         
-        in_price = self.query_price(main_in.asset, timestamp)
-        in_value = main_in.amount * in_price
+        in_price = self.query_price(in_asset, timestamp)
+        in_value = in_event.amount * in_price
         
         # Process fees
         total_fee_value = ZERO
         fee_info = None
-        if fee_events:
-            fee_event = fee_events[0]
-            fee_price = self.query_price(fee_event.asset, timestamp)
+        if fee_event:
+            if (fee_asset_id := GlobalDBHandler.get_collection_main_asset(fee_event.asset.identifier)) is None:
+                fee_asset_id = fee_event.asset.identifier
+
+            fee_price = self.query_price(Asset(fee_asset_id), timestamp)
             fee_value = fee_event.amount * fee_price
             total_fee_value = fee_value
             fee_info = (fee_event.amount, fee_event.asset.resolve().symbol_or_name(), fee_value)
         
         # Update cost basis
-        cost_basis = self._process_disposal(main_out.asset, main_out.amount, timestamp, main_out.event_identifier)
-        self._add_to_cost_basis(main_in.asset, main_in.amount, in_price, timestamp, main_in.event_identifier)
+        cost_basis = self._process_disposal(out_asset, out_event.amount)
+        self._add_to_cost_basis(in_event.asset, in_event.amount, in_price, timestamp, in_event.event_identifier)
         
         # Calculate profit/loss
         profit_loss = out_value - cost_basis - total_fee_value
-        
         return TaxableEvent(
             timestamp=timestamp,
-            event_identifier=main_out.event_identifier,
+            event_identifier=out_event.event_identifier,
             event_type='Trade',
-            asset_sold=main_out.asset.resolve().symbol_or_name(),
-            amount_sold=main_out.amount,
+            asset_sold=out_asset.symbol_or_name(),
+            amount_sold=out_event.amount,
             price_sold_eur=out_price,
             value_sold_eur=out_value,
-            asset_received=main_in.asset.resolve().symbol_or_name(),
-            amount_received=main_in.amount,
+            asset_received=in_asset.symbol_or_name(),
+            amount_received=in_event.amount,
             price_received_eur=in_price,
             value_received_eur=in_value,
-            is_fiat_received=self._is_fiat_asset(main_in.asset),
+            is_fiat_received=in_event.asset.is_fiat(),
+            is_fiat_sold=out_asset.is_fiat(),
             fee_amount=fee_info[0] if fee_info else None,
             fee_asset=fee_info[1] if fee_info else None,
             fee_value_eur=fee_info[2] if fee_info else None,
             cost_basis_eur=cost_basis,
             profit_loss_eur=profit_loss,
-            location=main_out.location.serialize(),
+            location=out_event.location.serialize(),
         )
-    
-    def _process_deposit(self, event: HistoryBaseEntry) -> Optional[TaxableEvent]:
-        """Process a deposit event."""
-        timestamp = ts_ms_to_sec(event.timestamp)
-        price = self.query_price(event.asset, timestamp)
-        value = event.amount * price
-        
-        # Add to cost basis if it's an acquisition
-        self._add_to_cost_basis(event.asset, event.amount, price, timestamp, event.event_identifier)
-        
-        return TaxableEvent(
-            timestamp=timestamp,
-            event_identifier=event.event_identifier,
-            event_type='Deposit',
-            asset_sold='',
-            amount_sold=ZERO,
-            price_sold_eur=ZERO,
-            value_sold_eur=ZERO,
-            asset_received=event.asset.resolve().symbol_or_name(),
-            amount_received=event.amount,
-            price_received_eur=price,
-            value_received_eur=value,
-            is_fiat_received=self._is_fiat_asset(event.asset),
-            fee_amount=None,
-            fee_asset=None,
-            fee_value_eur=None,
-            cost_basis_eur=None,
-            profit_loss_eur=None,
-            location=event.location.serialize(),
-        )
-    
-    def _process_withdrawal(self, event: HistoryBaseEntry) -> Optional[TaxableEvent]:
-        """Process a withdrawal event."""
-        timestamp = ts_ms_to_sec(event.timestamp)
-        price = self.query_price(event.asset, timestamp)
-        value = event.amount * price
-        
-        # Process disposal from cost basis
-        cost_basis = self._process_disposal(event.asset, event.amount, timestamp, event.event_identifier)
-        profit_loss = value - cost_basis
-        
-        return TaxableEvent(
-            timestamp=timestamp,
-            event_identifier=event.event_identifier,
-            event_type='Withdrawal',
-            asset_sold=event.asset.resolve().symbol_or_name(),
-            amount_sold=event.amount,
-            price_sold_eur=price,
-            value_sold_eur=value,
-            asset_received='',
-            amount_received=None,
-            price_received_eur=None,
-            value_received_eur=None,
-            is_fiat_received=False,
-            fee_amount=None,
-            fee_asset=None,
-            fee_value_eur=None,
-            cost_basis_eur=cost_basis,
-            profit_loss_eur=profit_loss,
-            location=event.location.serialize(),
-        )
-    
+
     def _add_to_cost_basis(self, asset: Asset, amount: FVal, price_eur: FVal, timestamp: Timestamp, event_id: str):
         """Add an acquisition to the cost basis."""
         self.cost_basis[asset].append((amount, price_eur, timestamp, event_id))
-        log.info(f'Added {amount} {asset.resolve().symbol_or_name()} to cost basis at {price_eur} EUR/unit')
+        #log.info(f'Added {amount} {asset.resolve().symbol_or_name()} to cost basis at {price_eur} EUR/unit')
     
-    def _process_disposal(self, asset: Asset, amount: FVal, timestamp: Timestamp, event_id: str) -> FVal:
+    def _process_disposal(self, asset: Asset, amount: FVal) -> FVal:
         """Process a disposal using FIFO and return the cost basis."""
         remaining = amount
         total_cost_basis = ZERO
+
+        if asset.identifier == 'EUR':
+            return amount
         
         while remaining > ZERO and self.cost_basis[asset]:
             oldest_amount, oldest_price, oldest_ts, oldest_event_id = self.cost_basis[asset][0]
@@ -367,65 +385,106 @@ class EventProcessor:
         
         return total_cost_basis
     
-    def process_events(self) -> List[TaxableEvent]:
-        """Process all events and return taxable events."""
-        taxable_events = []
-        
-        with self.data.db.conn.read_ctx() as cursor:
-            # Get ALL events to build proper cost basis
-            all_events = self.dbevents.get_history_events(
-                cursor=cursor,
-                filter_query=HistoryEventFilterQuery.make(
-                    from_ts=Timestamp(0),  # From beginning for cost basis
-                    to_ts=END_TS,
-                    order_by_rules=[('timestamp', True), ('sequence_index', True)],
-                ),
-                has_premium=True,
-            )
-        
-        # Group events by identifier
-        grouped_events = self._group_events_by_identifier(all_events)
-        
-        # Process each group chronologically
-        sorted_groups = sorted(grouped_events.items(), key=lambda x: x[1][0].timestamp)
-        
-        for event_id, events in sorted_groups:
-            # Skip events before tax year unless they affect cost basis
-            first_ts = ts_ms_to_sec(events[0].timestamp)
+    def process_group(self, events: List[HistoryBaseEntry]) -> List[TaxableEvent]:
+        events_iterator = iter(events)
+        swaps = []
+        gas_event = None
+        print(events[0].event_identifier)
+        while (event := next(events_iterator, None)) is not None:
+            resolved_asset = event.asset.resolve()
+            if resolved_asset.is_evm_token() and resolved_asset.protocol == SPAM_PROTOCOL:
+                continue
+
+            if (direction := event.maybe_get_direction()) == EventDirection.NEUTRAL:
+                continue
+
+            if isinstance(event, EvmEvent) and event.counterparty == CPT_GAS:
+                gas_event = event
+                self._process_disposal(event.asset, amount=gas_event.amount)
+                continue
+
+            timestamp = event.get_timestamp_in_sec()
+            rule, callback = self.rules.get_event_settings(event)
+            if rule is None:
+                log.error(f'Failed to find rule for event {event.serialize()}')
+                continue
             
-            if len(events) > 1:
-                # Multi-event transaction (likely a swap)
-                taxable_event = self._process_swap(events)
-                if taxable_event and first_ts >= START_TS:
-                    taxable_events.append(taxable_event)
+            spend_event, receive_event, fee = None, None, None
+            if rule.accounting_treatment == TxAccountingTreatment.SWAP:
+                if event.event_type == HistoryEventType.TRADE:
+                    if direction == EventDirection.OUT:
+                        spend_event = event
+                    
+                    if (receive_event := next(events_iterator, None)) is None:
+                        print("!!!!")
+                        return []
+                        assert False, [x.serialize() for x in events]
+
+                    fee = next(events_iterator, None)
+
+                    if event.timestamp >= START_TS:
+                        swaps.append(self._process_swap(
+                            out_event=spend_event,
+                            in_event=receive_event,
+                            fee_event=fee,
+                        ))
             else:
-                # Single event
-                event = events[0]
+                if direction == EventDirection.IN:
+                    self._add_to_cost_basis(
+                        asset=event.asset,
+                        amount=event.amount,
+                        price_eur=self.query_price(event.asset, timestamp),
+                        timestamp=timestamp,
+                        event_id=event.event_identifier,
+                    )
+                else:
+                    self._process_disposal(event.asset, event.amount)
+
+        return swaps
                 
-                # Skip spam
-                if hasattr(event, 'asset') and event.asset.is_evm_token():
-                    token = event.asset.resolve_to_evm_token()
-                    if token.protocol == SPAM_PROTOCOL:
-                        continue
+
+    def process_events(self, all_events: List[HistoryBaseEntry]) -> List[TaxableEvent]:
+        """Process all events and return taxable events."""
+        taxable_events = []    
+        current_event = None
+        group_events = []
+        for event in all_events:
+            if event.event_identifier != current_event:
+                if current_event != None:
+                    taxable_events.extend(self.process_group(group_events))
                 
-                # Determine event type
-                if event.event_type == HistoryEventType.DEPOSIT:
-                    taxable_event = self._process_deposit(event)
-                    if taxable_event and first_ts >= START_TS:
-                        taxable_events.append(taxable_event)
-                elif event.event_type == HistoryEventType.WITHDRAWAL:
-                    taxable_event = self._process_withdrawal(event)
-                    if taxable_event and first_ts >= START_TS:
-                        taxable_events.append(taxable_event)
-                elif event.event_type == HistoryEventType.TRADE:
-                    # Single event trade (shouldn't happen normally)
-                    log.warning(f'Found single event trade: {event.event_identifier}')
+                # reset the group
+                current_event = event.event_identifier
+                group_events = [event]
+            else:
+                group_events.append(event)
+        
+        # process last group
+        taxable_events.extend(self.process_group(group_events))
         
         return taxable_events
     
     def generate_report(self, taxable_events: List[TaxableEvent], output_file: str):
         """Generate CSV report from taxable events."""
         rows = []
+
+        from dataclasses import dataclass
+
+        @dataclass
+        class EntryAsset:
+            valor_transmision: FVal
+            valor_adquisicion: FVal
+
+            def serialize(self):
+                return {
+                    'valor adquisicion': self.valor_adquisicion,
+                    'valor transmision': self.valor_transmision,
+                    'ganancia': self.valor_adquisicion - self.valor_transmision
+                }
+
+        per_asset: dict[Asset, dict[Literal['fiat', 'crypto'], EntryAsset]] = defaultdict(
+            lambda: {'fiat': EntryAsset(ZERO, ZERO), 'crypto': EntryAsset(ZERO, ZERO)}
+        )
         
         for event in taxable_events:
             rows.append({
@@ -452,6 +511,15 @@ class EventProcessor:
                 'Coste Base EUR': float(event.cost_basis_eur) if event.cost_basis_eur else 0,
                 'Ganancia/Perdida EUR': float(event.profit_loss_eur) if event.profit_loss_eur else 0,
             })
+
+            if event.is_fiat_received:
+                entry = per_asset[event.asset_sold]
+                entry['fiat'].valor_transmision += event.cost_basis_eur or ZERO
+                entry['fiat'].valor_adquisicion += event.value_received_eur or ZERO
+            elif event.is_fiat_sold is False:
+                entry = per_asset[event.asset_sold]
+                entry['crypto'].valor_transmision += event.cost_basis_eur or ZERO
+                entry['crypto'].valor_adquisicion += event.value_received_eur or ZERO
         
         df = pl.DataFrame(rows)
         
@@ -468,13 +536,16 @@ class EventProcessor:
         net_profit_loss = sum(e.profit_loss_eur for e in taxable_events if e.profit_loss_eur)
         
         print(f"\n=== Resumen Fiscal ===")
-        print(f"Ganancias totales: {total_profit:.2f} EUR")
-        print(f"Perdidas totales: {total_loss:.2f} EUR")
-        print(f"Ganancia/Perdida neta: {net_profit_loss:.2f} EUR")
+        print(f"Ganancias totales: {total_profit} EUR")
+        print(f"Perdidas totales: {total_loss} EUR")
+        print(f"Ganancia/Perdida neta: {net_profit_loss} EUR")
         
         # Save to CSV
         df.write_csv(output_file, separator=';')
         print(f"\nReporte guardado en: {output_file}")
+
+        import pprint
+        pprint.pprint([{asset: {'fiat': x['fiat'].serialize(), 'crypto': x['crypto'].serialize()}} for asset, x in per_asset.items()])
         
         return df
 
@@ -491,7 +562,19 @@ def main():
     
     # Process events
     print("Procesando eventos...")
-    taxable_events = processor.process_events()
+    with processor.data.db.conn.read_ctx() as cursor:
+            # Get ALL events to build proper cost basis
+            all_events = processor.dbevents.get_history_events(
+                cursor=cursor,
+                filter_query=HistoryEventFilterQuery.make(
+                    from_ts=Timestamp(0),  # From beginning for cost basis
+                    to_ts=END_TS,
+                    # location=Location.COINBASE,
+                    order_by_rules=[('timestamp', True), ('sequence_index', True)],
+                ),
+                has_premium=True,
+            )
+    taxable_events = processor.process_events(all_events)
     
     # Generate report
     output_file = "hacienda/eventos_fiscales_2024.csv"
