@@ -72,6 +72,7 @@ AVAILABLE_MODULES_MAP = {
 DEFAULT_OFF_MODULES = {'makerdao_dsr'}
 
 
+# NOTE: Remember to update `get_token_counterparty_protocol()` if these constants are ever updated.
 UNISWAP_PROTOCOL: Final = 'UNI-V2'
 UNISWAPV3_PROTOCOL: Final = 'UNI-V3'
 SUSHISWAP_PROTOCOL: Final = 'SLP'

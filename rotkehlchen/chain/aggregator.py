@@ -27,6 +27,7 @@ from rotkehlchen.chain.arbitrum_one.modules.thegraph.balances import (
     ThegraphBalances as ThegraphBalancesArbitrumOne,
 )
 from rotkehlchen.chain.arbitrum_one.modules.umami.balances import UmamiBalances
+from rotkehlchen.chain.balances import BlockchainBalances, BlockchainBalancesUpdate
 from rotkehlchen.chain.base.modules.aerodrome.balances import AerodromeBalances
 from rotkehlchen.chain.base.modules.extrafi.balances import (
     ExtrafiBalances as ExtrafiBalancesBase,
@@ -57,11 +58,23 @@ from rotkehlchen.chain.ethereum.modules.octant.balances import OctantBalances
 from rotkehlchen.chain.ethereum.modules.pendle.balances import PendleBalances
 from rotkehlchen.chain.ethereum.modules.pickle_finance.constants import CPT_PICKLE
 from rotkehlchen.chain.ethereum.modules.safe.balances import SafeBalances
+from rotkehlchen.chain.ethereum.modules.sushiswap.constants import CPT_SUSHISWAP_V2
 from rotkehlchen.chain.ethereum.modules.thegraph.balances import ThegraphBalances
+from rotkehlchen.chain.ethereum.modules.yearn.constants import (
+    CPT_YEARN_V1,
+    CPT_YEARN_V2,
+    CPT_YEARN_V3,
+)
 from rotkehlchen.chain.evm.decoding.compound.v3.balances import Compoundv3Balances
+from rotkehlchen.chain.evm.decoding.curve.constants import CPT_CURVE
 from rotkehlchen.chain.evm.decoding.curve.lend.balances import CurveLendBalances
 from rotkehlchen.chain.evm.decoding.hop.balances import HopBalances
+from rotkehlchen.chain.evm.decoding.hop.constants import CPT_HOP
+from rotkehlchen.chain.evm.decoding.morpho.constants import CPT_MORPHO
+from rotkehlchen.chain.evm.decoding.pendle.constants import CPT_PENDLE
+from rotkehlchen.chain.evm.decoding.uniswap.constants import CPT_UNISWAP_V2, CPT_UNISWAP_V3
 from rotkehlchen.chain.evm.decoding.uniswap.v3.balances import UniswapV3Balances
+from rotkehlchen.chain.evm.decoding.velodrome.constants import CPT_AERODROME, CPT_VELODROME
 from rotkehlchen.chain.gnosis.modules.giveth.balances import GivethBalances as GivethGnosisBalances
 from rotkehlchen.chain.optimism.modules.extrafi.balances import (
     ExtrafiBalances as ExtrafiBalancesOp,
@@ -98,14 +111,29 @@ from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.premium.premium import Premium
 from rotkehlchen.types import (
+    AERODROME_POOL_PROTOCOL,
     CHAIN_IDS_WITH_BALANCE_PROTOCOLS,
     CHAINS_WITH_CHAIN_MANAGER,
+    CURVE_LENDING_VAULTS_PROTOCOL,
+    CURVE_POOL_PROTOCOL,
     EVM_CHAIN_IDS_WITH_TRANSACTIONS,
+    HOP_PROTOCOL_LP,
+    MORPHO_VAULT_PROTOCOL,
+    PENDLE_PROTOCOL,
+    PICKLE_JAR_PROTOCOL,
+    SPAM_PROTOCOL,
     SUPPORTED_CHAIN_IDS,
     SUPPORTED_EVM_CHAINS_TYPE,
     SUPPORTED_EVM_EVMLIKE_CHAINS,
     SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
     SUPPORTED_SUBSTRATE_CHAINS,
+    SUSHISWAP_PROTOCOL,
+    UNISWAP_PROTOCOL,
+    UNISWAPV3_PROTOCOL,
+    VELODROME_POOL_PROTOCOL,
+    YEARN_VAULTS_V1_PROTOCOL,
+    YEARN_VAULTS_V2_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
     BlockchainAddress,
     ChainID,
     ChecksumEvmAddress,
@@ -121,8 +149,6 @@ from rotkehlchen.utils.interfaces import EthereumModule, ProgressUpdater
 from rotkehlchen.utils.misc import ts_now
 from rotkehlchen.utils.mixins.cacheable import CacheableMixIn, cache_response_timewise
 from rotkehlchen.utils.mixins.lockable import LockableQueryMixIn, protect_with_lock
-
-from .balances import BlockchainBalances, BlockchainBalancesUpdate
 
 if TYPE_CHECKING:
     from rotkehlchen.chain.arbitrum_one.manager import ArbitrumOneManager
@@ -271,6 +297,41 @@ CHAIN_TO_BALANCE_PROTOCOLS = {
     ChainID.SCROLL: (Compoundv3Balances,),
     ChainID.BINANCE_SC: (UniswapV3Balances,),
 }
+
+
+def get_token_counterparty_protocol(token: 'EvmToken') -> str | None:
+    """Converts a token's protocol identifier to the corresponding counterparty type.
+    Returns None for spam tokens, otherwise maps known protocols to their CPT constants.
+    """
+    if token.protocol == SPAM_PROTOCOL:
+        return None
+    elif token.protocol == AERODROME_POOL_PROTOCOL:
+        return CPT_AERODROME
+    elif token.protocol == VELODROME_POOL_PROTOCOL:
+        return CPT_VELODROME
+    elif token.protocol == PICKLE_JAR_PROTOCOL:
+        return CPT_PICKLE
+    elif token.protocol == SUSHISWAP_PROTOCOL:
+        return CPT_SUSHISWAP_V2
+    elif token.protocol == UNISWAP_PROTOCOL:
+        return CPT_UNISWAP_V2
+    elif token.protocol == UNISWAPV3_PROTOCOL:
+        return CPT_UNISWAP_V3
+    elif token.protocol == YEARN_VAULTS_V1_PROTOCOL:
+        return CPT_YEARN_V1
+    elif token.protocol == YEARN_VAULTS_V2_PROTOCOL:
+        return CPT_YEARN_V2
+    elif token.protocol == YEARN_VAULTS_V3_PROTOCOL:
+        return CPT_YEARN_V3
+    elif token.protocol in (CURVE_POOL_PROTOCOL, CURVE_LENDING_VAULTS_PROTOCOL):
+        return CPT_CURVE
+    elif token.protocol == PENDLE_PROTOCOL:
+        return CPT_PENDLE
+    elif token.protocol == HOP_PROTOCOL_LP:
+        return CPT_HOP
+    elif token.protocol == MORPHO_VAULT_PROTOCOL:
+        return CPT_MORPHO
+    return token.protocol
 
 
 T = TypeVar('T')
@@ -936,12 +997,13 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                     amount=token_balance,
                     usd_value=token_balance * token_usd_price[token],
                 )
+                protocol = get_token_counterparty_protocol(token) or balance_label
                 if dsr_proxy_append is True:
-                    balances[account].assets[token][balance_label] += balance
+                    balances[account].assets[token][protocol] += balance
                 elif token.is_liability():
-                    balances[account].liabilities[token][balance_label] = balance
+                    balances[account].liabilities[token][protocol] = balance
                 else:
-                    balances[account].assets[token][balance_label] = balance
+                    balances[account].assets[token][protocol] = balance
 
     def query_evm_tokens(
             self,
