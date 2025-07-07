@@ -29,6 +29,7 @@ from rotkehlchen.chain.evm.decoding.uniswap.v3.constants import (
     INCREASE_LIQUIDITY_SIGNATURE,
     SWAP_SIGNATURE,
 )
+from rotkehlchen.chain.evm.protocols import UNISWAPV3_PROTOCOL
 from rotkehlchen.chain.evm.structures import EvmTxReceiptLog, SwapData
 from rotkehlchen.constants import ONE, ZERO
 from rotkehlchen.constants.resolver import (
@@ -42,7 +43,6 @@ from rotkehlchen.history.events.structures.types import HistoryEventSubType, His
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
     CHAINID_TO_SUPPORTED_BLOCKCHAIN,
-    UNISWAPV3_PROTOCOL,
     ChecksumEvmAddress,
     EvmTransaction,
     TokenKind,

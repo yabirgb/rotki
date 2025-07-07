@@ -13,6 +13,7 @@ from rotkehlchen.chain.evm.decoding.morpho.utils import (
     query_morpho_reward_distributors,
     query_morpho_vaults,
 )
+from rotkehlchen.chain.evm.protocols import MORPHO_VAULT_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.timing import WEEK_IN_SECONDS
 from rotkehlchen.globaldb.cache import (
@@ -23,7 +24,7 @@ from rotkehlchen.globaldb.cache import (
 )
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.tests.utils.mock import MockResponse
-from rotkehlchen.types import MORPHO_VAULT_PROTOCOL, CacheType, ChainID
+from rotkehlchen.types import CacheType, ChainID
 
 if TYPE_CHECKING:
     from unittest.mock import _patch

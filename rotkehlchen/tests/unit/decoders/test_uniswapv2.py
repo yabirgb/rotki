@@ -9,6 +9,7 @@ from rotkehlchen.chain.ethereum.modules.uniswap.v2.common import UNISWAP_V2_ROUT
 from rotkehlchen.chain.evm.constants import ZERO_ADDRESS
 from rotkehlchen.chain.evm.decoding.constants import CPT_GAS
 from rotkehlchen.chain.evm.decoding.uniswap.constants import CPT_UNISWAP_V2
+from rotkehlchen.chain.evm.protocols import UNISWAP_PROTOCOL
 from rotkehlchen.chain.evm.structures import EvmTxReceipt, EvmTxReceiptLog
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.assets import A_DAI, A_ETH, A_UNI, A_USDC
@@ -21,7 +22,6 @@ from rotkehlchen.history.events.structures.types import HistoryEventSubType, His
 from rotkehlchen.tests.utils.decoders import patch_decoder_reload_data
 from rotkehlchen.tests.utils.ethereum import get_decoded_events_of_transaction
 from rotkehlchen.types import (
-    UNISWAP_PROTOCOL,
     ChainID,
     EvmTransaction,
     Location,

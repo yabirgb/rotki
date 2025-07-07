@@ -22,6 +22,7 @@ from rotkehlchen.assets.ignored_assets_handling import IgnoredAssetsHandling
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.types import AssetData, AssetType
 from rotkehlchen.chain.evm.constants import DEFAULT_TOKEN_DECIMALS
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.structures import EvmTokenDetectionData
 from rotkehlchen.constants.assets import A_ETH, A_ETH2, CONSTANT_ASSETS
@@ -40,7 +41,6 @@ from rotkehlchen.history.deserialization import deserialize_price
 from rotkehlchen.history.types import HistoricalPrice, HistoricalPriceOracle
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
-    SPAM_PROTOCOL,
     ChainID,
     ChecksumEvmAddress,
     CounterpartyAssetMappingDeleteEntry,

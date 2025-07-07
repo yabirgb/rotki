@@ -6,6 +6,7 @@ from rotkehlchen.accounting.structures.balance import Balance, BalanceSheet
 from rotkehlchen.assets.utils import get_or_create_evm_token
 from rotkehlchen.chain.ethereum.interfaces.balances import BalancesSheetType, ProtocolWithBalance
 from rotkehlchen.chain.evm.decoding.uniswap.constants import CPT_UNISWAP_V3
+from rotkehlchen.chain.evm.protocols import UNISWAPV3_PROTOCOL
 from rotkehlchen.chain.evm.tokens import get_chunk_size_call_order
 from rotkehlchen.constants import ONE
 from rotkehlchen.constants.prices import ZERO_PRICE
@@ -13,7 +14,7 @@ from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import UNISWAPV3_PROTOCOL, ChecksumEvmAddress, TokenKind
+from rotkehlchen.types import ChecksumEvmAddress, TokenKind
 from rotkehlchen.utils.misc import get_chunks
 
 from .constants import (

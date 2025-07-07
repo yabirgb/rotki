@@ -12,11 +12,12 @@ from rotkehlchen.chain.evm.decoding.structures import (
     TransferEnrichmentOutput,
 )
 from rotkehlchen.chain.evm.decoding.types import CounterpartyDetails
+from rotkehlchen.chain.evm.protocols import PICKLE_JAR_PROTOCOL
 from rotkehlchen.constants.resolver import ethaddress_to_identifier
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import PICKLE_JAR_PROTOCOL, ChecksumEvmAddress
+from rotkehlchen.types import ChecksumEvmAddress
 from rotkehlchen.utils.misc import bytes_to_address
 
 from .constants import CORN_TOKEN_ID, CORNICHON_CLAIM, CPT_PICKLE

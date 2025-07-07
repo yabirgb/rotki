@@ -10,6 +10,7 @@ from rotkehlchen.assets.utils import TokenEncounterInfo, get_or_create_evm_token
 from rotkehlchen.chain.evm.constants import DEFAULT_TOKEN_DECIMALS
 from rotkehlchen.chain.evm.decoding.morpho.constants import MORPHO_VAULT_ABI
 from rotkehlchen.chain.evm.decoding.utils import get_vault_price, update_cached_vaults
+from rotkehlchen.chain.evm.protocols import MORPHO_VAULT_PROTOCOL
 from rotkehlchen.constants import EXP18_INT, ONE
 from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.errors.serialization import DeserializationError
@@ -18,7 +19,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_evm_address, deserialize_int
 from rotkehlchen.types import (
-    MORPHO_VAULT_PROTOCOL,
     CacheType,
     ChainID,
     Price,

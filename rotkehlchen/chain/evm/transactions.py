@@ -16,6 +16,7 @@ from rotkehlchen.api.websockets.typedefs import (
 from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.evm.constants import GENESIS_HASH, LAST_SPAM_TXS_CACHE
 from rotkehlchen.chain.evm.decoding.constants import ERC20_OR_ERC721_TRANSFER
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.evm.types import EvmAccount
 from rotkehlchen.chain.structures import TimestampOrBlockRange
 from rotkehlchen.constants.resolver import evm_address_to_identifier
@@ -31,7 +32,6 @@ from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.tasks.assets import MULTISEND_SPAM_THRESHOLD
 from rotkehlchen.types import (
     CHAINID_TO_SUPPORTED_BLOCKCHAIN,
-    SPAM_PROTOCOL,
     ChainID,
     ChecksumEvmAddress,
     EvmInternalTransaction,

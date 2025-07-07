@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.evm.decoding.thegraph.constants import CPT_THEGRAPH
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.gnosis.modules.monerium.constants import (
     V1_TO_V2_MONERIUM_MAPPINGS as GNOSIS_MONERIUM_MAPPINGS,
 )
@@ -19,7 +20,7 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.globaldb.utils import set_token_spam_protocol
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import SPAM_PROTOCOL, CacheType, Location
+from rotkehlchen.types import CacheType, Location
 from rotkehlchen.utils.misc import address_to_bytes32
 from rotkehlchen.utils.progress import perform_userdb_migration_steps, progress_step
 

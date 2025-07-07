@@ -7,6 +7,11 @@ import requests
 
 from rotkehlchen.assets.asset import UnderlyingToken
 from rotkehlchen.assets.utils import TokenEncounterInfo, get_or_create_evm_token
+from rotkehlchen.chain.evm.protocols import (
+    YEARN_STAKING_PROTOCOL,
+    YEARN_VAULTS_V2_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
+)
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants import ONE
 from rotkehlchen.db.settings import CachedSettings
@@ -20,9 +25,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_int
 from rotkehlchen.types import (
-    YEARN_STAKING_PROTOCOL,
-    YEARN_VAULTS_V2_PROTOCOL,
-    YEARN_VAULTS_V3_PROTOCOL,
     CacheType,
     ChainID,
     TokenKind,

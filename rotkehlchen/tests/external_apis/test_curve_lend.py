@@ -8,6 +8,7 @@ from freezegun import freeze_time
 
 from rotkehlchen.chain.evm.decoding.curve.constants import CURVE_BASE_API_URL
 from rotkehlchen.chain.evm.decoding.curve.lend.utils import query_curve_lending_vaults
+from rotkehlchen.chain.evm.protocols import CURVE_LENDING_VAULTS_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.timing import WEEK_IN_SECONDS
 from rotkehlchen.globaldb.cache import (
@@ -16,7 +17,7 @@ from rotkehlchen.globaldb.cache import (
 )
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.tests.utils.mock import MockResponse
-from rotkehlchen.types import CURVE_LENDING_VAULTS_PROTOCOL, CacheType, ChainID
+from rotkehlchen.types import CacheType, ChainID
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler

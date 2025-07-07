@@ -27,6 +27,11 @@ from rotkehlchen.chain.evm.decoding.structures import (
 )
 from rotkehlchen.chain.evm.decoding.types import CounterpartyDetails
 from rotkehlchen.chain.evm.decoding.utils import maybe_reshuffle_events
+from rotkehlchen.chain.evm.protocols import (
+    YEARN_VAULTS_V1_PROTOCOL,
+    YEARN_VAULTS_V2_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
+)
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.resolver import ethaddress_to_identifier
 from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
@@ -34,9 +39,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
-    YEARN_VAULTS_V1_PROTOCOL,
-    YEARN_VAULTS_V2_PROTOCOL,
-    YEARN_VAULTS_V3_PROTOCOL,
     CacheType,
     ChainID,
 )

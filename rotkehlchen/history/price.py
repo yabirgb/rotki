@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Optional
 from rotkehlchen.api.websockets.typedefs import ProgressUpdateSubType, WSMessageType
 from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.evm.decoding.uniswap.v3.utils import get_uniswap_v3_position_price
+from rotkehlchen.chain.evm.protocols import UNISWAP_PROTOCOL, UNISWAPV3_PROTOCOL
 from rotkehlchen.chain.evm.utils import lp_price_from_uniswaplike_pool_contract
 from rotkehlchen.chain.polygon_pos.constants import POLYGON_POS_POL_HARDFORK
 from rotkehlchen.constants import HOUR_IN_SECONDS, ONE
@@ -28,7 +29,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import UNISWAP_PROTOCOL, UNISWAPV3_PROTOCOL, Price, Timestamp
+from rotkehlchen.types import Price, Timestamp
 
 from .types import HistoricalPrice, HistoricalPriceOracle, HistoricalPriceOracleInstance
 

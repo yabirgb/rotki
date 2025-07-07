@@ -6,6 +6,7 @@ import pytest
 
 from rotkehlchen.assets.asset import EvmToken
 from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV2Oracle, UniswapV3Oracle
+from rotkehlchen.chain.evm.protocols import UNISWAP_PROTOCOL, UNISWAPV3_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.assets import A_AAVE, A_BTC, A_USD
 from rotkehlchen.constants.misc import ONE, ZERO
@@ -26,14 +27,7 @@ from rotkehlchen.history.types import (
 )
 from rotkehlchen.tests.utils.constants import A_GBP
 from rotkehlchen.tests.utils.ethereum import INFURA_ETH_NODE
-from rotkehlchen.types import (
-    UNISWAP_PROTOCOL,
-    UNISWAPV3_PROTOCOL,
-    ChainID,
-    Price,
-    Timestamp,
-    TokenKind,
-)
+from rotkehlchen.types import ChainID, Price, Timestamp, TokenKind
 
 if TYPE_CHECKING:
     from rotkehlchen.assets.asset import FiatAsset

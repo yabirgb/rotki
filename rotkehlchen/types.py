@@ -72,45 +72,8 @@ AVAILABLE_MODULES_MAP = {
 DEFAULT_OFF_MODULES = {'makerdao_dsr'}
 
 
-# NOTE: Remember to update `get_token_counterparty_protocol()` if these constants are ever updated.
-UNISWAP_PROTOCOL: Final = 'UNI-V2'
-UNISWAPV3_PROTOCOL: Final = 'UNI-V3'
-SUSHISWAP_PROTOCOL: Final = 'SLP'
-# this variable is used in the decoders and maps to the protocol field used in the database
-# for yearn vaults v1
-YEARN_VAULTS_V1_PROTOCOL = 'yearn_vaults_v1'
-YEARN_VAULTS_V2_PROTOCOL = 'yearn_vaults_v2'
-YEARN_VAULTS_V3_PROTOCOL = 'yearn_vaults_v3'
-YEARN_STAKING_PROTOCOL = 'yearn_staking'
-CURVE_POOL_PROTOCOL = 'curve_pool'
-VELODROME_POOL_PROTOCOL = 'velodrome_pool'
-AERODROME_POOL_PROTOCOL = 'aerodrome_pool'
-PICKLE_JAR_PROTOCOL = 'pickle_jar'
-SPAM_PROTOCOL = 'spam'
-GEARBOX_PROTOCOL = 'gearbox'
-HOP_PROTOCOL_LP = 'hop_lp'
-MORPHO_VAULT_PROTOCOL: Final = 'morpho_vaults'
-CURVE_LENDING_VAULTS_PROTOCOL = 'curve_lending_vaults'
-PENDLE_PROTOCOL = 'pendle'
+# Protocol constants have been moved to rotkehlchen.chain.evm.protocols to avoid circular imports
 
-
-# The protocols for which we know how to calculate their prices
-ProtocolsWithPriceLogic = (
-    UNISWAP_PROTOCOL,
-    YEARN_VAULTS_V2_PROTOCOL,
-    CURVE_POOL_PROTOCOL,
-    VELODROME_POOL_PROTOCOL,
-    HOP_PROTOCOL_LP,
-    UNISWAPV3_PROTOCOL,
-    AERODROME_POOL_PROTOCOL,
-    PENDLE_PROTOCOL,
-)
-
-LP_TOKEN_AS_POOL_PROTOCOLS = (  # In these protocols the LP token of a pool and the pool itself are the same contract  # noqa: E501
-    UNISWAP_PROTOCOL,
-    VELODROME_POOL_PROTOCOL,
-    AERODROME_POOL_PROTOCOL,
-)
 LP_TOKEN_AS_POOL_CONTRACT_ABIS = Literal['VELO_V2_LP', 'UNISWAP_V2_LP']  # These contract are both the pool and the LP token of the pool  # noqa: E501
 
 T_Timestamp = int

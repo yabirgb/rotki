@@ -5,10 +5,10 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rotkehlchen.chain.evm.protocols import YEARN_VAULTS_V1_PROTOCOL
 from rotkehlchen.db.utils import update_table_schema
 from rotkehlchen.errors.misc import DBUpgradeError
 from rotkehlchen.logging import RotkehlchenLogsAdapter, enter_exit_debug_log
-from rotkehlchen.types import YEARN_VAULTS_V1_PROTOCOL
 from rotkehlchen.utils.progress import perform_globaldb_upgrade_steps, progress_step
 
 if TYPE_CHECKING:

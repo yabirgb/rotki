@@ -39,6 +39,19 @@ from rotkehlchen.chain.evm.decoding.morpho.utils import get_morpho_vault_token_p
 from rotkehlchen.chain.evm.decoding.pendle.constants import CPT_PENDLE
 from rotkehlchen.chain.evm.decoding.pendle.utils import query_pendle_price
 from rotkehlchen.chain.evm.decoding.uniswap.v3.utils import get_uniswap_v3_position_price
+from rotkehlchen.chain.evm.protocols import (
+    CURVE_LENDING_VAULTS_PROTOCOL,
+    CURVE_POOL_PROTOCOL,
+    GEARBOX_PROTOCOL,
+    HOP_PROTOCOL_LP,
+    LP_TOKEN_AS_POOL_PROTOCOLS,
+    MORPHO_VAULT_PROTOCOL,
+    UNISWAPV3_PROTOCOL,
+    YEARN_STAKING_PROTOCOL,
+    YEARN_VAULTS_V2_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
+    ProtocolsWithPriceLogic,
+)
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.evm.utils import lp_price_from_uniswaplike_pool_contract
 from rotkehlchen.chain.polygon_pos.constants import POLYGON_POS_POL_HARDFORK
@@ -111,20 +124,9 @@ from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.oracles.structures import CurrentPriceOracle
 from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.types import (
-    CURVE_LENDING_VAULTS_PROTOCOL,
-    CURVE_POOL_PROTOCOL,
-    GEARBOX_PROTOCOL,
-    HOP_PROTOCOL_LP,
-    LP_TOKEN_AS_POOL_PROTOCOLS,
-    MORPHO_VAULT_PROTOCOL,
-    UNISWAPV3_PROTOCOL,
-    YEARN_STAKING_PROTOCOL,
-    YEARN_VAULTS_V2_PROTOCOL,
-    YEARN_VAULTS_V3_PROTOCOL,
     CacheType,
     ChainID,
     Price,
-    ProtocolsWithPriceLogic,
     Timestamp,
     TokenKind,
 )

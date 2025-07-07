@@ -2,9 +2,10 @@ from typing import TYPE_CHECKING
 
 from rotkehlchen.assets.asset import UnderlyingToken
 from rotkehlchen.assets.utils import get_or_create_evm_token
+from rotkehlchen.chain.evm.protocols import MORPHO_VAULT_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants import ONE
-from rotkehlchen.types import MORPHO_VAULT_PROTOCOL, ChainID, TokenKind
+from rotkehlchen.types import ChainID, TokenKind
 
 if TYPE_CHECKING:
     from rotkehlchen.assets.asset import EvmToken

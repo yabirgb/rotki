@@ -19,6 +19,7 @@ from rotkehlchen.assets.utils import (
     get_crypto_asset_by_symbol,
     get_or_create_evm_token,
 )
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.constants.assets import A_DAI, A_USDT
 from rotkehlchen.constants.misc import GLOBALDB_NAME
 from rotkehlchen.constants.resolver import evm_address_to_identifier, strethaddress_to_identifier
@@ -34,7 +35,7 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.tasks.assets import autodetect_spam_assets_in_db
 from rotkehlchen.tasks.manager import should_run_periodic_task
 from rotkehlchen.tests.utils.factories import make_evm_address
-from rotkehlchen.types import SPAM_PROTOCOL, CacheType, ChainID, TokenKind
+from rotkehlchen.types import CacheType, ChainID, TokenKind
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler

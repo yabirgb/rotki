@@ -26,6 +26,12 @@ from rotkehlchen.chain.evm.decoding.curve.curve_cache import (
 from rotkehlchen.chain.evm.decoding.pendle.constants import CPT_PENDLE
 from rotkehlchen.chain.evm.decoding.stakedao.constants import CPT_STAKEDAO
 from rotkehlchen.chain.evm.node_inquirer import _query_web3_get_logs, construct_event_filter_params
+from rotkehlchen.chain.evm.protocols import (
+    AERODROME_POOL_PROTOCOL,
+    UNISWAPV3_PROTOCOL,
+    VELODROME_POOL_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
+)
 from rotkehlchen.chain.evm.types import NodeName, string_to_evm_address
 from rotkehlchen.chain.gnosis.transactions import ADDED_RECEIVER_ABI, BLOCKREWARDS_ADDRESS
 from rotkehlchen.chain.polygon_pos.constants import POLYGON_POS_POL_HARDFORK
@@ -80,11 +86,7 @@ from rotkehlchen.tests.utils.constants import A_CNY, A_JPY
 from rotkehlchen.tests.utils.mock import MockResponse
 from rotkehlchen.tests.utils.morpho import create_ethereum_morpho_vault_token
 from rotkehlchen.types import (
-    AERODROME_POOL_PROTOCOL,
     EVM_CHAINS_WITH_TRANSACTIONS,
-    UNISWAPV3_PROTOCOL,
-    VELODROME_POOL_PROTOCOL,
-    YEARN_VAULTS_V3_PROTOCOL,
     CacheType,
     ChainID,
     ChecksumEvmAddress,

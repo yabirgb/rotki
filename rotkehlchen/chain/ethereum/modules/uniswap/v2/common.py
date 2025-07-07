@@ -22,6 +22,7 @@ from rotkehlchen.chain.evm.decoding.structures import (
 )
 from rotkehlchen.chain.evm.decoding.uniswap.constants import CPT_UNISWAP_V2
 from rotkehlchen.chain.evm.decoding.utils import maybe_reshuffle_events
+from rotkehlchen.chain.evm.protocols import SUSHISWAP_PROTOCOL, UNISWAP_PROTOCOL
 from rotkehlchen.chain.evm.structures import EvmTxReceiptLog
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants import ZERO
@@ -35,8 +36,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
-    SUSHISWAP_PROTOCOL,
-    UNISWAP_PROTOCOL,
     ChecksumEvmAddress,
     EvmTransaction,
     EVMTxHash,

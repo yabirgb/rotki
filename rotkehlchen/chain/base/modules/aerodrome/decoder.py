@@ -7,9 +7,10 @@ from rotkehlchen.chain.evm.decoding.velodrome.decoder import VelodromeLikeDecode
 from rotkehlchen.chain.evm.decoding.velodrome.velodrome_cache import (
     read_aerodrome_pools_and_gauges_from_cache,
 )
+from rotkehlchen.chain.evm.protocols import AERODROME_POOL_PROTOCOL
 from rotkehlchen.history.events.structures.evm_event import EvmProduct
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import AERODROME_POOL_PROTOCOL, CacheType
+from rotkehlchen.types import CacheType
 
 from .constants import ROUTER, VOTER_CONTRACT_ADDRESS, VOTING_ESCROW_CONTRACT_ADDRESS
 

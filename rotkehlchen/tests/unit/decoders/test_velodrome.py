@@ -5,6 +5,7 @@ from rotkehlchen.assets.utils import get_or_create_evm_token
 from rotkehlchen.chain.evm.constants import ZERO_ADDRESS
 from rotkehlchen.chain.evm.decoding.constants import CPT_GAS
 from rotkehlchen.chain.evm.decoding.velodrome.constants import CPT_VELODROME
+from rotkehlchen.chain.evm.protocols import VELODROME_POOL_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.optimism.modules.velodrome.decoder import ROUTER_V1, ROUTER_V2
 from rotkehlchen.constants import ONE, ZERO
@@ -17,7 +18,6 @@ from rotkehlchen.history.events.structures.evm_swap import EvmSwapEvent
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.tests.utils.ethereum import get_decoded_events_of_transaction
 from rotkehlchen.types import (
-    VELODROME_POOL_PROTOCOL,
     CacheType,
     ChainID,
     Location,

@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from rotkehlchen.assets.resolver import AssetResolver
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.db.drivers.gevent import DBConnection, DBConnectionType
 from rotkehlchen.errors.misc import DBUpgradeError
-from rotkehlchen.types import SPAM_PROTOCOL
 
 if TYPE_CHECKING:
     from rotkehlchen.assets.asset import EvmToken

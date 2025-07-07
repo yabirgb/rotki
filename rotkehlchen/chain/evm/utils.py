@@ -7,6 +7,11 @@ from web3.types import BlockIdentifier
 from rotkehlchen.api.websockets.typedefs import ProgressUpdateSubType, WSMessageType
 from rotkehlchen.assets.asset import Asset, EvmToken
 from rotkehlchen.chain.evm.contracts import EvmContract
+from rotkehlchen.chain.evm.protocols import (
+    AERODROME_POOL_PROTOCOL,
+    UNISWAP_PROTOCOL,
+    VELODROME_POOL_PROTOCOL,
+)
 from rotkehlchen.constants import ZERO
 from rotkehlchen.constants.resolver import evm_address_to_identifier
 from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
@@ -15,9 +20,6 @@ from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_fval
 from rotkehlchen.types import (
-    AERODROME_POOL_PROTOCOL,
-    UNISWAP_PROTOCOL,
-    VELODROME_POOL_PROTOCOL,
     ChainID,
     Price,
     Timestamp,

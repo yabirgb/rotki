@@ -98,6 +98,7 @@ from rotkehlchen.chain.evm.names import (
     maybe_resolve_name,
     search_for_addresses_names,
 )
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.evm.types import (
     ChainID,
     NodeName,
@@ -241,7 +242,6 @@ from rotkehlchen.types import (
     EVM_CHAIN_IDS_WITH_TRANSACTIONS,
     EVM_CHAIN_IDS_WITH_TRANSACTIONS_TYPE,
     EVM_EVMLIKE_LOCATIONS,
-    SPAM_PROTOCOL,
     SUPPORTED_BITCOIN_CHAINS,
     SUPPORTED_CHAIN_IDS,
     SUPPORTED_EVM_CHAINS,

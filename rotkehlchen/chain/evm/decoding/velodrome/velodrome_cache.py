@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 from rotkehlchen.assets.utils import TokenEncounterInfo, get_or_create_evm_token
 from rotkehlchen.chain.evm.constants import ZERO_ADDRESS
 from rotkehlchen.chain.evm.decoding.velodrome.constants import CPT_AERODROME, CPT_VELODROME
+from rotkehlchen.chain.evm.protocols import (
+    AERODROME_POOL_PROTOCOL,
+    VELODROME_POOL_PROTOCOL,
+)
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.evm.utils import (
     maybe_notify_cache_query_status,
@@ -22,8 +26,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.types import (
-    AERODROME_POOL_PROTOCOL,
-    VELODROME_POOL_PROTOCOL,
     AddressbookEntry,
     CacheType,
     ChainID,

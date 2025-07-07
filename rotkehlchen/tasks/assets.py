@@ -30,6 +30,7 @@ from rotkehlchen.chain.evm.decoding.aave.v3.constants import (
     AAVE_V3_DATA_PROVIDER as AAVE_V3_DATA_PROVIDER_EVM,
 )
 from rotkehlchen.chain.evm.decoding.spark.constants import CPT_SPARK
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.gnosis.modules.aave.v3.constants import (
     AAVE_V3_DATA_PROVIDER as AAVE_V3_DATA_PROVIDER_GNO,
@@ -70,7 +71,6 @@ from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.types import (
     CHAINID_TO_SUPPORTED_BLOCKCHAIN,
     EVM_LOCATIONS,
-    SPAM_PROTOCOL,
     SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
     CacheType,
     ChainID,

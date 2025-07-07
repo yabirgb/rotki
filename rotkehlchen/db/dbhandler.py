@@ -28,6 +28,7 @@ from rotkehlchen.chain.bitcoin.xpub import (
     XpubDerivedAddressData,
     deserialize_derivation_path_for_db,
 )
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.chain.evm.types import NodeName, WeightedNode
 from rotkehlchen.chain.gnosis.constants import BRIDGE_QUERIED_ADDRESS_PREFIX
 from rotkehlchen.chain.substrate.types import SubstrateAddress
@@ -117,7 +118,6 @@ from rotkehlchen.serialization.deserialize import deserialize_hex_color_code, de
 from rotkehlchen.types import (
     ANY_BLOCKCHAIN_ADDRESSBOOK_VALUE,
     EVM_CHAINS_WITH_TRANSACTIONS,
-    SPAM_PROTOCOL,
     SUPPORTED_BITCOIN_CHAINS,
     SUPPORTED_EVM_CHAINS,
     SUPPORTED_EVM_CHAINS_TYPE,

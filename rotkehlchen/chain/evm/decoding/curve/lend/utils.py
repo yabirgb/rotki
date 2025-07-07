@@ -8,6 +8,7 @@ from rotkehlchen.assets.asset import UnderlyingToken
 from rotkehlchen.assets.utils import TokenEncounterInfo, get_or_create_evm_token
 from rotkehlchen.chain.evm.decoding.curve.constants import CURVE_BASE_API_URL
 from rotkehlchen.chain.evm.decoding.utils import get_vault_price, update_cached_vaults
+from rotkehlchen.chain.evm.protocols import CURVE_LENDING_VAULTS_PROTOCOL
 from rotkehlchen.constants import ONE
 from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.globaldb.cache import (
@@ -17,7 +18,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_evm_address, deserialize_int
 from rotkehlchen.types import (
-    CURVE_LENDING_VAULTS_PROTOCOL,
     CacheType,
     ChainID,
     Price,

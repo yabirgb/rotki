@@ -34,12 +34,13 @@ from rotkehlchen.chain.evm.decoding.structures import (
     TransferEnrichmentOutput,
 )
 from rotkehlchen.chain.evm.decoding.types import CounterpartyDetails
+from rotkehlchen.chain.evm.protocols import CURVE_POOL_PROTOCOL
 from rotkehlchen.constants.assets import A_CRV, A_CVX
 from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.history.events.structures.base import HistoryEventSubType, HistoryEventType
 from rotkehlchen.history.events.structures.evm_event import EvmEvent, EvmProduct
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import CURVE_POOL_PROTOCOL, CacheType, ChecksumEvmAddress, EvmTransaction
+from rotkehlchen.types import CacheType, ChecksumEvmAddress, EvmTransaction
 from rotkehlchen.utils.misc import bytes_to_address
 
 if TYPE_CHECKING:

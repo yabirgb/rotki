@@ -12,6 +12,11 @@ from rotkehlchen.chain.ethereum.modules.yearn.utils import (
     YDAEMON_API,
     query_yearn_vaults,
 )
+from rotkehlchen.chain.evm.protocols import (
+    YEARN_STAKING_PROTOCOL,
+    YEARN_VAULTS_V2_PROTOCOL,
+    YEARN_VAULTS_V3_PROTOCOL,
+)
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.constants.timing import WEEK_IN_SECONDS
 from rotkehlchen.fval import FVal
@@ -21,13 +26,7 @@ from rotkehlchen.globaldb.cache import (
 )
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.tests.utils.mock import MockResponse
-from rotkehlchen.types import (
-    YEARN_STAKING_PROTOCOL,
-    YEARN_VAULTS_V2_PROTOCOL,
-    YEARN_VAULTS_V3_PROTOCOL,
-    CacheType,
-    ChainID,
-)
+from rotkehlchen.types import CacheType, ChainID
 
 if TYPE_CHECKING:
     from rotkehlchen.chain.ethereum.node_inquirer import EthereumInquirer

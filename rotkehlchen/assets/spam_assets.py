@@ -2,11 +2,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from rotkehlchen.assets.asset import Asset, EvmToken
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.errors.asset import UnknownAsset
 from rotkehlchen.errors.serialization import DeserializationError
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import SPAM_PROTOCOL, ChainID, TokenKind
+from rotkehlchen.types import ChainID, TokenKind
 
 if TYPE_CHECKING:
     from rotkehlchen.db.dbhandler import DBHandler

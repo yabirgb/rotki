@@ -15,6 +15,7 @@ from rotkehlchen.chain.evm.decoding.curve.constants import (
     IGNORED_CURVE_POOLS,
     MAX_ONCHAIN_POOLS_QUERY,
 )
+from rotkehlchen.chain.evm.protocols import CURVE_POOL_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.chain.evm.utils import maybe_notify_cache_query_status
 from rotkehlchen.constants import ONE
@@ -38,7 +39,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.serialization.deserialize import deserialize_evm_address
 from rotkehlchen.types import (
-    CURVE_POOL_PROTOCOL,
     AddressbookEntry,
     CacheType,
     ChainID,

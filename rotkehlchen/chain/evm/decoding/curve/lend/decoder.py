@@ -20,6 +20,7 @@ from rotkehlchen.chain.evm.decoding.structures import (
     TransferEnrichmentOutput,
 )
 from rotkehlchen.chain.evm.decoding.utils import maybe_reshuffle_events
+from rotkehlchen.chain.evm.protocols import CURVE_LENDING_VAULTS_PROTOCOL
 from rotkehlchen.chain.evm.types import string_to_evm_address
 from rotkehlchen.errors.misc import NotERC20Conformant, NotERC721Conformant
 from rotkehlchen.globaldb.cache import globaldb_get_unique_cache_value
@@ -27,7 +28,7 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.events.structures.evm_event import EvmProduct
 from rotkehlchen.history.events.structures.types import HistoryEventSubType, HistoryEventType
 from rotkehlchen.logging import RotkehlchenLogsAdapter
-from rotkehlchen.types import CURVE_LENDING_VAULTS_PROTOCOL, CacheType, ChecksumEvmAddress
+from rotkehlchen.types import CacheType, ChecksumEvmAddress
 from rotkehlchen.utils.misc import bytes_to_address
 
 from .common import CurveBorrowRepayCommonDecoder

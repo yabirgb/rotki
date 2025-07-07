@@ -13,6 +13,7 @@ from rotkehlchen.assets.asset import (
 )
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.assets.types import AssetType
+from rotkehlchen.chain.evm.protocols import SPAM_PROTOCOL
 from rotkehlchen.constants.assets import (
     A_ETH,
     A_WBNB,
@@ -31,7 +32,6 @@ from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import (
     EVM_TOKEN_KINDS,
-    SPAM_PROTOCOL,
     ChainID,
     ChecksumEvmAddress,
     EVMTxHash,
