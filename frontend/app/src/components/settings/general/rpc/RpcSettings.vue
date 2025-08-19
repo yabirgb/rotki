@@ -42,6 +42,11 @@ const evmChainTabs = useArrayMap(txEvmChains, (chain) => {
 const rpcSettingTabs = computed<RpcSettingTab[]>(() => [
   ...get(evmChainTabs),
   {
+    // Solana behaves like EVM RPC nodes in UI/API
+    chain: Blockchain.SOLANA,
+    component: defineAsyncComponent(() => import('@/components/settings/general/rpc/EvmRpcNodeManager.vue')),
+  },
+  {
     chain: Blockchain.KSM,
     component: defineAsyncComponent(() => import('@/components/settings/general/rpc/simple/SimpleRpcNodeManager.vue')),
     setting: 'ksmRpcEndpoint',

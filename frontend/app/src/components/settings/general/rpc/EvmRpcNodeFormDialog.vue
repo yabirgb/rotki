@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { EvmRpcNodeManageState } from '@/types/settings/rpc';
+import type { BlockchainRpcNodeManageState } from '@/types/settings/rpc';
 import { assert, Blockchain } from '@rotki/common';
 import { omit } from 'es-toolkit';
 import BigDialog from '@/components/dialogs/BigDialog.vue';
@@ -10,7 +10,7 @@ import { useMessageStore } from '@/store/message';
 import { ApiValidationError, type ValidationErrors } from '@/types/api/errors';
 import { isBlockchain } from '@/types/blockchain/chains';
 
-const model = defineModel<EvmRpcNodeManageState | undefined>({ required: true });
+const model = defineModel<BlockchainRpcNodeManageState | undefined>({ required: true });
 
 const emit = defineEmits<{
   (e: 'complete'): void;
