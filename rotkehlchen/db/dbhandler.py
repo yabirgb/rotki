@@ -8,7 +8,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Any, Literal, Optional, Unpack, cast, overload
+from typing import Any, Final, Literal, Optional, Unpack, cast, overload
 
 from gevent.lock import Semaphore
 from pysqlcipher3 import dbapi2 as sqlcipher
@@ -2633,14 +2633,20 @@ class DBHandler:
         if to_ts is None:
             to_ts = ts_now()
 
-        settings = self.get_settings(cursor)
+
         querystr = (
             'SELECT timestamp, amount, usd_value, category FROM timed_balances '
             'WHERE timestamp BETWEEN ? AND ? AND currency=?'
         )
         bindings = [from_ts, to_ts, asset.identifier]
 
-        if settings.treat_eth2_as_eth and asset == A_ETH:
+        treat_eth2_as_eth = (settings := CachedSettings()).get_entry('treat_eth2_as_eth')
+        ssf_graph_multiplier = settings.get_entry('ssf_graph_multiplier')
+        infer_zero_timed_balances = settings.get_entry('infer_zero_timed_balances')
+        balance_save_frequency = settings.get_entry('balance_save_frequency')
+        max_diff: Final = balance_save_frequency * HOUR_IN_SECONDS * ssf_graph_multiplier
+
+        if treat_eth2_as_eth and asset == A_ETH:
             querystr = querystr.replace('currency=?', 'currency IN (?,?)')
             bindings.append('ETH2')
 
@@ -2654,22 +2660,20 @@ class DBHandler:
         results_length = len(results)
         for idx, result in enumerate(results):
             entry_time = result[0]
-            category = BalanceType.deserialize_from_db(result[3])
             balances.append(
                 SingleDBAssetBalance(
                     time=entry_time,
                     amount=FVal(result[1]),
                     usd_value=FVal(result[2]),
-                    category=category,
+                    category=balance_type,  # we know since is harcoded in the query: AND category=?
                 ),
             )
-            if settings.ssf_graph_multiplier == 0 or idx == results_length - 1:
+            if ssf_graph_multiplier == 0 or idx == results_length - 1:
                 continue
 
             next_result_time = results[idx + 1][0]
-            max_diff = settings.balance_save_frequency * HOUR_IN_SECONDS * settings.ssf_graph_multiplier  # noqa: E501
             while next_result_time - entry_time > max_diff:
-                entry_time += settings.balance_save_frequency * HOUR_IN_SECONDS
+                entry_time += balance_save_frequency * HOUR_IN_SECONDS
                 if entry_time >= next_result_time:
                     break
 
@@ -2678,17 +2682,17 @@ class DBHandler:
                         time=entry_time,
                         amount=ZERO,
                         usd_value=ZERO,
-                        category=category,
+                        category=balance_type,
                     ),
                 )
 
-        if settings.infer_zero_timed_balances is True:
+        if infer_zero_timed_balances is True:
             inferred_balances = self._infer_zero_timed_balances(cursor, balances, from_ts, to_ts)
             if len(inferred_balances) != 0:
                 balances.extend(inferred_balances)
                 balances.sort(key=lambda x: x.time)
 
-        if settings.treat_eth2_as_eth and asset.identifier == 'ETH':
+        if treat_eth2_as_eth and asset.identifier == 'ETH':
             return combine_asset_balances(balances)
 
         return balances
