@@ -2527,6 +2527,7 @@ class DBHandler:
     def _infer_zero_timed_balances(
             cursor: 'DBCursor',
             balances: list[SingleDBAssetBalance],
+            balance_type: BalanceType,
             from_ts: Timestamp | None = None,
             to_ts: Timestamp | None = None,
     ) -> list[SingleDBAssetBalance]:
@@ -2545,6 +2546,9 @@ class DBHandler:
 
         Keep in mind that in a case like this (1, 1), (1, 2), (5, 4) we will infer (0, 3)
         despite the fact that it is not strictly needed by the front end.
+
+        `balance_type` is used to tag the inferred zero-balance entries with the same category as
+        the original asset balances.
         """
         if len(balances) == 0:
             return []
@@ -2554,33 +2558,37 @@ class DBHandler:
         if to_ts is None:
             to_ts = ts_now()
 
-        cursor.execute(
-            'SELECT COUNT(DISTINCT timestamp) FROM timed_balances WHERE timestamp BETWEEN ? AND ?',
-            (from_ts, to_ts),
-        )
-        num_distinct_timestamps = cursor.fetchone()[0]
-
-        asset_timestamps = [b.time for b in balances if b.amount != ZERO]  # ignore timestamps from 0 balances added by the ssf_graph_multiplier setting  # noqa: E501
-        if len(asset_timestamps) == num_distinct_timestamps:
+        asset_timestamps = [balance.time for balance in balances if balance.amount != ZERO]  # ignore timestamps from 0 balances added by the ssf_graph_multiplier setting  # noqa: E501
+        if len(asset_timestamps) == 0:
             return []
 
-        cursor.execute(
-            'SELECT timestamp, category FROM timed_balances WHERE timestamp BETWEEN ? AND ? '
+        all_timestamps = [row[0] for row in cursor.execute(
+            'SELECT DISTINCT timestamp FROM timed_balances WHERE timestamp BETWEEN ? AND ? '
             'ORDER BY timestamp ASC',
             (from_ts, to_ts),
-        )
-        all_timestamps, all_categories = zip(*cursor, strict=True)
-        # dicts maintain insertion order in python 3.7+
-        timestamps_have_asset_balance = dict.fromkeys(all_timestamps, False)
-        timestamps_with_asset_balance = dict.fromkeys(asset_timestamps, True)
-        timestamps_have_asset_balance.update(timestamps_with_asset_balance)
-        prev_has_asset_balance = timestamps_have_asset_balance[all_timestamps[0]]  # the value of the first timestamp  # noqa: E501
+        )]
+        if len(all_timestamps) == 0 or len(asset_timestamps) == len(all_timestamps):
+            return []
+
+        asset_timestamp_set = set(asset_timestamps)
+        asset_categories = {
+            balance.time: balance.category
+            for balance in balances
+            if balance.amount != ZERO
+        }
+        prev_has_asset_balance = all_timestamps[0] in asset_timestamp_set  # the value of the first timestamp  # noqa: E501
         prev_timestamp = all_timestamps[0]
         inferred_balances: list[SingleDBAssetBalance] = []
         is_zero_period_open = False
-        last_asset_category = all_categories[-1]  # just a placeholder value, no need to calculate the actual value here  # noqa: E501
-        for idx, (timestamp, has_asset_balance) in enumerate(timestamps_have_asset_balance.items()):  # noqa: E501
-            if idx == len(timestamps_have_asset_balance) - 1 and has_asset_balance is False:
+        initial_category = next(
+            (asset_categories[timestamp] for timestamp in all_timestamps if timestamp in asset_categories),  # noqa: E501
+            balance_type,
+        )
+        last_asset_category = initial_category
+        total_timestamps = len(all_timestamps)
+        for idx, timestamp in enumerate(all_timestamps):
+            has_asset_balance = timestamp in asset_timestamp_set
+            if idx == total_timestamps - 1 and has_asset_balance is False:
                 # If there is no balance for the last timestamp add a zero balance.
                 inferred_balances.append(
                     SingleDBAssetBalance(
@@ -2597,7 +2605,7 @@ class DBHandler:
                         time=timestamp,
                         amount=ZERO,
                         usd_value=ZERO,
-                        category=BalanceType.deserialize_from_db(all_categories[idx - 1]),  # the category of the previous timed_balance of the asset  # noqa: E501
+                        category=last_asset_category,
                     ),
                 )
                 is_zero_period_open = True
@@ -2612,9 +2620,8 @@ class DBHandler:
                     ),
                 )
                 is_zero_period_open = False
-                last_asset_category = inferred_balances[-1].category
-            elif has_asset_balance is True:
-                last_asset_category = BalanceType.deserialize_from_db(all_categories[idx])
+            if has_asset_balance is True:
+                last_asset_category = asset_categories.get(timestamp, last_asset_category)
             prev_has_asset_balance, prev_timestamp = has_asset_balance, timestamp
         return inferred_balances
 
@@ -2632,19 +2639,18 @@ class DBHandler:
             from_ts = Timestamp(0)
         if to_ts is None:
             to_ts = ts_now()
-
-
         querystr = (
-            'SELECT timestamp, amount, usd_value, category FROM timed_balances '
+            'SELECT timestamp, amount, usd_value FROM timed_balances '
             'WHERE timestamp BETWEEN ? AND ? AND currency=?'
         )
         bindings = [from_ts, to_ts, asset.identifier]
 
-        treat_eth2_as_eth = (settings := CachedSettings()).get_entry('treat_eth2_as_eth')
-        ssf_graph_multiplier = settings.get_entry('ssf_graph_multiplier')
-        infer_zero_timed_balances = settings.get_entry('infer_zero_timed_balances')
-        balance_save_frequency = settings.get_entry('balance_save_frequency')
-        max_diff: Final = balance_save_frequency * HOUR_IN_SECONDS * ssf_graph_multiplier
+        settings = self.get_settings(cursor)
+        treat_eth2_as_eth = settings.treat_eth2_as_eth
+        ssf_graph_multiplier = settings.ssf_graph_multiplier
+        infer_zero_timed_balances = settings.infer_zero_timed_balances
+        balance_save_frequency = settings.balance_save_frequency
+        max_diff: Final[int] = balance_save_frequency * HOUR_IN_SECONDS * ssf_graph_multiplier
 
         if treat_eth2_as_eth and asset == A_ETH:
             querystr = querystr.replace('currency=?', 'currency IN (?,?)')
@@ -2656,7 +2662,7 @@ class DBHandler:
 
         cursor.execute(querystr, bindings)
         results = cursor.fetchall()
-        balances = []
+        balances: list[SingleDBAssetBalance] = []
         results_length = len(results)
         for idx, result in enumerate(results):
             entry_time = result[0]
@@ -2665,7 +2671,7 @@ class DBHandler:
                     time=entry_time,
                     amount=FVal(result[1]),
                     usd_value=FVal(result[2]),
-                    category=balance_type,  # we know since is harcoded in the query: AND category=?
+                    category=balance_type,
                 ),
             )
             if ssf_graph_multiplier == 0 or idx == results_length - 1:
@@ -2687,7 +2693,13 @@ class DBHandler:
                 )
 
         if infer_zero_timed_balances is True:
-            inferred_balances = self._infer_zero_timed_balances(cursor, balances, from_ts, to_ts)
+            inferred_balances = self._infer_zero_timed_balances(
+                cursor,
+                balances,
+                balance_type,
+                from_ts,
+                to_ts,
+            )
             if len(inferred_balances) != 0:
                 balances.extend(inferred_balances)
                 balances.sort(key=lambda x: x.time)
