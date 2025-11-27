@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Optional
 
 from rotkehlchen.assets.asset import Asset, AssetWithOracles
+from rotkehlchen.chain.evm.types import DEFAULT_EVM_INDEXER_ORDER, EvmIndexer
 from rotkehlchen.constants.assets import A_USD
 from rotkehlchen.constants.timing import YEAR_IN_SECONDS
 from rotkehlchen.data_migrations.constants import LAST_USERDB_DATA_MIGRATION
@@ -50,6 +51,7 @@ DEFAULT_CALCULATE_PAST_COST_BASIS = True
 DEFAULT_DISPLAY_DATE_IN_LOCALTIME = True
 DEFAULT_CURRENT_PRICE_ORACLES = DEFAULT_CURRENT_PRICE_ORACLES_ORDER
 DEFAULT_HISTORICAL_PRICE_ORACLES = DEFAULT_HISTORICAL_PRICE_ORACLES_ORDER
+DEFAULT_EVM_INDEXERS_ORDER = DEFAULT_EVM_INDEXER_ORDER
 DEFAULT_PNL_CSV_WITH_FORMULAS = True
 DEFAULT_PNL_CSV_HAVE_SUMMARY = False
 DEFAULT_SSF_GRAPH_MULTIPLIER = 0
@@ -73,6 +75,7 @@ DEFAULT_CSV_EXPORT_DELIMITER = ','
 JSON_KEYS = (
     'current_price_oracles',
     'historical_price_oracles',
+    'evm_indexers_order',
     'non_syncing_exchanges',
     'evmchains_to_skip_detection',
 )
@@ -141,6 +144,7 @@ CachedDBSettingsFieldNames = Literal[
     'display_date_in_localtime',
     'current_price_oracles',
     'historical_price_oracles',
+    'evm_indexers_order',
     'pnl_csv_with_formulas',
     'pnl_csv_have_summary',
     'ssf_graph_multiplier',
@@ -171,6 +175,7 @@ DBSettingsFieldTypes = (
     Sequence[ModuleName] |
     Sequence[CurrentPriceOracle] |
     Sequence[HistoricalPriceOracle] |
+    Sequence[EvmIndexer] |
     Sequence[ExchangeLocationID] |
     CostBasisMethod |
     Sequence[AddressNameSource]
@@ -201,6 +206,7 @@ class DBSettings:
     display_date_in_localtime: bool = DEFAULT_DISPLAY_DATE_IN_LOCALTIME
     current_price_oracles: Sequence[CurrentPriceOracle] = field(default=DEFAULT_CURRENT_PRICE_ORACLES)  # noqa: E501
     historical_price_oracles: Sequence[HistoricalPriceOracle] = field(default=DEFAULT_HISTORICAL_PRICE_ORACLES)  # noqa: E501
+    evm_indexers_order: Sequence[EvmIndexer] = field(default=DEFAULT_EVM_INDEXERS_ORDER)
     pnl_csv_with_formulas: bool = DEFAULT_PNL_CSV_WITH_FORMULAS
     pnl_csv_have_summary: bool = DEFAULT_PNL_CSV_HAVE_SUMMARY
     ssf_graph_multiplier: int = DEFAULT_SSF_GRAPH_MULTIPLIER
@@ -262,6 +268,7 @@ class ModifiableDBSettings(NamedTuple):
     display_date_in_localtime: bool | None = None
     current_price_oracles: list[CurrentPriceOracle] | None = None
     historical_price_oracles: list[HistoricalPriceOracle] | None = None
+    evm_indexers_order: list[EvmIndexer] | None = None
     pnl_csv_with_formulas: bool | None = None
     pnl_csv_have_summary: bool | None = None
     ssf_graph_multiplier: int | None = None
@@ -350,6 +357,9 @@ def db_settings_from_dict(
         elif key == 'historical_price_oracles':
             oracles = json.loads(value)
             specified_args[key] = [HistoricalPriceOracle.deserialize(oracle) for oracle in oracles]
+        elif key == 'evm_indexers_order':
+            indexers = json.loads(value)
+            specified_args[key] = [EvmIndexer.deserialize(indexer) for indexer in indexers]
         elif key == 'non_syncing_exchanges':
             values = json.loads(value)
             specified_args[key] = [ExchangeLocationID.deserialize(x) for x in values]

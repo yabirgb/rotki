@@ -35,7 +35,12 @@ from rotkehlchen.chain.evm.constants import (
 )
 from rotkehlchen.chain.evm.contracts import EvmContract, EvmContracts
 from rotkehlchen.chain.evm.proxies_inquirer import EvmProxiesInquirer
-from rotkehlchen.chain.evm.types import RemoteDataQueryStatus, WeightedNode
+from rotkehlchen.chain.evm.types import (
+    DEFAULT_EVM_INDEXER_ORDER,
+    EvmIndexer,
+    RemoteDataQueryStatus,
+    WeightedNode,
+)
 from rotkehlchen.chain.mixins.rpc_nodes import EVMRPCMixin
 from rotkehlchen.chain.structures import TimestampOrBlockRange
 from rotkehlchen.constants import ONE
@@ -205,6 +210,19 @@ class EvmNodeInquirer(EVMRPCMixin, LockableQueryMixIn):
         '_get_transaction_by_hash',
         '_get_logs',
     )
+    _indexers_order: Sequence[EvmIndexer] = DEFAULT_EVM_INDEXER_ORDER
+
+    @classmethod
+    def set_indexers_order(cls, indexers: Sequence[EvmIndexer]) -> None:
+        """Configure the order in which indexers are queried."""
+        assert len(indexers) != 0 and len(indexers) == len(set(indexers)), (
+            "Indexers can't be empty or have repeated items"
+        )
+        cls._indexers_order = tuple(indexers)
+
+    @classmethod
+    def get_indexers_order(cls) -> Sequence[EvmIndexer]:
+        return cls._indexers_order
 
     def __init__(
             self,
@@ -1212,7 +1230,7 @@ class EvmNodeInquirer(EVMRPCMixin, LockableQueryMixIn):
             closest: Literal['before', 'after'] = 'before',
     ) -> int:
         """Searches for the blocknumber of a specific timestamp, checking the cached values first
-        and then querying the indexers, with blockscout first, then etherscan.
+        and then querying the indexers using the configured priority.
         May raise RemoteError if all indexers fail.
         """
         # check if value exists in the cache
@@ -1225,7 +1243,6 @@ class EvmNodeInquirer(EVMRPCMixin, LockableQueryMixIn):
                 ts=ts,
                 closest=closest,
             ),
-            indexers=(self.blockscout, self.etherscan),
         )
         self.timestamp_to_block_cache[self.chain_id].add(key=ts, value=block_number)
         return block_number
@@ -1374,6 +1391,13 @@ class EvmNodeInquirer(EVMRPCMixin, LockableQueryMixIn):
             to_block=to_block,
         ))
 
+    def _get_indexers_in_order(self) -> tuple[Blockscout | Etherscan | None, ...]:
+        indexers_mapping = {
+            EvmIndexer.ETHERSCAN: self.etherscan,
+            EvmIndexer.BLOCKSCOUT: self.blockscout,
+        }
+        return tuple(indexers_mapping[indexer] for indexer in self._indexers_order)
+
     def _try_indexers(
             self,
             func: Callable[[EtherscanLikeApi], T],
@@ -1383,18 +1407,24 @@ class EvmNodeInquirer(EVMRPCMixin, LockableQueryMixIn):
         Raises RemoteError if all fail.
         """
         errors = []
-        # TODO: Make indexer order configurable: https://github.com/orgs/rotki/projects/11/views/3?pane=issue&itemId=141661235  # noqa: E501
-        for indexer in indexers or (self.etherscan, self.blockscout, self.routescan):
+        available_indexers = indexers or self._get_indexers_in_order()
+        attempted = False
+        for indexer in available_indexers:
             if indexer is None:
-                # TODO: remove this after blockscout is refactored to only have a single instance
-                # for all chains https://github.com/orgs/rotki/projects/11/views/3?pane=issue&itemId=141630657  # noqa: E501
                 continue
 
+            attempted = True
             try:
                 return func(indexer)
             except (RemoteError, ChainNotSupported) as e:
                 log.warning(f'Failed to query {indexer.name} due to {e!s}. Trying next indexer.')
                 errors.append((indexer.name, e))
+
+        if attempted is False:
+            raise RemoteError(
+                'Failed to query any indexer because none of the configured indexers are available '
+                'for this chain.',
+            )
 
         raise RemoteError(
             f'Failed to query any indexer. '

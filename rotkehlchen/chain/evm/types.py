@@ -13,6 +13,7 @@ from rotkehlchen.types import (
     SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
     ChainID,
     ChecksumEvmAddress,
+    SerializableEnumNameMixin,
     SupportedBlockchain,
 )
 
@@ -131,3 +132,14 @@ class RemoteDataQueryStatus(Enum):
     FAILED = auto()
     NEW_DATA = auto()
     NO_UPDATE = auto()
+
+
+class EvmIndexer(SerializableEnumNameMixin):
+    BLOCKSCOUT = auto()
+    ETHERSCAN = auto()
+
+
+DEFAULT_EVM_INDEXER_ORDER = (
+    EvmIndexer.ETHERSCAN,
+    EvmIndexer.BLOCKSCOUT,
+)

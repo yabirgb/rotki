@@ -41,6 +41,7 @@ from rotkehlchen.chain.ethereum.modules.nft.structures import NftLpHandling
 from rotkehlchen.chain.ethereum.node_inquirer import EthereumInquirer
 from rotkehlchen.chain.evm.accounting.structures import BaseEventSettings, TxAccountingTreatment
 from rotkehlchen.chain.evm.decoding.ens.utils import is_potential_ens_name
+from rotkehlchen.chain.evm.types import EvmIndexer
 from rotkehlchen.chain.solana.validation import is_valid_solana_address
 from rotkehlchen.chain.substrate.types import SubstrateAddress, SubstratePublicKey
 from rotkehlchen.chain.substrate.utils import (
@@ -183,6 +184,7 @@ from .fields import (
     FileField,
     FloatingPercentageField,
     HistoricalPriceOracleField,
+    EvmIndexerField,
     IncludeExcludeListField,
     LocationField,
     MaybeAssetField,
@@ -1436,6 +1438,22 @@ def _validate_historical_price_oracles(
         )
 
 
+def _validate_evm_indexers_order(indexers: list[EvmIndexer]) -> None:
+    """Prevents repeated indexers and empty list"""
+    if (
+        len(indexers) == 0 or
+        len(indexers) != len(idexer_set := set(indexers))
+    ):
+        raise ValidationError(
+            'EVM indexers order should not be empty and should have no repeated entries',
+        )
+
+    if len(invalid_indexers := idexer_set - set(EvmIndexer)) != 0:
+        raise ValidationError(
+            f'Invalid EVM indexers given: {", ".join([str(indexer) for indexer in invalid_indexers])}. ',  # noqa: E501
+        )
+
+
 class ExchangeLocationIDSchema(Schema):
     name = NonEmptyStringField(required=True)
     location = LocationField(required=True)
@@ -1504,6 +1522,11 @@ class ModifiableSettingsSchema(Schema):
     historical_price_oracles = fields.List(
         HistoricalPriceOracleField,
         validate=_validate_historical_price_oracles,
+        load_default=None,
+    )
+    evm_indexers_order = fields.List(
+        EvmIndexerField,
+        validate=_validate_evm_indexers_order,
         load_default=None,
     )
     pnl_csv_with_formulas = fields.Bool(load_default=None)
@@ -1616,6 +1639,7 @@ class ModifiableSettingsSchema(Schema):
             display_date_in_localtime=data['display_date_in_localtime'],
             historical_price_oracles=data['historical_price_oracles'],
             current_price_oracles=data['current_price_oracles'],
+            evm_indexers_order=data['evm_indexers_order'],
             pnl_csv_with_formulas=data['pnl_csv_with_formulas'],
             pnl_csv_have_summary=data['pnl_csv_have_summary'],
             ssf_graph_multiplier=data['ssf_graph_multiplier'],

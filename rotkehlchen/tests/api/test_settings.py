@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pytest
 import requests
 
+from rotkehlchen.chain.evm.node_inquirer import EvmNodeInquirer
+from rotkehlchen.chain.evm.types import EvmIndexer
 from rotkehlchen.db.settings import (
     DEFAULT_CONNECT_TIMEOUT,
     DEFAULT_QUERY_RETRY_LIMIT,
@@ -209,6 +211,8 @@ def test_set_settings(rotkehlchen_api_server: 'APIServer') -> None:
             value = ['coingecko', 'cryptocompare', 'uniswapv2', 'uniswapv3']
         elif setting == 'historical_price_oracles':
             value = ['coingecko', 'cryptocompare']
+        elif setting == 'evm_indexers_order':
+            value = list(reversed(raw_value))
         elif setting == 'non_syncing_exchanges':
             value = [ExchangeLocationID(name='test_name', location=Location.KRAKEN).serialize()]
         elif setting == 'evmchains_to_skip_detection':
@@ -540,6 +544,55 @@ def test_set_settings_errors(rotkehlchen_api_server: 'APIServer') -> None:
             contained_in_msg=f'"current_price_oracles": ["Invalid current price oracles given: {oracle!s}. ',  # noqa: E501
             status_code=HTTPStatus.BAD_REQUEST,
         )
+
+    data = {
+        'settings': {'evm_indexers_order': ['etherscan', 'etherscan']},
+    }
+    response = requests.put(api_url_for(rotkehlchen_api_server, 'settingsresource'), json=data)
+    assert_error_response(
+        response=response,
+        contained_in_msg='"evm_indexers_order": ["EVM indexers order should not be empty and should have no repeated entries"]',  # noqa: E501
+        status_code=HTTPStatus.BAD_REQUEST,
+    )
+
+    data = {
+        'settings': {'evm_indexers_order': ['unknown']},
+    }
+    response = requests.put(api_url_for(rotkehlchen_api_server, 'settingsresource'), json=data)
+    assert_error_response(
+        response=response,
+        contained_in_msg='"evm_indexers_order": ["Invalid evm indexer: unknown"]',
+        status_code=HTTPStatus.BAD_REQUEST,
+    )
+
+
+def test_set_evm_indexers_order(rotkehlchen_api_server: 'APIServer') -> None:
+    original_order = list(CachedSettings().get_entry('evm_indexers_order'))
+    try:
+        data = {
+            'settings': {'evm_indexers_order': ['blockscout', 'etherscan']},
+        }
+        response = requests.put(api_url_for(rotkehlchen_api_server, 'settingsresource'), json=data)
+        assert_proper_response(response)
+        json_data = response.json()
+        assert json_data['result']['evm_indexers_order'] == ['blockscout', 'etherscan']
+        assert list(CachedSettings().get_entry('evm_indexers_order')) == [
+            EvmIndexer.BLOCKSCOUT,
+            EvmIndexer.ETHERSCAN,
+        ]
+        assert list(EvmNodeInquirer.get_indexers_order()) == [
+            EvmIndexer.BLOCKSCOUT,
+            EvmIndexer.ETHERSCAN,
+        ]
+    finally:
+        reset_payload = {
+            'settings': {'evm_indexers_order': [indexer.serialize() for indexer in original_order]},
+        }
+        reset_response = requests.put(
+            api_url_for(rotkehlchen_api_server, 'settingsresource'),
+            json=reset_payload,
+        )
+        assert_proper_response(reset_response)
 
 
 def assert_queried_addresses_match(

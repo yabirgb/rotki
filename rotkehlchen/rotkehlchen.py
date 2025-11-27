@@ -38,6 +38,7 @@ from rotkehlchen.chain.ethereum.node_inquirer import EthereumInquirer
 from rotkehlchen.chain.ethereum.oracles.uniswap import UniswapV2Oracle, UniswapV3Oracle
 from rotkehlchen.chain.evm.contracts import EvmContracts
 from rotkehlchen.chain.evm.names import NamePrioritizer
+from rotkehlchen.chain.evm.node_inquirer import EvmNodeInquirer
 from rotkehlchen.chain.evm.nodes import populate_rpc_nodes_in_database
 from rotkehlchen.chain.gnosis.manager import GnosisManager
 from rotkehlchen.chain.gnosis.node_inquirer import GnosisInquirer
@@ -359,6 +360,7 @@ class Rotkehlchen:
         with self.data.db.conn.read_ctx() as cursor:
             settings = self.get_settings(cursor)
             CachedSettings().initialize(settings)  # initialize with saved DB settings
+            EvmNodeInquirer.set_indexers_order(settings.evm_indexers_order)
             self.greenlet_manager.spawn_and_track(
                 after_seconds=None,
                 task_name='submit_usage_analytics',
@@ -1341,6 +1343,9 @@ class Rotkehlchen:
         )
         if not success:
             return False, msg
+
+        if settings.evm_indexers_order is not None:
+            EvmNodeInquirer.set_indexers_order(settings.evm_indexers_order)
 
         if settings.active_modules is not None:
             self.chains_aggregator.process_new_modules_list(settings.active_modules)
