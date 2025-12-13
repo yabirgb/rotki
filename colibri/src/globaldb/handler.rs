@@ -1,12 +1,45 @@
 use crate::blockchain::{RpcNode, SupportedBlockchain};
-use rusqlite::{Connection, Result};
+use fs2::FileExt;
+use rusqlite::{Connection, Error as SqliteError, Result};
+use std::fs::{File, OpenOptions};
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::task;
 
 #[derive(Clone)]
 pub struct GlobalDB {
     pub conn: Arc<Mutex<Connection>>,
+    file_lock: Arc<File>,
+    lock_path: Arc<PathBuf>,
+}
+
+struct FileLockGuard {
+    file: Arc<File>,
+}
+
+impl FileLockGuard {
+    fn acquire(file: Arc<File>) -> io::Result<Self> {
+        file.lock_exclusive()?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for FileLockGuard {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+    }
+}
+
+fn map_io_error(error: io::Error) -> SqliteError {
+    SqliteError::SqliteFailure(
+        rusqlite::ffi::Error {
+            code: rusqlite::ffi::ErrorCode::CannotOpen,
+            extended_code: 0,
+        },
+        Some(error.to_string()),
+    )
 }
 
 /// The GlobalDB handler for Colibri
@@ -14,10 +47,44 @@ pub struct GlobalDB {
 /// from the rotki python backend
 impl GlobalDB {
     pub async fn new(path: PathBuf) -> Result<Self> {
-        let conn = Connection::open(path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(map_io_error)?;
+        }
+        let lock_path = path.with_extension("lock");
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .map_err(map_io_error)?;
+        let conn = Connection::open(&path)?;
         let conn = Arc::new(Mutex::new(conn));
 
-        Ok(GlobalDB { conn })
+        Ok(GlobalDB {
+            conn,
+            file_lock: Arc::new(lock_file),
+            lock_path: Arc::new(lock_path),
+        })
+    }
+
+    pub fn lock_path(&self) -> PathBuf {
+        (*self.lock_path).clone()
+    }
+
+    pub async fn with_write_conn<F, T>(&self, op: F) -> Result<T>
+    where
+        F: FnOnce(&Connection) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let file = self.file_lock.clone();
+        let conn = self.conn.clone();
+        task::spawn_blocking(move || {
+            let _guard = FileLockGuard::acquire(file).map_err(map_io_error)?;
+            let conn_guard = conn.blocking_lock();
+            op(&conn_guard)
+        })
+        .await
+        .map_err(|e| map_io_error(io::Error::new(io::ErrorKind::Other, e)))?
     }
 
     pub async fn get_coingecko_id(&self, asset_id: &str) -> Result<Option<String>> {
@@ -152,8 +219,6 @@ macro_rules! create_globaldb {
 
 #[cfg(test)]
 mod test {
-    use std::env;
-
     /// Test that the collections and coingecko ids are queried correctly.
     #[tokio::test]
     async fn test_query_asset_data() {
@@ -196,6 +261,15 @@ mod test {
             // case for unknown collection
             globaldb.get_assets_in_collection(99999).await.unwrap(),
             Vec::<String>::new(),
+        );
+    }
+
+    #[tokio::test]
+    async fn test_creates_lock_file() {
+        let globaldb = create_globaldb!().await.unwrap();
+        assert!(
+            globaldb.lock_path().exists(),
+            "globaldb should create a lock file next to the database"
         );
     }
 }

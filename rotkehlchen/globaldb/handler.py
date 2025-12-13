@@ -192,6 +192,7 @@ class GlobalDBHandler:
             path=packaged_db_path,
             connection_type=DBConnectionType.GLOBAL,
             sql_vm_instructions_cb=DEFAULT_SQL_VM_INSTRUCTIONS_CB,
+            enable_file_lock=False,
         )
         GlobalDBHandler()._packaged_db_conn = packaged_db_conn
         return packaged_db_conn

@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from enum import Enum, auto
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Literal, Optional, TypeAlias
+from typing import TYPE_CHECKING, Any, IO, Literal, Optional, TypeAlias
 from uuid import uuid4
 
 import gevent
+import portalocker
 import rsqlite
 from pysqlcipher3 import dbapi2 as sqlcipher
 
@@ -249,6 +250,7 @@ class DBConnection:
             path: str | Path,
             connection_type: DBConnectionType,
             sql_vm_instructions_cb: int,
+            enable_file_lock: bool = True,
     ) -> None:
         CONNECTION_MAP[connection_type] = self
         self._conn: UnderlyingConnection
@@ -257,6 +259,12 @@ class DBConnection:
         self.in_critical_section = gevent.lock.Semaphore()
         self.connection_type = connection_type
         self.sql_vm_instructions_cb = sql_vm_instructions_cb
+        self._db_path = Path(path)
+        self._lock_path: Path | None = None
+        self._ipc_lock_file: IO[bytes] | None = None
+        self._ipc_lock_owner: str | None = None
+        self._ipc_lock_depth = 0
+        self._setup_ipc_lock(enable_file_lock=enable_file_lock)
         # We need an ordered set. Python doesn't have such thing as a standalone object, but has
         # `dict` which preserves the order of its keys. So we use dict with None values.
         self.savepoints: dict[str, None] = {}
@@ -266,13 +274,13 @@ class DBConnection:
         self.write_greenlet_id: str | None = None
         if connection_type == DBConnectionType.GLOBAL:
             self._conn = rsqlite.connect(
-                database=path,
+                database=str(self._db_path),
                 check_same_thread=False,
                 isolation_level=None,
             )
         else:
             self._conn = sqlcipher.connect(  # pylint: disable=no-member
-                database=str(path),
+                database=str(self._db_path),
                 check_same_thread=False,
                 isolation_level=None,
             )
@@ -285,6 +293,59 @@ class DBConnection:
         elif connection_type == DBConnectionType.GLOBAL:
             self.minimized_schema = MINIMIZED_GLOBAL_DB_SCHEMA
             self.minimized_indexes = MINIMIZED_GLOBAL_DB_INDEXES
+
+    def _setup_ipc_lock(self, enable_file_lock: bool) -> None:
+        """Open (and create if missing) the IPC lock file once.
+
+        The handle stays open for the lifetime of the connection so acquiring and releasing
+        the lock does not reopen the file each time.
+        """
+        if enable_file_lock is False:
+            return
+
+        lock_path = self._db_path.with_suffix('.lock')
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.touch(exist_ok=True)
+        self._lock_path = lock_path
+        self._ipc_lock_file = lock_path.open('a+b')
+
+    @contextmanager
+    def _ipc_write_lock(self) -> Generator[None, None, None]:
+        """Cross-process file lock to serialize writers across processes."""
+        if self._ipc_lock_file is None:
+            yield
+            return
+
+        current_id = get_greenlet_name(gevent.getcurrent())
+        if self._ipc_lock_owner == current_id:
+            self._ipc_lock_depth += 1
+            try:
+                yield
+            finally:
+                self._ipc_lock_depth -= 1
+            return
+
+        portalocker.lock(self._ipc_lock_file, portalocker.LOCK_EX)
+        self._ipc_lock_owner = current_id
+        self._ipc_lock_depth = 1
+        try:
+            yield
+        finally:
+            self._ipc_lock_depth = 0
+            self._ipc_lock_owner = None
+            portalocker.unlock(self._ipc_lock_file)
+
+    def _cleanup_ipc_lock(self) -> None:
+        if self._ipc_lock_file is None:
+            return
+
+        if self._ipc_lock_owner is not None:
+            try:
+                portalocker.unlock(self._ipc_lock_file)
+            finally:
+                self._ipc_lock_owner = None
+                self._ipc_lock_depth = 0
+        self._ipc_lock_file.close()
 
     def commit(self) -> None:
         with self.in_callback:
@@ -310,6 +371,7 @@ class DBConnection:
         return DBCursor(connection=self, cursor=self._conn.cursor())
 
     def close(self) -> None:
+        self._cleanup_ipc_lock()
         self._conn.close()
         CONNECTION_MAP.pop(self.connection_type, None)
 
@@ -330,40 +392,41 @@ class DBConnection:
         In order for savepoints to work then, we will need to open a savepoint instead of a write
         transaction in that case. This should be used sparingly.
         """
-        if len(self.savepoints) != 0:
-            current_id = get_greenlet_name(gevent.getcurrent())
-            if current_id != self.savepoint_greenlet_id:
-                # savepoint exists but in other greenlet. Wait till it's done.
-                while self.savepoint_greenlet_id is not None:
-                    gevent.sleep(CONTEXT_SWITCH_WAIT)
-                # and now continue with the normal write context logic
-            else:  # open another savepoint instead of a write transaction
-                with self.savepoint_ctx() as cursor:
+        with self._ipc_write_lock():
+            if len(self.savepoints) != 0:
+                current_id = get_greenlet_name(gevent.getcurrent())
+                if current_id != self.savepoint_greenlet_id:
+                    # savepoint exists but in other greenlet. Wait till it's done.
+                    while self.savepoint_greenlet_id is not None:
+                        gevent.sleep(CONTEXT_SWITCH_WAIT)
+                    # and now continue with the normal write context logic
+                else:  # open another savepoint instead of a write transaction
+                    with self.savepoint_ctx() as cursor:
+                        yield cursor
+                        return
+            # else
+            with self.critical_section(), self.transaction_lock:
+                cursor = self.cursor()
+                self.write_greenlet_id = get_greenlet_name(gevent.getcurrent())
+                cursor.execute('BEGIN TRANSACTION')
+                try:
                     yield cursor
-                    return
-        # else
-        with self.critical_section(), self.transaction_lock:
-            cursor = self.cursor()
-            self.write_greenlet_id = get_greenlet_name(gevent.getcurrent())
-            cursor.execute('BEGIN TRANSACTION')
-            try:
-                yield cursor
-            except Exception:
-                self._conn.rollback()
-                raise
-            else:
-                if commit_ts is True:
-                    cursor.execute(
-                        'INSERT OR REPLACE INTO settings(name, value) VALUES(?, ?)',
-                        ('last_write_ts', str(ts_now())),
-                    )
-                    # last_write_ts in not cached to cached settings. This is a critical section
-                    # and adding even one more function call can have very ugly and
-                    # detrimental effects in the entire codebase as everything calls this.
-                self._conn.commit()
-            finally:
-                cursor.close()
-                self.write_greenlet_id = None
+                except Exception:
+                    self._conn.rollback()
+                    raise
+                else:
+                    if commit_ts is True:
+                        cursor.execute(
+                            'INSERT OR REPLACE INTO settings(name, value) VALUES(?, ?)',
+                            ('last_write_ts', str(ts_now())),
+                        )
+                        # last_write_ts in not cached to cached settings. This is a critical section
+                        # and adding even one more function call can have very ugly and
+                        # detrimental effects in the entire codebase as everything calls this.
+                    self._conn.commit()
+                finally:
+                    cursor.close()
+                    self.write_greenlet_id = None
 
     @contextmanager
     def savepoint_ctx(
@@ -375,15 +438,16 @@ class DBConnection:
         rolls back this savepoint, otherwise releases it (aka forgets it -- this is not committed to the DB).
         Savepoints work like nested transactions, more information here: https://www.sqlite.org/lang_savepoint.html
         """    # noqa: E501
-        cursor, savepoint_name = self._enter_savepoint(savepoint_name)
-        try:
-            yield cursor
-        except Exception:
-            self.rollback_savepoint(savepoint_name)
-            raise
-        finally:
-            self.release_savepoint(savepoint_name)
-            cursor.close()
+        with self._ipc_write_lock():
+            cursor, savepoint_name = self._enter_savepoint(savepoint_name)
+            try:
+                yield cursor
+            except Exception:
+                self.rollback_savepoint(savepoint_name)
+                raise
+            finally:
+                self.release_savepoint(savepoint_name)
+                cursor.close()
 
     def _enter_savepoint(self, savepoint_name: str | None = None) -> tuple['DBCursor', str]:
         """
@@ -493,7 +557,7 @@ class DBConnection:
         """Helper function to vacuum the DB. Abstracted into its own function since
         incorrect usage of the PRAGMA can result in errors. For example should not do it
         while there is an open transaction"""
-        with self.critical_section(), self.transaction_lock:  # make sure no writing happens while vacuuming  # noqa: E501
+        with self._ipc_write_lock(), self.critical_section(), self.transaction_lock:  # make sure no writing happens while vacuuming  # noqa: E501
             cursor = self.cursor()
             cursor.execute('VACUUM')
             cursor.close()
@@ -519,7 +583,7 @@ class DBConnection:
         pragma_sql = f'PRAGMA wal_checkpoint{mode};'
         # Acquire the callback lock to prevent progress callbacks from causing
         # context switches during the checkpoint operation
-        with self.in_callback:
+        with self._ipc_write_lock(), self.in_callback:
             if __debug__:
                 logger.trace(f'START {pragma_sql}')
 

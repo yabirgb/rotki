@@ -70,7 +70,6 @@ impl GlobalDB {
             .join(",");
 
         let conn_guard = self.conn.lock().await;
-
         let mut stmt = conn_guard.prepare(
             format!(
                 "{} WHERE a.identifier IN ({})",
@@ -98,12 +97,13 @@ impl GlobalDB {
                 let custom_type: Option<String> = row.get("custom_type").unwrap_or_default();
                 let asset_type = if custom_type.is_some() {
                     "custom asset".to_string()
-                } else if let Ok(type_str) = row.get::<_, String>("type") {
-                    AssetType::deserialize_from_db(&type_str)
-                        .map(|t| t.serialize())
-                        .unwrap_or_else(|_| type_str)
                 } else {
-                    String::new()
+                    match row.get::<_, String>("type") {
+                        Ok(type_str) => AssetType::deserialize_from_db(&type_str)
+                            .map(|t| t.serialize())
+                            .unwrap_or_else(|_| type_str),
+                        Err(_) => String::new(),
+                    }
                 };
 
                 let evm_chain = row.get::<_, Option<u32>>("chain")
@@ -175,21 +175,25 @@ mod tests {
         assert!(dai.custom_asset_type.is_none());
 
         // Test custom asset
-        {
-            let conn = globaldb.conn.lock().await;
-            conn.execute(
-                "INSERT OR IGNORE INTO assets (identifier, name) VALUES (?, ?)",
-                ["property_123_main_street", "123 Main Street Apartment"]
-            ).unwrap();
-            conn.execute(
-                "INSERT OR IGNORE INTO custom_assets (identifier, type) VALUES (?, ?)",
-                ["property_123_main_street", "real estate"]
-            ).unwrap();
-            conn.execute(
-                "INSERT OR IGNORE INTO common_asset_details (identifier, symbol) VALUES (?, ?)",
-                ["property_123_main_street", "123MAIN"]
-            ).unwrap();
-        }
+        globaldb
+            .with_write_conn(|conn| {
+                conn.execute(
+                    "INSERT OR IGNORE INTO assets (identifier, name) VALUES (?, ?)",
+                    ["property_123_main_street", "123 Main Street Apartment"],
+                )?;
+                conn.execute(
+                    "INSERT OR IGNORE INTO custom_assets (identifier, type) VALUES (?, ?)",
+                    ["property_123_main_street", "real estate"],
+                )?;
+                conn.execute(
+                    "INSERT OR IGNORE INTO common_asset_details (identifier, symbol) VALUES (?, ?)",
+                    ["property_123_main_street", "123MAIN"],
+                )?;
+
+                Ok(())
+            })
+            .await
+            .unwrap();
         let custom_assets = vec!["property_123_main_street".to_string()];
         let (custom_results, _) = globaldb.get_assets_mappings(&custom_assets).await.unwrap();
 

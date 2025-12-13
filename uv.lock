@@ -1401,6 +1401,18 @@ wheels = [
 ]
 
 [[package]]
+name = "portalocker"
+version = "2.10.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ed/d3/c6c64067759e87af98cc668c1cc75171347d0f1577fab7ca3749134e3cd4/portalocker-2.10.1.tar.gz", hash = "sha256:ef1bf844e878ab08aee7e40184156e1151f228f103aa5c6bd0724cc330960f8f", size = 40891, upload-time = "2024-07-13T23:15:34.86Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/fb/a70a4214956182e0d7a9099ab17d50bfcba1056188e9b14f35b9e2b62a0d/portalocker-2.10.1-py3-none-any.whl", hash = "sha256:53a5984ebc86a025552264b459b46a2086e269b21823cb572f8f28ee759e45bf", size = 18423, upload-time = "2024-07-13T23:15:32.602Z" },
+]
+
+[[package]]
 name = "pprintpp"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2024,6 +2036,7 @@ dependencies = [
     { name = "packaging" },
     { name = "polars-lts-cpu" },
     { name = "polyleven" },
+    { name = "portalocker" },
     { name = "py-bip39-bindings" },
     { name = "py-ed25519-zebra-bindings" },
     { name = "py-machineid" },
@@ -2136,6 +2149,7 @@ requires-dist = [
     { name = "packaging", specifier = "==25.0" },
     { name = "polars-lts-cpu", specifier = "==1.33.1" },
     { name = "polyleven", specifier = "==0.9" },
+    { name = "portalocker", specifier = "==2.10.1" },
     { name = "py-bip39-bindings", specifier = "==0.2.0" },
     { name = "py-ed25519-zebra-bindings", specifier = "==1.2.0" },
     { name = "py-machineid", specifier = "==0.8.0" },
