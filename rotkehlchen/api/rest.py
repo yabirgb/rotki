@@ -3660,28 +3660,28 @@ class RestAPI:
         with self.rotkehlchen.data.db.conn.read_ctx() as cursor:
             blockchain_accounts = self.rotkehlchen.data.db.get_blockchain_accounts(cursor=cursor)
 
-        blockchain_account_sets = {}
-        for blockchain in SupportedBlockchain:
-            if hasattr(blockchain_accounts, blockchain.get_key()):
-                blockchain_account_sets[blockchain] = set(blockchain_accounts.get(blockchain))
-        assets_in_collection = GlobalDBHandler.get_assets_in_same_collection(
-            identifier=asset_movement.asset.identifier,
-        )
-        tolerance = CachedSettings().get_settings().asset_movement_amount_tolerance
+            blockchain_account_sets = {}
+            for blockchain in SupportedBlockchain:
+                if hasattr(blockchain_accounts, blockchain.get_key()):
+                    blockchain_account_sets[blockchain] = set(blockchain_accounts.get(blockchain))
+            assets_in_collection = GlobalDBHandler.get_assets_in_same_collection(
+                identifier=asset_movement.asset.identifier,
+            )
+            tolerance = CachedSettings().get_settings().asset_movement_amount_tolerance
 
-        close_match_identifiers = [x.identifier for x in find_asset_movement_matches(
-            events_db=events_db,
-            asset_movement=asset_movement,  # type: ignore  # filtered by entry_types
-            is_deposit=asset_movement.event_type == HistoryEventType.DEPOSIT,
-            fee_event=fee_event,  # type: ignore  # filtered by entry_types
-            match_window=time_range,
-            assets_in_collection=assets_in_collection,
-            blockchain_account_sets=blockchain_account_sets,
-            tolerance=tolerance,
-        )]
+            close_match_identifiers = [x.identifier for x in find_asset_movement_matches(
+                events_db=events_db,
+                asset_movement=asset_movement,  # type: ignore  # filtered by entry_types
+                is_deposit=asset_movement.event_type == HistoryEventType.DEPOSIT,
+                fee_event=fee_event,  # type: ignore  # filtered by entry_types
+                match_window=time_range,
+                assets_in_collection=assets_in_collection,
+                blockchain_account_sets=blockchain_account_sets,
+                tolerance=tolerance,
+                read_cursor=cursor,
+            )]
 
-        asset_movement_timestamp = ts_ms_to_sec(asset_movement.timestamp)
-        with self.rotkehlchen.data.db.conn.read_ctx() as cursor:
+            asset_movement_timestamp = ts_ms_to_sec(asset_movement.timestamp)
             other_events = events_db.get_history_events_internal(
                 cursor=cursor,
                 filter_query=HistoryEventFilterQuery.make(

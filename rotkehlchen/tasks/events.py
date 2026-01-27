@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
     from rotkehlchen.chain.aggregator import ChainsAggregator
     from rotkehlchen.db.dbhandler import DBHandler
+    from rotkehlchen.db.drivers.gevent import DBCursor
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -375,61 +376,120 @@ def _build_blockchain_account_sets(
 def match_asset_movements(database: 'DBHandler') -> None:
     """Analyze asset movements and find corresponding onchain events, then update those onchain
     events with proper event_type, counterparty, etc and cache the matched identifiers.
+
+    Processes movements in batches of 100 to reduce database cursor overhead.
     """
     log.debug('Analyzing asset movements for corresponding onchain events...')
     events_db = DBHistoryEvents(database=database)
     asset_movements, fee_events = get_unmatched_asset_movements(database)
     settings = CachedSettings().get_settings()
     assets_in_collection_cache: dict[str, tuple[Asset, ...]] = {}
-    with database.conn.read_ctx() as cursor:
+
+    unmatched_asset_movements: list[AssetMovement] = []
+    movement_ids_to_ignore: list[int] = []
+    matched_events_to_edit: list[HistoryBaseEntry] = []
+    fees_to_add: list[tuple[AssetMovement, dict[str, int]]] = []
+    fees_to_edit: list[HistoryBaseEntry] = []
+    cache_updates: list[tuple[str, int]] = []
+
+    # Cache existing fees to avoid repeated database queries
+    fee_events_cache: dict[tuple[str, str], list[HistoryBaseEntry]] = {}
+
+    batch_size = 100
+
+    # Open single read cursor for all read operations throughout the loop
+    with database.conn.read_ctx() as read_cursor:
         blockchain_account_sets = _build_blockchain_account_sets(
-            blockchain_accounts=database.get_blockchain_accounts(cursor=cursor),
+            blockchain_accounts=database.get_blockchain_accounts(cursor=read_cursor),
         )
 
-    unmatched_asset_movements, movement_ids_to_ignore = [], []
-    for asset_movement in asset_movements:
-        assets_in_collection = _get_assets_in_collection(
-            identifier=asset_movement.asset.identifier,
-            cache=assets_in_collection_cache,
-        )
-        if _should_auto_ignore_movement(
-            asset_movement=asset_movement,
-            assets_in_collection=assets_in_collection,
-        ):
-            movement_ids_to_ignore.append(asset_movement.identifier)
-            continue
+        for idx, asset_movement in enumerate(asset_movements):
+            assets_in_collection = _get_assets_in_collection(
+                identifier=asset_movement.asset.identifier,
+                cache=assets_in_collection_cache,
+            )
+            if _should_auto_ignore_movement(
+                asset_movement=asset_movement,
+                assets_in_collection=assets_in_collection,
+            ):
+                if asset_movement.identifier is not None:
+                    movement_ids_to_ignore.append(asset_movement.identifier)
+                continue
 
-        if len(matched_events := find_asset_movement_matches(
-            events_db=events_db,
-            asset_movement=asset_movement,
-            is_deposit=(is_deposit := asset_movement.event_type == HistoryEventType.DEPOSIT),
-            fee_event=fee_events.get(asset_movement.group_identifier),
-            match_window=settings.asset_movement_time_range,
-            assets_in_collection=assets_in_collection,
-            blockchain_account_sets=blockchain_account_sets,
-            tolerance=settings.asset_movement_amount_tolerance,
-        )) == 1:
-            success, error_msg = update_asset_movement_matched_event(
+            if len(matched_events := find_asset_movement_matches(
                 events_db=events_db,
                 asset_movement=asset_movement,
-                matched_event=matched_events[0],
-                is_deposit=is_deposit,
-            )
-            if not success:
-                log.error(
-                    f'Failed to match asset movement {asset_movement.group_identifier} '
-                    f'due to: {error_msg}',
+                is_deposit=(is_deposit := asset_movement.event_type == HistoryEventType.DEPOSIT),
+                fee_event=fee_events.get(asset_movement.group_identifier),
+                match_window=settings.asset_movement_time_range,
+                assets_in_collection=assets_in_collection,
+                blockchain_account_sets=blockchain_account_sets,
+                tolerance=settings.asset_movement_amount_tolerance,
+                read_cursor=read_cursor,
+            )) == 1:
+                matched_event = matched_events[0]
+                # Prepare the event for update (in-memory only)
+                _prepare_matched_event_update(
+                    asset_movement=asset_movement,
+                    matched_event=matched_event,
+                    is_deposit=is_deposit,
                 )
-                unmatched_asset_movements.append(asset_movement)
-        else:
-            unmatched_asset_movements.append(asset_movement)
+                matched_events_to_edit.append(matched_event)
 
+                # Collect fee adjustments
+                fee_to_add, fee_to_edit = _maybe_adjust_fee(
+                    events_db=events_db,
+                    asset_movement=asset_movement,
+                    matched_event=matched_event,
+                    is_deposit=is_deposit,
+                    fee_events_cache=fee_events_cache,
+                    read_cursor=read_cursor,
+                )
+                if fee_to_add is not None:
+                    fees_to_add.append((
+                        fee_to_add,
+                        {HISTORY_MAPPING_KEY_STATE: HISTORY_MAPPING_STATE_CUSTOMIZED},
+                    ))
+                if fee_to_edit is not None:
+                    fees_to_edit.append(fee_to_edit)
+
+                # Collect cache update
+                cache_updates.append((
+                    DBCacheDynamic.MATCHED_ASSET_MOVEMENT.get_db_key(identifier=asset_movement.identifier),  # type: ignore[arg-type]  # identifiers will not be None since the events are from the db.
+                    matched_event.identifier,
+                ))
+            else:
+                unmatched_asset_movements.append(asset_movement)
+
+            # Process batch when reaching batch size or end of list
+            if (idx + 1) % batch_size == 0 or idx == len(asset_movements) - 1:
+                _execute_matched_movements_batch(
+                    events_db=events_db,
+                    matched_events_to_edit=matched_events_to_edit,
+                    fees_to_add=fees_to_add,
+                    fees_to_edit=fees_to_edit,
+                    cache_updates=cache_updates,
+                )
+                matched_events_to_edit.clear()
+                fees_to_add.clear()
+                fees_to_edit.clear()
+                cache_updates.clear()
+
+        _execute_matched_movements_batch(
+            events_db=events_db,
+            matched_events_to_edit=matched_events_to_edit,
+            fees_to_add=fees_to_add,
+            fees_to_edit=fees_to_edit,
+            cache_updates=cache_updates,
+        )
+
+    # Handle ignored movements
     if len(movement_ids_to_ignore) > 0:
         with events_db.db.conn.write_ctx() as write_cursor:
             write_cursor.executemany(
                 'INSERT OR REPLACE INTO key_value_cache(name, value) VALUES(?, ?)',
                 [(
-                    DBCacheDynamic.MATCHED_ASSET_MOVEMENT.get_db_key(identifier=x),  # type: ignore[arg-type]  # identifiers will not be None since the events are from the db.
+                    DBCacheDynamic.MATCHED_ASSET_MOVEMENT.get_db_key(identifier=x),
                     ASSET_MOVEMENT_NO_MATCH_CACHE_VALUE,
                 ) for x in movement_ids_to_ignore],
             )
@@ -476,81 +536,143 @@ def _maybe_adjust_fee(
         asset_movement: AssetMovement,
         matched_event: HistoryBaseEntry,
         is_deposit: bool,
-) -> None:
-    """Add/edit the fee to cover the difference between the amounts of the movement and its match.
-    Takes no action if the amounts match, if existing fees already cover the difference, or if
-    the amounts are off in the wrong direction where more is received than was sent (can only
-    happen in a manual match).
+        fee_events_cache: 'dict[tuple[str, str], list[HistoryBaseEntry]] | None' = None,
+        read_cursor: 'DBCursor | None' = None,
+) -> 'tuple[AssetMovement | None, HistoryBaseEntry | None]':
+    """Determine if a fee needs to be adjusted and return the fee event.
+
+    Returns (fee_event_to_add, fee_event_to_edit) or (None, None) if no adjustment needed.
+    Does NOT write to database - that happens in batch later.
     """
     if asset_movement.amount == matched_event.amount or (
         asset_movement.amount > matched_event.amount and is_deposit
     ) or (
         asset_movement.amount < matched_event.amount and not is_deposit
     ):
-        return  # Don't add a fee if the amount is the same or is off in the wrong direction
+        # Don't add a fee if amount is same or is off in wrong direction
+        return None, None
 
-    # Get any existing fees
-    with events_db.db.conn.read_ctx() as cursor:
-        fee_events = events_db.get_history_events_internal(
-            cursor=cursor,
-            filter_query=HistoryEventFilterQuery.make(
-                entry_types=IncludeExcludeFilterData([HistoryBaseEntryType.ASSET_MOVEMENT_EVENT]),
-                group_identifiers=[
-                    asset_movement.group_identifier,
-                    matched_event.group_identifier,  # include the matched event since it may also be an asset movement.  # noqa: E501
-                ],
-                assets=(asset_movement.asset,),
-                event_subtypes=[HistoryEventSubType.FEE],
-            ),
-        )
+    # Get any existing fees (use cache if provided, else query)
+    cache_key = (asset_movement.asset.identifier, asset_movement.group_identifier)
+    if fee_events_cache is not None and cache_key in fee_events_cache:
+        fee_events = fee_events_cache[cache_key]
+    else:
+        if read_cursor is not None:
+            fee_events = events_db.get_history_events_internal(
+                cursor=read_cursor,
+                filter_query=HistoryEventFilterQuery.make(
+                    entry_types=IncludeExcludeFilterData([HistoryBaseEntryType.ASSET_MOVEMENT_EVENT]),
+                    group_identifiers=[
+                        asset_movement.group_identifier,
+                        matched_event.group_identifier,  # include the matched event since it may also be an asset movement.  # noqa: E501
+                    ],
+                    assets=(asset_movement.asset,),
+                    event_subtypes=[HistoryEventSubType.FEE],
+                ),
+            )
+        else:
+            with events_db.db.conn.read_ctx() as cursor:
+                fee_events = events_db.get_history_events_internal(
+                    cursor=cursor,
+                    filter_query=HistoryEventFilterQuery.make(
+                        entry_types=IncludeExcludeFilterData([HistoryBaseEntryType.ASSET_MOVEMENT_EVENT]),
+                        group_identifiers=[
+                            asset_movement.group_identifier,
+                            matched_event.group_identifier,  # include the matched event since it may also be an asset movement.  # noqa: E501
+                        ],
+                        assets=(asset_movement.asset,),
+                        event_subtypes=[HistoryEventSubType.FEE],
+                    ),
+                )
+        if fee_events_cache is not None:
+            fee_events_cache[cache_key] = fee_events
 
     amount_diff = abs(asset_movement.amount - matched_event.amount)
     movement_fee = None
     for fee_event in fee_events:
         if fee_event.amount == amount_diff:
-            return  # An existing fee already covers the amount difference. May happen in several
-            # cases: A deposit where the fee is taken from the onchain amount, when a user manually
-            # unlinks a match but then re-matches them, or when processing the second movement
-            # when matching an asset movement with another asset movement.
+            return None, None  # An existing fee already covers the amount difference.
 
         if fee_event.group_identifier == asset_movement.group_identifier:
             movement_fee = fee_event  # There can only be one fee per movement
             # Don't break since there may also be a fee present from the matched event.
 
-    # Create or edit the movement's fee event
+    # Prepare fee event for later batch writing
+    if movement_fee is None:
+        new_fee = AssetMovement(
+            timestamp=asset_movement.timestamp,
+            location=asset_movement.location,
+            event_type=asset_movement.event_type,  # type: ignore[arg-type]  # asset movement will have type of either deposit or withdraw
+            asset=asset_movement.asset,
+            amount=amount_diff,
+            group_identifier=asset_movement.group_identifier,
+            is_fee=True,
+            location_label=asset_movement.location_label,
+        )
+        return new_fee, None
+    else:
+        movement_fee.amount += amount_diff
+        return None, movement_fee
+
+
+def _execute_matched_movements_batch(
+        events_db: DBHistoryEvents,
+        matched_events_to_edit: list[HistoryBaseEntry],
+        fees_to_add: list[tuple[AssetMovement, dict[str, int]]],
+        fees_to_edit: list[HistoryBaseEntry],
+        cache_updates: list[tuple[str, int]],
+) -> None:
+    """Execute all collected movement matches in a single batched operation.
+
+    This reduces database cursor overhead by batching multiple operations together.
+    """
+    if (
+        not matched_events_to_edit
+        and not fees_to_add
+        and not fees_to_edit
+        and not cache_updates
+    ):
+        return
+
     with events_db.db.conn.write_ctx() as write_cursor:
-        if movement_fee is None:
-            events_db.add_history_event(
-                write_cursor=write_cursor,
-                event=AssetMovement(
-                    timestamp=asset_movement.timestamp,
-                    location=asset_movement.location,
-                    event_type=asset_movement.event_type,  # type: ignore[arg-type]  # asset movement will have type of either deposit or withdraw
-                    asset=asset_movement.asset,
-                    amount=amount_diff,
-                    group_identifier=asset_movement.group_identifier,
-                    is_fee=True,
-                    location_label=asset_movement.location_label,
-                ),
-                mapping_values={HISTORY_MAPPING_KEY_STATE: HISTORY_MAPPING_STATE_CUSTOMIZED},
-            )
-        else:
-            movement_fee.amount += amount_diff
+        # 1. Edit all matched events in batch
+        for matched_event in matched_events_to_edit:
             events_db.edit_history_event(
                 write_cursor=write_cursor,
-                event=movement_fee,
+                event=matched_event,
+            )
+
+        # 2. Add all new fee events
+        for fee_event, mapping_values in fees_to_add:
+            events_db.add_history_event(
+                write_cursor=write_cursor,
+                event=fee_event,
+                mapping_values=mapping_values,
+            )
+
+        # 3. Edit all fee events
+        for fee_to_edit_event in fees_to_edit:
+            events_db.edit_history_event(
+                write_cursor=write_cursor,
+                event=fee_to_edit_event,
+            )
+
+        # 4. Update all cache entries in batch
+        if cache_updates:
+            write_cursor.executemany(
+                'INSERT OR REPLACE INTO key_value_cache(name, value) VALUES(?, ?)',
+                cache_updates,
             )
 
 
-def update_asset_movement_matched_event(
-        events_db: DBHistoryEvents,
+def _prepare_matched_event_update(
         asset_movement: AssetMovement,
         matched_event: HistoryBaseEntry,
         is_deposit: bool,
-) -> tuple[bool, str]:
-    """Update the given matched event with proper event_type, counterparty, etc and cache the
-    event identifiers. Returns a tuple containing a boolean indicating success and a string
-    containing any error message.
+) -> None:
+    """Prepare a matched event for update by modifying it in-memory.
+
+    Does NOT save to database - that happens in batch later.
     """
     should_edit_notes = True
     if isinstance(matched_event, OnchainEvent):
@@ -590,7 +712,29 @@ def update_asset_movement_matched_event(
         'exchange_name': asset_movement.location_label,
     }
 
-    _maybe_adjust_fee(
+
+def update_asset_movement_matched_event(
+        events_db: DBHistoryEvents,
+        asset_movement: AssetMovement,
+        matched_event: HistoryBaseEntry,
+        is_deposit: bool,
+) -> tuple[bool, str]:
+    """Update the given matched event with proper event_type, counterparty, etc and cache the
+    event identifiers. Returns a tuple containing a boolean indicating success and a string
+    containing any error message.
+
+    NOTE: This is a compatibility wrapper. The new implementation uses batch processing.
+    For internal use, prefer the batch implementation in match_asset_movements().
+    """
+    # Prepare the event in-memory
+    _prepare_matched_event_update(
+        asset_movement=asset_movement,
+        matched_event=matched_event,
+        is_deposit=is_deposit,
+    )
+
+    # Get fee adjustments
+    fee_to_add, fee_to_edit = _maybe_adjust_fee(
         events_db=events_db,
         asset_movement=asset_movement,
         matched_event=matched_event,
@@ -603,6 +747,23 @@ def update_asset_movement_matched_event(
             write_cursor=write_cursor,
             event=matched_event,
         )
+
+        # Add new fee if needed
+        if fee_to_add is not None:
+            events_db.add_history_event(
+                write_cursor=write_cursor,
+                event=fee_to_add,
+                mapping_values={HISTORY_MAPPING_KEY_STATE: HISTORY_MAPPING_STATE_CUSTOMIZED},
+            )
+
+        # Edit existing fee if needed
+        if fee_to_edit is not None:
+            events_db.edit_history_event(
+                write_cursor=write_cursor,
+                event=fee_to_edit,
+            )
+
+        # Cache the matched identifiers
         events_db.db.set_dynamic_cache(  # type: ignore[call-overload]  # identifiers will not be None here since the events are from the db
             write_cursor=write_cursor,
             name=DBCacheDynamic.MATCHED_ASSET_MOVEMENT,
@@ -676,11 +837,12 @@ def find_asset_movement_matches(
         events_db: DBHistoryEvents,
         asset_movement: AssetMovement,
         is_deposit: bool,
-        fee_event: AssetMovement | None,
+        fee_event: 'AssetMovement | None',
         match_window: int,
         assets_in_collection: tuple[Asset, ...],
         blockchain_account_sets: dict[SupportedBlockchain, set],
         tolerance: FVal,
+        read_cursor: 'DBCursor',
 ) -> list[HistoryBaseEntry]:
     """Find events that closely match what the corresponding event for the given asset movement
     should look like. Returns a list of events that match.
@@ -693,23 +855,23 @@ def find_asset_movement_matches(
         from_ts = Timestamp(asset_movement_timestamp)
         to_ts = Timestamp(asset_movement_timestamp + match_window)
 
-    with events_db.db.conn.read_ctx() as cursor:
-        possible_matches = events_db.get_history_events_internal(
-            cursor=cursor,
-            filter_query=HistoryEventFilterQuery.make(
-                assets=assets_in_collection,
-                from_ts=from_ts,
-                to_ts=to_ts,
-                entry_types=IncludeExcludeFilterData(
-                    values=[  # Don't include eth staking events
-                        HistoryBaseEntryType.ETH_BLOCK_EVENT,
-                        HistoryBaseEntryType.ETH_DEPOSIT_EVENT,
-                        HistoryBaseEntryType.ETH_WITHDRAWAL_EVENT,
-                    ],
-                    operator='NOT IN',
-                ),
+    possible_matches = events_db.get_history_events_internal(
+        cursor=read_cursor,
+        filter_query=HistoryEventFilterQuery.make(
+            assets=assets_in_collection,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            entry_types=IncludeExcludeFilterData(
+                values=[  # Don't include eth staking events
+                    HistoryBaseEntryType.ETH_BLOCK_EVENT,
+                    HistoryBaseEntryType.ETH_DEPOSIT_EVENT,
+                    HistoryBaseEntryType.ETH_WITHDRAWAL_EVENT,
+                ],
+                operator='NOT IN',
             ),
-        )
+        ),
+    )
+
     close_matches: list[HistoryBaseEntry] = []
     for event in possible_matches:
         if should_exclude_possible_match(
