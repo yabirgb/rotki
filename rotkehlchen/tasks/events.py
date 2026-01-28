@@ -1,4 +1,5 @@
 import logging
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
@@ -364,6 +365,11 @@ def match_asset_movements(database: 'DBHandler') -> None:
     assets_in_collection_cache: dict[str, tuple[Asset, ...]] = {}
     with events_db.db.conn.read_ctx() as cursor:
         blockchain_accounts = events_db.db.get_blockchain_accounts(cursor=cursor)
+        movements_by_collection: defaultdict[
+            tuple[str, ...],
+            list[_AssetMovementMatchContext],
+        ] = defaultdict(list)
+        collection_assets: dict[tuple[str, ...], tuple[Asset, ...]] = {}
         for asset_movement in asset_movements:
             if _should_auto_ignore_movement(asset_movement=asset_movement):
                 movement_ids_to_ignore.append(asset_movement.identifier)
@@ -377,32 +383,73 @@ def match_asset_movements(database: 'DBHandler') -> None:
                 )
                 assets_in_collection_cache[asset_identifier] = assets_in_collection
 
-            if len(matched_events := find_asset_movement_matches(
-                events_db=events_db,
-                asset_movement=asset_movement,
-                is_deposit=(is_deposit := asset_movement.event_type == HistoryEventType.DEPOSIT),
-                fee_event=fee_events.get(asset_movement.group_identifier),
-                match_window=settings.asset_movement_time_range,
-                cursor=cursor,
-                assets_in_collection=assets_in_collection,
-                blockchain_accounts=blockchain_accounts,
-                tolerance=settings.asset_movement_amount_tolerance,
-            )) == 1:
-                success, error_msg = update_asset_movement_matched_event(
-                    events_db=events_db,
-                    asset_movement=asset_movement,
-                    matched_event=matched_events[0],
+            asset_movement_timestamp = ts_ms_to_sec(asset_movement.timestamp)
+            if (is_deposit := asset_movement.event_type == HistoryEventType.DEPOSIT):
+                from_ts = asset_movement_timestamp - settings.asset_movement_time_range
+                to_ts = asset_movement_timestamp + TIMESTAMP_TOLERANCE
+            else:
+                from_ts = asset_movement_timestamp - TIMESTAMP_TOLERANCE
+                to_ts = asset_movement_timestamp + settings.asset_movement_time_range
+
+            collection_key = tuple(sorted(asset.identifier for asset in assets_in_collection))
+            collection_assets[collection_key] = assets_in_collection
+            movements_by_collection[collection_key].append(
+                _AssetMovementMatchContext(
+                    movement=asset_movement,
                     is_deposit=is_deposit,
-                )
-                if success:
-                    continue
+                    fee_event=fee_events.get(asset_movement.group_identifier),
+                    from_ts=from_ts,
+                    to_ts=to_ts,
+                ),
+            )
 
-                log.error(
-                    f'Failed to match asset movement {asset_movement.group_identifier} '
-                    f'due to: {error_msg}',
-                )
+        for collection_key, contexts in movements_by_collection.items():
+            assets_in_collection = collection_assets[collection_key]
+            min_from_ts = min(context.from_ts for context in contexts)
+            max_to_ts = max(context.to_ts for context in contexts)
 
-            unmatched_asset_movements.append(asset_movement)
+            possible_events = events_db.get_history_events_internal(
+                cursor=cursor,
+                filter_query=HistoryEventFilterQuery.make(
+                    order_by_rules=[('timestamp', True), ('sequence_index', True)],
+                    assets=assets_in_collection,
+                    from_ts=Timestamp(min_from_ts),
+                    to_ts=Timestamp(max_to_ts),
+                    entry_types=IncludeExcludeFilterData(
+                        values=ENTRY_TYPES_TO_EXCLUDE_FROM_MATCHING,
+                        operator='NOT IN',
+                    ),
+                ),
+            )
+            event_timestamps = [ts_ms_to_sec(event.timestamp) for event in possible_events]
+
+            for context in contexts:
+                left_idx = bisect_left(event_timestamps, context.from_ts)
+                right_idx = bisect_right(event_timestamps, context.to_ts)
+                matches = _filter_asset_movement_matches(
+                    asset_movement=context.movement,
+                    is_deposit=context.is_deposit,
+                    fee_event=context.fee_event,
+                    possible_matches=possible_events[left_idx:right_idx],
+                    blockchain_accounts=blockchain_accounts,
+                    tolerance=settings.asset_movement_amount_tolerance,
+                )
+                if len(matches) == 1:
+                    success, error_msg = update_asset_movement_matched_event(
+                        events_db=events_db,
+                        asset_movement=context.movement,
+                        matched_event=matches[0],
+                        is_deposit=context.is_deposit,
+                    )
+                    if success:
+                        continue
+
+                    log.error(
+                        f'Failed to match asset movement {context.movement.group_identifier} '
+                        f'due to: {error_msg}',
+                    )
+
+                unmatched_asset_movements.append(context.movement)
 
     if len(movement_ids_to_ignore) > 0:
         with events_db.db.conn.write_ctx() as write_cursor:
@@ -697,6 +744,33 @@ def find_asset_movement_matches(
     if blockchain_accounts is None:
         blockchain_accounts = events_db.db.get_blockchain_accounts(cursor=cursor)
 
+    return _filter_asset_movement_matches(
+        asset_movement=asset_movement,
+        is_deposit=is_deposit,
+        fee_event=fee_event,
+        possible_matches=possible_matches,
+        blockchain_accounts=blockchain_accounts,
+        tolerance=tolerance,
+    )
+
+
+@dataclass(frozen=True)
+class _AssetMovementMatchContext:
+    movement: AssetMovement
+    is_deposit: bool
+    fee_event: AssetMovement | None
+    from_ts: int
+    to_ts: int
+
+
+def _filter_asset_movement_matches(
+        asset_movement: AssetMovement,
+        is_deposit: bool,
+        fee_event: AssetMovement | None,
+        possible_matches: list[HistoryBaseEntry],
+        blockchain_accounts: BlockchainAccounts,
+        tolerance: FVal,
+) -> list[HistoryBaseEntry]:
     close_matches: list[HistoryBaseEntry] = []
     amount_with_fee: FVal | None = None
     if is_deposit and fee_event is not None and fee_event.asset == asset_movement.asset:
