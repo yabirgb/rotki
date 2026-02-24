@@ -25,17 +25,16 @@ from rotkehlchen.errors.api import (
 )
 from rotkehlchen.premium.premium import (
     DOCKER_ENTRYPOINT_PATH,
-    CONTAINER_FALLBACK_ID_FILE,
     DOCKER_PLATFORM_KEY,
     KUBERNETES_PLATFORM_KEY,
+    UNKNOWN_CONTAINER_FALLBACK_ID_PREFIX,
     Premium,
     PremiumCredentials,
     check_docker_container,
     extended_get_machine_id,
-    get_or_create_fallback_container_id,
     get_kubernetes_pod_name,
+    get_or_create_fallback_container_id,
     is_running_in_rotki_docker_image,
-    UNKNOWN_CONTAINER_FALLBACK_ID_PREFIX,
 )
 from rotkehlchen.tests.utils.constants import A_GBP, DEFAULT_TESTS_MAIN_CURRENCY
 from rotkehlchen.tests.utils.decoders import patch_decoder_reload_data
