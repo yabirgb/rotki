@@ -8,6 +8,7 @@ import werkzeug
 from flask import Blueprint, Flask, Response, abort, jsonify, request
 from flask.views import MethodView
 from flask_cors import CORS
+from gevent.pool import Pool
 from gevent.pywsgi import WSGIServer
 from geventwebsocket import Resource as WebsocketResource
 from geventwebsocket.handler import WebSocketHandler
@@ -519,6 +520,7 @@ class APIServer:
                 ('^/ws', RotkiWSApp),
                 ('^/', self.flask_app),
             ]),
+            spawn=Pool(16),
             log=None,
             handler_class=WebSocketHandler,
             environ={'rotki_notifier': self.rotki_notifier},
