@@ -874,12 +874,13 @@ class TransactionsService:
         dbevmtx = DBEvmTx(self.rotkehlchen.data.db)
         parent_hash_internal_txs: list[EvmInternalTransaction] = []
         if transaction.to_address is not None:  # internal transactions only through contracts
-            parent_hash_internal_txs, _ = chain_manager.transactions._query_internal_transactions_for_parent_hash(  # noqa: E501
+            internal_query_result = chain_manager.transactions._query_internal_transactions_for_parent_hash(  # noqa: E501
                 parent_tx_hash=tx_ref,
                 address=None,
                 return_queried_hashes=False,
                 known_parent_timestamps={tx_ref: transaction.timestamp},
             )
+            parent_hash_internal_txs = internal_query_result[0]
 
         with self.rotkehlchen.data.db.user_write() as write_cursor:
             write_cursor.execute(

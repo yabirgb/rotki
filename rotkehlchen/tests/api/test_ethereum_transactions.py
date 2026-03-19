@@ -1628,6 +1628,51 @@ def test_repulling_transaction_internal_fetch_error_restores_previous_internal_t
 
 @pytest.mark.parametrize('have_decoders', [True])
 @pytest.mark.parametrize('ethereum_accounts', [['0xc37b40ABdB939635068d3c5f13E7faF686F03B65']])
+def test_repulling_transaction_internal_query_accepts_three_value_return(
+        rotkehlchen_api_server: 'APIServer',
+) -> None:
+    """Ensure repull tolerates legacy 3-value internal query return shape."""
+    rotki = rotkehlchen_api_server.rest_api.rotkehlchen
+    dbevmtx, transaction = _prepare_repull_test_transaction(rotki.data.db)
+    tx_hash = transaction.tx_hash
+    internal_before = dbevmtx.get_evm_internal_transactions(
+        parent_tx_hash=tx_hash,
+        blockchain=SupportedBlockchain.ETHEREUM,
+    )
+    fresh_transaction = make_ethereum_transaction(
+        tx_hash=tx_hash,
+        timestamp=Timestamp(transaction.timestamp + 1),
+    )
+
+    with (
+        patch.object(
+            rotki.chains_aggregator.ethereum.node_inquirer,
+            'get_transaction_by_hash',
+            return_value=(fresh_transaction, txreceipt_to_data(EvmTxReceipt(
+                tx_hash=tx_hash,
+                chain_id=ChainID.ETHEREUM,
+                contract_address=None,
+                status=True,
+                tx_type=2,
+                logs=[],
+            ))),
+        ),
+        patch.object(
+            rotki.chains_aggregator.ethereum.transactions,
+            '_query_internal_transactions_for_parent_hash',
+            return_value=(internal_before, None, 'etherscan'),
+        ),
+    ):
+        response = requests.put(
+            api_url_for(rotkehlchen_api_server, 'transactionsdecodingresource'),
+            json={'async_query': False, 'chain': 'eth', 'tx_refs': [str(tx_hash)]},
+        )
+
+    assert_proper_response(response)
+
+
+@pytest.mark.parametrize('have_decoders', [True])
+@pytest.mark.parametrize('ethereum_accounts', [['0xc37b40ABdB939635068d3c5f13E7faF686F03B65']])
 def test_repulling_transaction_internal_replace_failure_rolls_back_tx_data(
         rotkehlchen_api_server: 'APIServer',
 ) -> None:
