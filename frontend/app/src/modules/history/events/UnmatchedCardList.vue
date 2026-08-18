@@ -4,7 +4,7 @@ import ScrollableDialogContent from '@/modules/core/table/ScrollableDialogConten
 
 const selected = defineModel<string[]>('selected', { required: true });
 
-const { items, rowKey, emptyDescription, highlighted, accented, loading, maxHeight } = defineProps<{
+const { items, rowKey, emptyDescription, highlighted, accented, loading, maxHeight, fill = false } = defineProps<{
   items: T[];
   /** Stable identity of a card, and what the selection model stores. */
   rowKey: (item: T) => string;
@@ -15,6 +15,8 @@ const { items, rowKey, emptyDescription, highlighted, accented, loading, maxHeig
   accented?: (item: T) => boolean;
   loading?: boolean;
   maxHeight: string;
+  /** Fill a bounded pinned panel while keeping the select-all bar and pager visible. */
+  fill?: boolean;
 }>();
 
 defineSlots<{
@@ -97,7 +99,10 @@ watch(() => items.length, (length) => {
 </script>
 
 <template>
-  <div data-testid="unmatched-card-list">
+  <div
+    :class="{ 'h-full min-h-0 flex flex-col': fill }"
+    data-testid="unmatched-card-list"
+  >
     <slot name="alert" />
 
     <div
@@ -123,7 +128,10 @@ watch(() => items.length, (length) => {
       </span>
     </div>
 
-    <ScrollableDialogContent :max-height="maxHeight">
+    <ScrollableDialogContent
+      :fill="fill"
+      :max-height="maxHeight"
+    >
       <div
         v-if="items.length === 0"
         class="flex flex-col items-center gap-2 py-8 border border-default rounded text-body-2 text-rui-text-secondary"

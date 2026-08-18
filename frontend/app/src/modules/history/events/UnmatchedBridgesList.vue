@@ -48,23 +48,13 @@ const { description, emptyDescription, rows, specFor } = useUnmatchedBridgeRows(
   transactions: () => transactions,
 });
 
-const descriptionEl = useTemplateRef<HTMLElement>('description');
-const { height: descriptionHeight } = useElementSize(descriptionEl);
-
-const maxHeight = computed<string>(() =>
-  isPinned
-    // the card list keeps its select-all bar and pager outside the scroll area,
-    // so it gets less room than the table did at the same width
-    ? `calc(100vh - 20rem - ${get(descriptionHeight)}px)`
-    : 'calc(100vh - 23rem)',
-);
+const maxHeight: string = 'calc(100vh - 23rem)';
 </script>
 
 <template>
-  <div>
+  <div :class="{ 'h-full min-h-0 flex flex-col': isPinned }">
     <div class="flex items-center justify-between gap-2 mb-4">
       <p
-        ref="description"
         class="text-body-2 text-rui-text-secondary"
       >
         {{ description }}
@@ -93,6 +83,8 @@ const maxHeight = computed<string>(() =>
       :spec-for="specFor"
       :empty-description="emptyDescription"
       :max-height="maxHeight"
+      :fill="isPinned || undefined"
+      :class="{ 'flex-1 min-h-0': isPinned }"
       :highlighted-group-identifier="highlightedGroupIdentifier"
       :ignore-loading="ignoreLoading"
       :loading="loading"

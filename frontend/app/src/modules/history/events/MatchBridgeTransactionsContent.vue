@@ -78,160 +78,166 @@ onBeforeMount(async () => {
 </script>
 
 <template>
-  <RuiTabs
-    v-model="activeTab"
-    class="border-b border-default"
-    color="primary"
-  >
-    <RuiTab>
-      {{ t('asset_movement_matching.tabs.unmatched') }}
-      <RuiChip
-        v-if="unmatchedTransactions.length > 0"
-        color="primary"
-        size="sm"
-        class="ml-2 !px-0.5 !py-0"
-      >
-        {{ unmatchedTransactions.length }}
-      </RuiChip>
-    </RuiTab>
-    <RuiTab>
-      {{ t('asset_movement_matching.tabs.ignored') }}
-      <RuiChip
-        v-if="ignoredTransactions.length > 0"
-        color="secondary"
-        size="sm"
-        class="ml-2 !px-0.5 !py-0"
-      >
-        {{ ignoredTransactions.length }}
-      </RuiChip>
-    </RuiTab>
-  </RuiTabs>
-
-  <RuiTabItems
-    v-model="activeTab"
-    class="my-4"
-    :class="{ 'px-3': isPinned }"
-  >
-    <RuiTabItem>
-      <UnmatchedBridgesList
-        v-model:selected="modelSelectedUnmatched"
-        :transactions="unmatchedTransactions"
-        :highlighted-group-identifier="highlightedGroupIdentifier"
-        :ignore-loading="ignoreLoading"
-        :is-pinned="isPinned"
-        :loading="loading"
-        :match-disabled="!isAutoMatchAllowed"
-        :match-minimum-tier="autoMatchMinimumTier"
-        @action="handleAction($event)"
-        @pin="emit('pin')"
-      />
-    </RuiTabItem>
-    <RuiTabItem>
-      <UnmatchedBridgesList
-        v-model:selected="modelSelectedIgnored"
-        :transactions="ignoredTransactions"
-        :highlighted-group-identifier="highlightedGroupIdentifier"
-        :loading="ignoredLoading"
-        :ignore-loading="ignoreLoading"
-        :is-pinned="isPinned"
-        show-restore
-        @action="handleAction($event)"
-        @pin="emit('pin')"
-      />
-    </RuiTabItem>
-  </RuiTabItems>
-
   <div
-    class="w-full flex justify-between gap-2"
-    :class="isPinned ? 'px-3 py-2 border-t border-default' : 'pb-4'"
+    :class="{ 'h-full min-h-0 flex flex-col': isPinned }"
   >
-    <div
-      v-if="activeTab === 0"
-      class="flex grow"
+    <RuiTabs
+      v-model="activeTab"
+      class="border-b border-default shrink-0"
+      color="primary"
     >
-      <RuiButton
-        v-if="modelSelectedUnmatched.length > 0"
-        variant="outlined"
-        color="primary"
-        :size="buttonSize"
-        :class="{ 'h-[30px]': isPinned }"
-        :disabled="ignoreLoading"
-        :loading="ignoreLoading"
-        @click="confirmIgnoreSelected()"
-      >
-        {{ t('asset_movement_matching.actions.ignore_selected') }}
+      <RuiTab>
+        {{ t('asset_movement_matching.tabs.unmatched') }}
         <RuiChip
-          v-if="!isPinned && modelSelectedUnmatched.length > 0"
-          size="sm"
+          v-if="unmatchedTransactions.length > 0"
           color="primary"
-          class="ml-2 !py-0"
+          size="sm"
+          class="ml-2 !px-0.5 !py-0"
         >
-          {{ modelSelectedUnmatched.length }}
+          {{ unmatchedTransactions.length }}
         </RuiChip>
-      </RuiButton>
-      <RuiButtonGroup
-        color="primary"
-        class="grow justify-end"
-        :class="isPinned && modelSelectedUnmatched.length > 0 ? '!pl-2' : ''"
-        :disabled="!isAutoMatchAllowed || autoMatchLoading"
-      >
-        <RuiTooltip
-          :open-delay="400"
-          :popper="{ placement: 'top' }"
-          tooltip-class="max-w-80"
+      </RuiTab>
+      <RuiTab>
+        {{ t('asset_movement_matching.tabs.ignored') }}
+        <RuiChip
+          v-if="ignoredTransactions.length > 0"
+          color="secondary"
+          size="sm"
+          class="ml-2 !px-0.5 !py-0"
         >
-          <template #activator>
-            <RuiButton
-              color="primary"
-              class="!rounded-r-none"
-              :size="buttonSize"
-              :class="{ 'h-[30px] !px-3': isPinned }"
-              :disabled="!isAutoMatchAllowed || unmatchedTransactions.length === 0 || autoMatchLoading"
-              :loading="autoMatchLoading"
-              @click="triggerBridgeAutoMatching()"
-            >
-              {{ t('asset_movement_matching.actions.auto_match') }}
-            </RuiButton>
-          </template>
-          {{ t('bridge_matching.actions.auto_match_tooltip') }}
-        </RuiTooltip>
+          {{ ignoredTransactions.length }}
+        </RuiChip>
+      </RuiTab>
+    </RuiTabs>
 
-        <AssetMovementMatchingSettingsMenu
-          :disabled="autoMatchLoading"
-          :is-pinned="isPinned"
-        />
-      </RuiButtonGroup>
-    </div>
-    <div
-      v-else
-      class="flex gap-2"
+    <RuiTabItems
+      v-model="activeTab"
+      class="my-4"
+      :class="isPinned
+        ? 'px-3 flex-1 min-h-0 !h-auto [&>div]:h-full [&>div]:min-h-0 [&_[role=tabpanel]]:h-full [&_[role=tabpanel]>div]:h-full'
+        : ''"
     >
-      <RuiButton
-        v-if="modelSelectedIgnored.length > 0"
-        variant="outlined"
-        color="primary"
-        :size="buttonSize"
-        :disabled="ignoreLoading"
-        :loading="ignoreLoading"
-        @click="confirmRestoreSelected()"
+      <RuiTabItem>
+        <UnmatchedBridgesList
+          v-model:selected="modelSelectedUnmatched"
+          :transactions="unmatchedTransactions"
+          :highlighted-group-identifier="highlightedGroupIdentifier"
+          :ignore-loading="ignoreLoading"
+          :is-pinned="isPinned"
+          :loading="loading"
+          :match-disabled="!isAutoMatchAllowed"
+          :match-minimum-tier="autoMatchMinimumTier"
+          @action="handleAction($event)"
+          @pin="emit('pin')"
+        />
+      </RuiTabItem>
+      <RuiTabItem>
+        <UnmatchedBridgesList
+          v-model:selected="modelSelectedIgnored"
+          :transactions="ignoredTransactions"
+          :highlighted-group-identifier="highlightedGroupIdentifier"
+          :loading="ignoredLoading"
+          :ignore-loading="ignoreLoading"
+          :is-pinned="isPinned"
+          show-restore
+          @action="handleAction($event)"
+          @pin="emit('pin')"
+        />
+      </RuiTabItem>
+    </RuiTabItems>
+
+    <div
+      class="w-full flex justify-between gap-2 shrink-0"
+      :class="isPinned ? 'px-3 py-2 border-t border-default' : 'pb-4'"
+    >
+      <div
+        v-if="activeTab === 0"
+        class="flex grow"
       >
-        {{ t('asset_movement_matching.actions.restore_selected') }}
-        <RuiChip
-          v-if="!isPinned && modelSelectedIgnored.length > 0"
-          size="sm"
+        <RuiButton
+          v-if="modelSelectedUnmatched.length > 0"
+          variant="outlined"
           color="primary"
-          class="ml-2 !py-0"
+          :size="buttonSize"
+          :class="{ 'h-[30px]': isPinned }"
+          :disabled="ignoreLoading"
+          :loading="ignoreLoading"
+          @click="confirmIgnoreSelected()"
         >
-          {{ modelSelectedIgnored.length }}
-        </RuiChip>
+          {{ t('asset_movement_matching.actions.ignore_selected') }}
+          <RuiChip
+            v-if="!isPinned && modelSelectedUnmatched.length > 0"
+            size="sm"
+            color="primary"
+            class="ml-2 !py-0"
+          >
+            {{ modelSelectedUnmatched.length }}
+          </RuiChip>
+        </RuiButton>
+        <RuiButtonGroup
+          color="primary"
+          class="grow justify-end"
+          :class="isPinned && modelSelectedUnmatched.length > 0 ? '!pl-2' : ''"
+          :disabled="!isAutoMatchAllowed || autoMatchLoading"
+        >
+          <RuiTooltip
+            :open-delay="400"
+            :popper="{ placement: 'top' }"
+            tooltip-class="max-w-80"
+          >
+            <template #activator>
+              <RuiButton
+                color="primary"
+                class="!rounded-r-none"
+                :size="buttonSize"
+                :class="{ 'h-[30px] !px-3': isPinned }"
+                :disabled="!isAutoMatchAllowed || unmatchedTransactions.length === 0 || autoMatchLoading"
+                :loading="autoMatchLoading"
+                @click="triggerBridgeAutoMatching()"
+              >
+                {{ t('asset_movement_matching.actions.auto_match') }}
+              </RuiButton>
+            </template>
+            {{ t('bridge_matching.actions.auto_match_tooltip') }}
+          </RuiTooltip>
+
+          <AssetMovementMatchingSettingsMenu
+            :disabled="autoMatchLoading"
+            :is-pinned="isPinned"
+          />
+        </RuiButtonGroup>
+      </div>
+      <div
+        v-else
+        class="flex gap-2"
+      >
+        <RuiButton
+          v-if="modelSelectedIgnored.length > 0"
+          variant="outlined"
+          color="primary"
+          :size="buttonSize"
+          :disabled="ignoreLoading"
+          :loading="ignoreLoading"
+          @click="confirmRestoreSelected()"
+        >
+          {{ t('asset_movement_matching.actions.restore_selected') }}
+          <RuiChip
+            v-if="!isPinned && modelSelectedIgnored.length > 0"
+            size="sm"
+            color="primary"
+            class="ml-2 !py-0"
+          >
+            {{ modelSelectedIgnored.length }}
+          </RuiChip>
+        </RuiButton>
+      </div>
+      <RuiButton
+        v-if="!isPinned"
+        variant="text"
+        @click="emit('close')"
+      >
+        {{ t('common.actions.close') }}
       </RuiButton>
     </div>
-    <RuiButton
-      v-if="!isPinned"
-      variant="text"
-      @click="emit('close')"
-    >
-      {{ t('common.actions.close') }}
-    </RuiButton>
   </div>
 </template>

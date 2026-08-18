@@ -14,11 +14,12 @@ import DateDisplay from '@/modules/shell/components/display/DateDisplay.vue';
 // may do arrives already decided, as `rows` and `specFor`.
 const selected = defineModel<string[]>('selected', { required: true });
 
-const { rows, highlightedGroupIdentifier } = defineProps<{
+const { rows, highlightedGroupIdentifier, fill = false } = defineProps<{
   rows: UnmatchedBridgeRow[];
   specFor: (row: UnmatchedBridgeRow) => UnmatchedRowActionSpec;
   emptyDescription: string;
   maxHeight: string;
+  fill?: boolean;
   highlightedGroupIdentifier?: string;
   ignoreLoading?: boolean;
   loading?: boolean;
@@ -43,6 +44,7 @@ defineSlots<{
     :empty-description="emptyDescription"
     :loading="loading"
     :max-height="maxHeight"
+    :fill="fill"
   >
     <template
       v-if="$slots.alert"

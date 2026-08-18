@@ -1,6 +1,7 @@
 import { libraryDefaults } from '@test/utils/provide-defaults';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
+import ScrollableDialogContent from '@/modules/core/table/ScrollableDialogContent.vue';
 import UnmatchedCardList from '@/modules/history/events/UnmatchedCardList.vue';
 
 interface TestItem {
@@ -21,12 +22,13 @@ const selected = ref<string[]>([]);
  * Mounted through a host component: the list is generic, so this is what pins the
  * item type and lets the selection model be asserted the way a caller sees it.
  */
-function mountList(items: TestItem[], highlightedId?: string): VueWrapper {
+function mountList(items: TestItem[], highlightedId?: string, fill = false): VueWrapper {
   return mount({
     components: { UnmatchedCardList },
     setup() {
       return {
         highlighted: (item: TestItem): boolean => item.id === highlightedId,
+        fill,
         items,
         rowKey: (item: TestItem): string => item.id,
         selected,
@@ -38,6 +40,7 @@ function mountList(items: TestItem[], highlightedId?: string): VueWrapper {
         :items="items"
         :row-key="rowKey"
         :highlighted="highlighted"
+        :fill="fill"
         empty-description="Nothing here"
         max-height="20rem"
       >
@@ -92,6 +95,19 @@ describe('modules/history/events/UnmatchedCardList', () => {
     const wrapper = mountList(createItems(10));
 
     expect(wrapper.find('[data-testid=unmatched-card-pagination]').exists()).toBe(false);
+  });
+
+  it('should keep the pager outside the scrolling region when filling a pinned panel', () => {
+    const wrapper = mountList(createItems(12), undefined, true);
+
+    expect(wrapper.find('[data-testid=unmatched-card-list]').classes()).toEqual(expect.arrayContaining([
+      'h-full',
+      'min-h-0',
+      'flex',
+      'flex-col',
+    ]));
+    expect(wrapper.findComponent(ScrollableDialogContent).props('fill')).toBe(true);
+    expect(wrapper.find('[data-testid=unmatched-card-pagination]').exists()).toBe(true);
   });
 
   it('should select every item, not only the visible page', async () => {
