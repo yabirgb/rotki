@@ -1,8 +1,11 @@
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
+from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI
+from rotkehlchen.tests.utils.factories import make_evm_address
 
 if TYPE_CHECKING:
     from rotkehlchen.types import ChecksumEvmAddress
@@ -16,3 +19,25 @@ if TYPE_CHECKING:
 ])
 def test_has_core_activity(address: ChecksumEvmAddress, expected_active: bool) -> None:
     assert HyperliquidAPI().has_core_activity(address=address) is expected_active
+
+
+@pytest.mark.parametrize(('response', 'expected_active'), [
+    ({'role': 'user'}, True),
+    ({'role': 'vault'}, True),
+    ({'role': 'subAccount', 'data': {'master': '0x0'}}, True),
+    ({'role': 'agent', 'data': {'user': '0x0'}}, False),  # agents can't be queried
+    ({'role': 'missing'}, False),
+    ({'role': 'somethingnew'}, RemoteError),
+    ({}, RemoteError),
+])
+def test_has_core_activity_roles(
+        response: dict,
+        expected_active: bool | type[RemoteError],
+) -> None:
+    api = HyperliquidAPI()
+    with patch.object(api, '_query_dict', return_value=response):
+        if expected_active is RemoteError:
+            with pytest.raises(RemoteError):
+                api.has_core_activity(address=make_evm_address())
+        else:
+            assert api.has_core_activity(address=make_evm_address()) is expected_active

@@ -621,7 +621,8 @@ def setup_evm_addresses_activity_mock(
         gnosis_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
         scroll_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
         binance_sc_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
-        hyperliquid_addresses: list[ChecksumEvmAddress] | None = None,
+        hyperliquid_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
+        hyperliquid_core_addresses: list[ChecksumEvmAddress] | None = None,
         monad_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
         zksync_lite_addresses: list[ChecksumEvmAddress] | None = None,  # pylint: disable=unused-argument  # used by the saved locals  # noqa: E501, RUF100
 ) -> ExitStack:
@@ -676,7 +677,7 @@ def setup_evm_addresses_activity_mock(
     stack.enter_context(patch.object(
         HyperliquidAPI,
         'has_core_activity',
-        side_effect=lambda address: hyperliquid_addresses is not None and address in hyperliquid_addresses,  # noqa: E501
+        side_effect=lambda address: hyperliquid_core_addresses is not None and address in hyperliquid_core_addresses,  # noqa: E501
     ))
     stack.enter_context(patch.object(
         chains_aggregator.zksync_lite,

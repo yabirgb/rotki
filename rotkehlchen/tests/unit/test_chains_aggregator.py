@@ -18,9 +18,14 @@ from rotkehlchen.chain.evm.types import (
 )
 from rotkehlchen.constants import DEFAULT_BALANCE_LABEL, ONE
 from rotkehlchen.constants.assets import A_ETH
+from rotkehlchen.constants.timing import (
+    EVMLIKE_ACCOUNTS_DETECTION_REFRESH,
+    EVMLIKE_ACCOUNTS_DETECTION_RETRY,
+)
 from rotkehlchen.db.addressbook import DBAddressbook
-from rotkehlchen.db.cache import DBCacheDynamic
+from rotkehlchen.db.cache import DBCacheDynamic, DBCacheStatic
 from rotkehlchen.errors.misc import RemoteError
+from rotkehlchen.externalapis.etherscan_like import HasChainActivity
 from rotkehlchen.fval import FVal
 from rotkehlchen.tests.utils.blockchain import setup_evm_addresses_activity_mock
 from rotkehlchen.tests.utils.factories import make_evm_address
@@ -33,6 +38,7 @@ from rotkehlchen.types import (
     OptionalChainAddress,
     SupportedBlockchain,
 )
+from rotkehlchen.utils.misc import ts_now
 
 if TYPE_CHECKING:
     from rotkehlchen.chain.base.manager import BaseManager
@@ -492,3 +498,73 @@ def test_query_balances_partial_chain_failure(blockchain: ChainsAggregator) -> N
         failing_chains.update({SupportedBlockchain.ETHEREUM, SupportedBlockchain.ETHEREUM_BEACONCHAIN})  # noqa: E501
         with pytest.raises(RemoteError):  # so does all queried chains failing
             chains_aggregator.query_balances(ignore_cache=True)
+
+
+@pytest.mark.parametrize(('evm_result', 'core_result', 'expected'), [
+    (HasChainActivity.NONE, True, True),  # no HyperEVM activity but active in Core
+    (HasChainActivity.NONE, False, False),
+    (HasChainActivity.NONE, RemoteError('core'), None),
+    (HasChainActivity.TRANSACTIONS, RemoteError('core'), True),  # HyperEVM is enough
+    (RemoteError('evm'), True, True),  # HyperEVM lookup failed but Core is active
+    (RemoteError('evm'), False, None),  # a HyperEVM failure is not mistaken for inactivity
+    (RemoteError('evm'), RemoteError('core'), None),
+])
+def test_hyperliquid_activity_checks_core(
+        blockchain: ChainsAggregator,
+        evm_result: HasChainActivity | RemoteError,
+        core_result: bool | RemoteError,
+        expected: bool | None,
+) -> None:
+    with (
+        patch.object(
+            blockchain.hyperliquid.node_inquirer,
+            'has_activity',
+            side_effect=[evm_result],
+        ),
+        patch.object(
+            blockchain.hyperliquid_api,
+            'has_core_activity',
+            side_effect=[core_result],
+        ),
+    ):
+        assert blockchain._check_single_chain_activity(
+            address=make_evm_address(),
+            chain=SupportedBlockchain.HYPERLIQUID,
+        ) is expected
+
+
+def test_detect_evm_accounts_retries_sooner_after_failures(
+        blockchain: ChainsAggregator,
+) -> None:
+    """If an activity check fails the detection timestamp is backdated, so the periodic
+    detection retries after EVMLIKE_ACCOUNTS_DETECTION_RETRY and not after a full day."""
+    address = make_evm_address()
+    with blockchain.database.user_write() as write_cursor:
+        blockchain.modify_blockchain_accounts(
+            write_cursor=write_cursor,
+            blockchain=SupportedBlockchain.ETHEREUM,
+            accounts=[address],
+            append_or_remove='append',
+        )
+
+    def detect(failed: bool) -> int:
+        with patch.object(
+            blockchain,
+            'check_single_address_activity',
+            return_value=([], [SupportedBlockchain.HYPERLIQUID] if failed else []),
+        ):
+            blockchain.detect_evm_accounts(chains=[SupportedBlockchain.HYPERLIQUID])
+
+        with blockchain.database.conn.read_ctx() as cursor:
+            return int(cursor.execute(
+                'SELECT value FROM key_value_cache WHERE name=?',
+                (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value,),
+            ).fetchone()[0])
+
+    assert ts_now() - detect(failed=False) < 10
+    elapsed = ts_now() - detect(failed=True)
+    assert (
+        EVMLIKE_ACCOUNTS_DETECTION_REFRESH - EVMLIKE_ACCOUNTS_DETECTION_RETRY
+        <= elapsed
+        < EVMLIKE_ACCOUNTS_DETECTION_REFRESH - EVMLIKE_ACCOUNTS_DETECTION_RETRY + 10
+    )

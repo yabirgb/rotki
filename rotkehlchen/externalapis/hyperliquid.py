@@ -40,6 +40,7 @@ from rotkehlchen.types import (
 )
 from rotkehlchen.utils.misc import ts_sec_to_ms
 from rotkehlchen.utils.network import create_session
+from rotkehlchen.utils.rate_limiter import TokenBucket
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -74,6 +75,14 @@ def asset_from_hyperliquid(symbol: str) -> Asset:
 HYPERLIQUID_MIN_PAGE_CAP: Final = 500
 # The REST weight limit is per minute, so keep retrying rate limited requests for that long.
 HYPERLIQUID_RATE_LIMIT_WINDOW: Final = 60
+# `userRole` weighs 60 against a limit of 1200 per minute per IP. Pace it below that (15 per
+# minute) since balance and history queries share the same allowance.
+HYPERLIQUID_USER_ROLE_RPS: Final = 0.25
+HYPERLIQUID_USER_ROLE_BURST: Final = 3
+# Roles of accounts whose balances and history can be queried in Core
+HYPERLIQUID_CORE_ACCOUNT_ROLES: Final = ('user', 'vault', 'subAccount')
+# `agent` wallets only sign for another account, and `missing` has never been seen by Core
+HYPERLIQUID_CORE_NON_ACCOUNT_ROLES: Final = ('agent', 'missing')
 USDC_SYMBOL: Final = 'USDC'
 HistoryQueryType = Literal['userFunding', 'userNonFundingLedgerUpdates', 'userFillsByTime']
 
@@ -161,6 +170,10 @@ class HyperliquidAPI:
     def __init__(self) -> None:
         self.base_url = 'https://api.hyperliquid.xyz'
         self.session = create_session()
+        self._user_role_limiter = TokenBucket(
+            rps=HYPERLIQUID_USER_ROLE_RPS,
+            capacity=HYPERLIQUID_USER_ROLE_BURST,
+        )
         self.arb_usdc = Asset('eip155:42161/erc20:0xaf88d065e77c8cC2239327C5EDb3A432268e5831')
         self._spot_market_to_base_symbol: dict[int, str] | None = None
         self._discovered_dex_names: list[str] | None = None
@@ -320,31 +333,42 @@ class HyperliquidAPI:
         return self._query_dict(payload=payload, query_name=account_type)
 
     def has_core_activity(self, address: ChecksumEvmAddress) -> bool:
-        """Check whether the address has an account in Hyperliquid Core.
+        """Check whether the address is a queryable account in Hyperliquid Core.
 
         The `userRole` info query returns the role `missing` for addresses that have never
-        interacted with Hyperliquid Core. Any other role (`user`, `vault`, `subAccount`,
-        `agent`) means the account exists.
+        interacted with Hyperliquid Core. The roles `user`, `vault` and `subAccount` are
+        accounts whose balances and history can be queried. The role `agent` is an API/signing
+        wallet whose trading account is another address, so querying it returns nothing and
+        it does not count as active.
 
         Example request and responses:
         POST https://api.hyperliquid.xyz/info {"type": "userRole", "user": "<address>"}
         - Known user:    {"role": "user"}
         - Known vault:   {"role": "vault"}
+        - Agent wallet:  {"role": "agent", "data": {"user": "<trading account address>"}}
         - Unknown:       {"role": "missing"}
 
         Note that Hyperliquid creates a Core account for any address that has received funds,
         so an address that only received a transfer is reported as active.
 
+        `userRole` has a weight of 60 so calls are paced to stay inside the per minute limit.
         https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-role
+        https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits
 
         May raise:
             - RemoteError
         """
+        self._user_role_limiter.acquire()
         result = self._query_dict(
             payload={'type': 'userRole', 'user': address},
             query_name='userRole',
         )
-        return result.get('role', 'missing') != 'missing'
+        if (role := result.get('role')) in HYPERLIQUID_CORE_ACCOUNT_ROLES:
+            return True
+        if role in HYPERLIQUID_CORE_NON_ACCOUNT_ROLES:
+            return False
+
+        raise RemoteError(f'Hyperliquid userRole returned unexpected role {role!r} for {address}')
 
     def query_balances(
             self,
