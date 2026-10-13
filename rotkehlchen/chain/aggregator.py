@@ -87,14 +87,17 @@ from rotkehlchen.db.queried_addresses import QueriedAddresses
 from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import (
+    APIKeyNotAvailable,
+    ChainNotSupported,
     EthSyncError,
+    IndexerRangeNotCovered,
     InputError,
     ModuleInactive,
     ModuleInitializationFailure,
+    NoAvailableIndexers,
     RemoteError,
 )
 from rotkehlchen.externalapis.etherscan_like import HasChainActivity
-from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.deserialization import deserialize_price
@@ -312,8 +315,9 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         self.arbitrum_one = arbitrum_one_manager
         self.base = base_manager
         self.hyperliquid = hyperliquid_manager
-        # shared across address checks to reuse the connection and to pace rate limited queries
-        self.hyperliquid_api = HyperliquidAPI()
+        # (address, chain) of activity checks that failed with an error that may go away
+        # soon (e.g. rate limits), so that the detection can be retried earlier
+        self._recoverable_activity_failures: set[tuple[ChecksumEvmAddress, SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = set()  # noqa: E501
         self.gnosis = gnosis_manager
         self.scroll = scroll_manager
         self.binance_sc = binance_sc_manager
@@ -1426,10 +1430,13 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 if chain != SupportedBlockchain.HYPERLIQUID:
                     raise
 
-                log.error('%s when checking if %s is active at %s', e, address, chain)
                 # A positive Core result is enough, but if Core is inactive or also fails
                 # the HyperEVM failure must not be mistaken for inactivity.
-                return True if self._has_hyperliquid_core_activity(address) is True else None
+                if self._has_hyperliquid_core_activity(address) is True:
+                    return True
+
+                self._activity_check_failed(address=address, chain=chain, error=e)
+                return None
 
             only_token_spam = (
                 chain_activity == HasChainActivity.TOKENS and
@@ -1441,17 +1448,34 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             ):  # no HyperEVM activity. Check Hyperliquid Core too
                 return self._has_hyperliquid_core_activity(address)
         except RemoteError as e:
-            log.error('%s when checking if %s is active at %s', e, address, chain)
+            self._activity_check_failed(address=address, chain=chain, error=e)
             return None
         else:
             return not (only_token_spam or chain_activity == HasChainActivity.NONE)
 
+    def _activity_check_failed(
+            self,
+            address: ChecksumEvmAddress,
+            chain: SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
+            error: RemoteError,
+    ) -> None:
+        """Log a failed activity check and remember it if retrying soon can help.
+        Errors due to missing configuration or unsupported ranges won't go away by themselves.
+        """
+        log.error('%s when checking if %s is active at %s', error, address, chain)
+        if not isinstance(error, APIKeyNotAvailable | ChainNotSupported | IndexerRangeNotCovered | NoAvailableIndexers):  # noqa: E501
+            self._recoverable_activity_failures.add((address, chain))
+
     def _has_hyperliquid_core_activity(self, address: ChecksumEvmAddress) -> bool | None:
         """Check Hyperliquid Core activity. Returns None if the query failed."""
         try:
-            return self.hyperliquid_api.has_core_activity(address=address)
+            return self.hyperliquid.api.has_core_activity(address=address)
         except RemoteError as e:
-            log.error('%s when checking if %s is active at Hyperliquid Core', e, address)
+            self._activity_check_failed(
+                address=address,
+                chain=SupportedBlockchain.HYPERLIQUID,
+                error=e,
+            )
             return None
 
     def check_single_address_activity(
@@ -1531,7 +1555,6 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         the account is active there and if it is, starts tracking it. Returns a tuple of:
         - a list of tuples (chain, account) for each chain where the account was added
         - a list of tuples (chain, account) for each chain where we failed to check the account
-        (also when the account is not active in any other chain)
         - boolean being False if the account didn't have activity in any chain
         """
         active_chains, failed_to_query_chains = self.check_single_address_activity(
@@ -1539,7 +1562,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             chains=chains,
         )
         if len(active_chains) == 0:
-            return [], [(chain, account) for chain in failed_to_query_chains], False
+            return [], [], False
 
         new_tracked_chains, new_failed_chains = self.track_evm_address(account, active_chains)
         failed_to_query_chains += new_failed_chains
@@ -1649,7 +1672,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
 
         all_evm_chains = set(SUPPORTED_EVM_EVMLIKE_CHAINS) if chains is None else set(chains)
         added_accounts: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]] = []
-        any_check_failed = False
+        self._recoverable_activity_failures.clear()
         for account, account_chains in current_accounts.items():
             if progress_handler is not None:
                 progress_handler.new_step(f'Checking {account} EVM chain activity')
@@ -1658,12 +1681,11 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             if len(chains_to_check) == 0:
                 continue
 
-            new_added_accounts, failed_accounts, _ = self.check_chains_and_add_accounts(
+            new_added_accounts, _, _ = self.check_chains_and_add_accounts(
                 account=account,
                 chains=chains_to_check,
             )
             added_accounts += new_added_accounts
-            any_check_failed |= len(failed_accounts) != 0
 
         if progress_handler is not None:
             progress_handler.new_step('Potentially write migrated addresses to the DB')
@@ -1682,10 +1704,10 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             ],
         )
 
-        # If some check failed (e.g. rate limited), backdate the timestamp so that the
-        # periodic detection retries sooner than the usual refresh period.
+        # If some check failed with a recoverable error (e.g. rate limited), backdate the
+        # timestamp so that the periodic detection retries sooner than the usual refresh period.
         last_detect_ts: int = ts_now()
-        if any_check_failed:
+        if len(self._recoverable_activity_failures) != 0:
             last_detect_ts -= EVMLIKE_ACCOUNTS_DETECTION_REFRESH - EVMLIKE_ACCOUNTS_DETECTION_RETRY
         with self.database.user_write() as cursor:
             cursor.execute(  # remember last time evm addresses were detected

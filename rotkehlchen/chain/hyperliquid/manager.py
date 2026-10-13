@@ -1,5 +1,6 @@
 import logging
 from collections import Counter, defaultdict
+from functools import cached_property
 from typing import TYPE_CHECKING, Final
 
 from rotkehlchen.accounting.structures.balance import Balance, BalanceSheet
@@ -71,6 +72,12 @@ class HyperliquidManager(EvmManager):
         )
         self.node_inquirer: HyperliquidInquirer
 
+    @cached_property
+    def api(self) -> HyperliquidAPI:
+        """Core API client, shared with the account detection to reuse the connection
+        and pace rate limited queries. Created on first use."""
+        return HyperliquidAPI()
+
     def query_balances(
             self,
             addresses: Sequence[ChecksumEvmAddress],
@@ -89,7 +96,7 @@ class HyperliquidManager(EvmManager):
                 )
                 del assets[sthype]
 
-        api = HyperliquidAPI()
+        api = self.api
         main_currency = CachedSettings().main_currency
         for address in addresses:
             try:
@@ -221,7 +228,7 @@ class HyperliquidManager(EvmManager):
         A range is only marked as queried once all of its history has been queried, so a
         range that failed midway is queried again in a future sync.
         """
-        api = HyperliquidAPI()
+        api = self.api
         ranges = DBQueryRanges(self.node_inquirer.database)
         history_db = DBHistoryEvents(self.node_inquirer.database)
 
@@ -278,7 +285,7 @@ class HyperliquidManager(EvmManager):
         """
         return self._save_history_batches(
             history_db=DBHistoryEvents(self.node_inquirer.database),
-            batches=HyperliquidAPI().iter_history_event_batches(
+            batches=self.api.iter_history_event_batches(
                 address=address,
                 start_ts=start_ts,
                 end_ts=end_ts,
