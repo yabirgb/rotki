@@ -90,6 +90,7 @@ from rotkehlchen.errors.misc import (
     RemoteError,
 )
 from rotkehlchen.externalapis.etherscan_like import HasChainActivity
+from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI
 from rotkehlchen.fval import FVal
 from rotkehlchen.globaldb.handler import GlobalDBHandler
 from rotkehlchen.history.deserialization import deserialize_price
@@ -1418,6 +1419,11 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 chain_activity == HasChainActivity.TOKENS and
                 evm_manager.transactions.address_has_been_spammed(address=address)
             )
+            if (
+                chain == SupportedBlockchain.HYPERLIQUID and
+                (only_token_spam or chain_activity == HasChainActivity.NONE)
+            ):  # no HyperEVM activity. Check Hyperliquid Core too
+                return HyperliquidAPI().has_core_activity(address=address)
         except RemoteError as e:
             log.error('%s when checking if %s is active at %s', e, address, chain)
             return None

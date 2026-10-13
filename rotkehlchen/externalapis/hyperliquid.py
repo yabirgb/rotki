@@ -319,6 +319,33 @@ class HyperliquidAPI:
 
         return self._query_dict(payload=payload, query_name=account_type)
 
+    def has_core_activity(self, address: ChecksumEvmAddress) -> bool:
+        """Check whether the address has an account in Hyperliquid Core.
+
+        The `userRole` info query returns the role `missing` for addresses that have never
+        interacted with Hyperliquid Core. Any other role (`user`, `vault`, `subAccount`,
+        `agent`) means the account exists.
+
+        Example request and responses:
+        POST https://api.hyperliquid.xyz/info {"type": "userRole", "user": "<address>"}
+        - Known user:    {"role": "user"}
+        - Known vault:   {"role": "vault"}
+        - Unknown:       {"role": "missing"}
+
+        Note that Hyperliquid creates a Core account for any address that has received funds,
+        so an address that only received a transfer is reported as active.
+
+        https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint#query-a-users-role
+
+        May raise:
+            - RemoteError
+        """
+        result = self._query_dict(
+            payload={'type': 'userRole', 'user': address},
+            query_name='userRole',
+        )
+        return result.get('role', 'missing') != 'missing'
+
     def query_balances(
             self,
             address: ChecksumEvmAddress,
