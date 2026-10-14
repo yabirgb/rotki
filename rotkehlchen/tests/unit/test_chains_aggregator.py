@@ -1,5 +1,7 @@
 import datetime
 from contextlib import ExitStack
+from functools import partial
+from threading import Event
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
@@ -9,6 +11,7 @@ from rotkehlchen.accounting.structures.balance import Balance
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.assets.utils import get_or_create_evm_token
 from rotkehlchen.chain.accounts import BlockchainAccountData
+from rotkehlchen.chain.activity_retries import ActivityRetryTracker
 from rotkehlchen.chain.aggregator import ChainsAggregator, _module_name_to_class
 from rotkehlchen.chain.evm.constants import LAST_SPAM_TXS_CACHE
 from rotkehlchen.chain.evm.types import (
@@ -16,6 +19,7 @@ from rotkehlchen.chain.evm.types import (
     SerializableChainIndexerOrder,
     string_to_evm_address,
 )
+from rotkehlchen.concurrency import TaskCancelledError, result_of, spawn
 from rotkehlchen.constants import DEFAULT_BALANCE_LABEL, ONE
 from rotkehlchen.constants.assets import A_ETH
 from rotkehlchen.constants.timing import EVMLIKE_ACCOUNTS_DETECTION_RETRY
@@ -30,6 +34,7 @@ from rotkehlchen.tests.utils.factories import make_evm_address
 from rotkehlchen.types import (
     AVAILABLE_MODULES_MAP,
     SPAM_PROTOCOL,
+    SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
     AddressbookType,
     ChainID,
     ChecksumEvmAddress,
@@ -43,6 +48,7 @@ if TYPE_CHECKING:
     from rotkehlchen.chain.base.manager import BaseManager
     from rotkehlchen.chain.gnosis.manager import GnosisManager
     from rotkehlchen.chain.polygon_pos.manager import PolygonPOSManager
+    from rotkehlchen.tasks.manager import TaskManager
 
 
 @pytest.mark.parametrize('ethereum_modules', [[]])
@@ -565,7 +571,7 @@ def test_detect_evm_accounts_retries_only_failed_pairs(
             (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value,),
         ).fetchone()[0]) < 10  # full detection timestamp is never backdated
 
-    failed_pairs = set(blockchain._recoverable_activity_failures)
+    failed_pairs = set(blockchain._activity_retries._pending)
     if is_retried:
         assert (address, SupportedBlockchain.HYPERLIQUID) in failed_pairs
         assert {chain for _, chain in failed_pairs} == {SupportedBlockchain.HYPERLIQUID}
@@ -574,7 +580,7 @@ def test_detect_evm_accounts_retries_only_failed_pairs(
 
     assert blockchain.should_retry_activity_checks() is False  # not due yet
     if is_retried:
-        blockchain._next_activity_retry_ts = Timestamp(ts_now() - 1)
+        blockchain._activity_retries._due_ts = Timestamp(ts_now() - 1)
         assert blockchain.should_retry_activity_checks() is True
 
     with patch.object(
@@ -614,9 +620,9 @@ def test_recoverable_failure_outside_detection_is_not_retried_immediately(
             chain=SupportedBlockchain.HYPERLIQUID,
         ) is None
 
-    assert (address, SupportedBlockchain.HYPERLIQUID) in blockchain._recoverable_activity_failures
+    assert (address, SupportedBlockchain.HYPERLIQUID) in blockchain._activity_retries._pending
     assert blockchain.should_retry_activity_checks() is False
-    assert blockchain._next_activity_retry_ts >= ts_now() + EVMLIKE_ACCOUNTS_DETECTION_RETRY - 10
+    assert blockchain._activity_retries._due_ts >= ts_now() + EVMLIKE_ACCOUNTS_DETECTION_RETRY - 10
 
 
 def test_retry_skips_chains_excluded_from_detection_since_the_failure(
@@ -630,7 +636,7 @@ def test_retry_skips_chains_excluded_from_detection_since_the_failure(
             append_or_remove='append',
         )
 
-    blockchain._recoverable_activity_failures = {(address, SupportedBlockchain.HYPERLIQUID)}
+    blockchain._activity_retries.record_failures([(address, SupportedBlockchain.HYPERLIQUID)])
     with (
         patch.object(blockchain.database, 'get_chains_to_detect_evm_accounts', return_value=[]),
         patch.object(blockchain, 'check_chains_and_add_accounts') as check_mock,
@@ -638,4 +644,243 @@ def test_retry_skips_chains_excluded_from_detection_since_the_failure(
         assert blockchain.retry_failed_activity_checks() == []
 
     assert check_mock.call_count == 0
-    assert blockchain._recoverable_activity_failures == set()
+    assert blockchain._activity_retries.has_pending() is False
+
+
+def test_untracked_submitted_address_is_retried(blockchain: ChainsAggregator) -> None:
+    """An address the user submitted whose only checks failed is tracked nowhere, but the
+    retry must still reconsider it, also after a retry that fails again. The full detection
+    also must not forget it."""
+    address = make_evm_address()
+    error = RecoverableRemoteError('rate limited')
+    with (
+        patch(
+            'rotkehlchen.chain.evm.node_inquirer.EvmNodeInquirer.has_activity',
+            side_effect=error,
+        ),
+        patch('rotkehlchen.chain.evm.node_inquirer.EvmNodeInquirer.is_contract', return_value=False),  # noqa: E501
+        patch.object(HyperliquidAPI, 'has_core_activity', side_effect=error),
+        patch.object(blockchain.zksync_lite, '_query_api', side_effect=error),
+    ):
+        blockchain.add_accounts_to_all_evm([address])
+        # a full detection does not redo untracked addresses, so it keeps the pending check
+        blockchain.detect_evm_accounts(chains=[SupportedBlockchain.HYPERLIQUID])
+        pending = {
+            check for check, submitted in blockchain._activity_retries._pending.items()
+            if check[0] == address and submitted is True
+        }
+        assert (address, SupportedBlockchain.HYPERLIQUID) in pending
+
+        blockchain._activity_retries._due_ts = Timestamp(ts_now() - 1)
+        assert blockchain.retry_failed_activity_checks() == []  # fails again
+
+    # still pending, and still submitted. Otherwise the next retry would skip it as untracked
+    assert blockchain._activity_retries._pending[address, SupportedBlockchain.HYPERLIQUID] is True
+    blockchain._activity_retries._due_ts = Timestamp(ts_now() - 1)
+    assert blockchain.should_retry_activity_checks() is True
+    with (
+        patch(
+            'rotkehlchen.chain.evm.node_inquirer.EvmNodeInquirer.has_activity',
+            return_value=HasChainActivity.NONE,
+        ),
+        patch.object(HyperliquidAPI, 'has_core_activity', return_value=True),
+        patch.object(blockchain.zksync_lite, '_query_api', return_value={'list': []}),
+    ):
+        assert (SupportedBlockchain.HYPERLIQUID, address) in blockchain.retry_failed_activity_checks()  # noqa: E501
+
+    assert address in blockchain.accounts.get(SupportedBlockchain.HYPERLIQUID)
+
+
+def test_retry_does_not_readd_removed_untracked_address(blockchain: ChainsAggregator) -> None:
+    """A pending check of an address that was tracked, and that the user removed
+    everywhere, must not bring it back"""
+    with blockchain.database.user_write() as write_cursor:
+        blockchain.modify_blockchain_accounts(
+            write_cursor=write_cursor,
+            blockchain=SupportedBlockchain.ETHEREUM,
+            accounts=[(address := make_evm_address())],
+            append_or_remove='append',
+        )
+
+    blockchain._activity_retries.record_failures(
+        [(address, SupportedBlockchain.HYPERLIQUID)], submitted=True,
+    )
+    with blockchain.database.user_write() as write_cursor:
+        blockchain.remove_single_blockchain_accounts(
+            write_cursor=write_cursor,
+            blockchain=SupportedBlockchain.ETHEREUM,
+            accounts=[address],
+        )
+
+    assert blockchain._activity_retries.has_pending() is False
+    with blockchain.database.conn.read_ctx() as cursor:  # and it is gone from the DB too
+        assert cursor.execute(
+            'SELECT COUNT(*) FROM key_value_cache WHERE name=?',
+            (DBCacheStatic.EVM_ACCOUNTS_DETECT_RETRIES.value,),
+        ).fetchone()[0] == 0
+
+
+def test_pending_activity_retries_survive_restart(blockchain: ChainsAggregator) -> None:
+    """The pending checks and their due time are read back from the DB, and an unreadable
+    value is dropped instead of breaking the login."""
+    address = make_evm_address()
+    blockchain._activity_retries.record_failures(
+        [(address, SupportedBlockchain.HYPERLIQUID)], submitted=True,
+    )
+    due_ts = blockchain._activity_retries._due_ts
+
+    restarted = ActivityRetryTracker(blockchain.database)
+    assert restarted._pending == {(address, SupportedBlockchain.HYPERLIQUID): True}
+    assert restarted._due_ts == due_ts
+    assert restarted.is_due() is False
+
+    with blockchain.database.user_write() as write_cursor:
+        blockchain.database.set_static_cache(
+            write_cursor=write_cursor,
+            name=DBCacheStatic.EVM_ACCOUNTS_DETECT_RETRIES,
+            value='{"due_ts": 1, "checks": [{"address": "0x1", "chain": "NOPE"}]}',
+        )
+    assert ActivityRetryTracker(blockchain.database).has_pending() is False
+
+
+def _blocked_core_activity(started: Event, release: Event, result: bool | RemoteError, **kwargs: Any) -> bool:  # noqa: E501
+    started.set()
+    assert release.wait(10)
+    if isinstance(result, RemoteError):
+        raise result
+    return result
+
+
+@pytest.mark.parametrize('result', [True, RecoverableRemoteError('still unavailable')])
+def test_removal_during_activity_retry_is_respected(
+        blockchain: ChainsAggregator,
+        result: bool | RemoteError,
+) -> None:
+    """Removal invalidates both a late positive response and a late recoverable failure."""
+    address = make_evm_address()
+    with blockchain.database.user_write() as cursor:
+        blockchain.modify_blockchain_accounts(
+            write_cursor=cursor,
+            blockchain=SupportedBlockchain.ETHEREUM,
+            accounts=[address],
+            append_or_remove='append',
+        )
+    blockchain._activity_retries.record_failures(
+        [(address, SupportedBlockchain.HYPERLIQUID)], submitted=True,
+    )
+    started, release = Event(), Event()
+    with (
+        patch.object(blockchain.hyperliquid.node_inquirer, 'has_activity', return_value=HasChainActivity.NONE),  # noqa: E501
+        patch.object(HyperliquidAPI, 'has_core_activity', side_effect=partial(
+            _blocked_core_activity, started, release, result,
+        )),
+    ):
+        task = spawn(blockchain.retry_failed_activity_checks)
+        try:
+            assert started.wait(10)
+            # The queue must remain durable even while the retry is on the network.
+            restarted = ActivityRetryTracker(blockchain.database)
+            with blockchain.database.user_write() as cursor:
+                blockchain.remove_single_blockchain_accounts(
+                    write_cursor=cursor,
+                    blockchain=SupportedBlockchain.ETHEREUM,
+                    accounts=[address],
+                )
+        finally:
+            release.set()
+            task.join(10)
+        assert task.dead
+        assert result_of(task) == []
+
+    assert address not in blockchain.accounts.get(SupportedBlockchain.HYPERLIQUID)
+    assert blockchain._activity_retries.has_pending() is False
+    assert ActivityRetryTracker(blockchain.database).has_pending() is False
+    assert restarted.has_pending() is True
+
+
+@pytest.mark.parametrize('full_detection', [False, True])
+def test_cancelled_activity_retry_remains_durable(
+        blockchain: ChainsAggregator,
+        full_detection: bool,
+) -> None:
+    address = make_evm_address()
+    if full_detection:
+        with blockchain.database.user_write() as cursor:
+            blockchain.modify_blockchain_accounts(
+                write_cursor=cursor,
+                blockchain=SupportedBlockchain.ETHEREUM,
+                accounts=[address],
+                append_or_remove='append',
+            )
+    blockchain._activity_retries.record_failures(
+        [(address, SupportedBlockchain.HYPERLIQUID)], submitted=True,
+    )
+    operation = (
+        partial(blockchain.detect_evm_accounts, chains=[SupportedBlockchain.HYPERLIQUID])
+        if full_detection else blockchain.retry_failed_activity_checks
+    )
+    with (
+        patch.object(
+            blockchain, 'check_chains_and_add_accounts', side_effect=TaskCancelledError(),
+        ),
+        pytest.raises(TaskCancelledError),
+    ):
+        operation()
+
+    assert ActivityRetryTracker(blockchain.database)._pending == {
+        (address, SupportedBlockchain.HYPERLIQUID): True,
+    }
+
+
+def test_activity_retry_scheduler_after_restart(task_manager: TaskManager) -> None:
+    """A recent full scan must not prevent a restored, due targeted retry from running."""
+    blockchain = task_manager.chains_aggregator
+    address = make_evm_address()
+    with blockchain.database.user_write() as cursor:
+        blockchain.database.set_static_cache(
+            write_cursor=cursor, name=DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS, value=ts_now(),
+        )
+    with patch('rotkehlchen.chain.activity_retries.ts_now', return_value=ts_now() - 2 * EVMLIKE_ACCOUNTS_DETECTION_RETRY):  # noqa: E501
+        blockchain._activity_retries.record_failures(
+            [(address, SupportedBlockchain.HYPERLIQUID)], submitted=True,
+        )
+    blockchain._activity_retries = ActivityRetryTracker(blockchain.database)
+    assert task_manager._maybe_detect_evm_accounts() is None
+    with (
+        patch.object(blockchain.hyperliquid.node_inquirer, 'has_activity', return_value=HasChainActivity.NONE),  # noqa: E501
+        patch.object(HyperliquidAPI, 'has_core_activity', return_value=True),
+    ):
+        tasks = task_manager._maybe_retry_failed_evm_detections()
+        assert tasks is not None
+        assert len(tasks) == 1
+        assert result_of(tasks[0]) == [(SupportedBlockchain.HYPERLIQUID, address)]
+
+    assert ActivityRetryTracker(blockchain.database).has_pending() is False
+
+
+def test_detected_account_save_skips_removed_accounts(blockchain: ChainsAggregator) -> None:
+    """An account removed between tracking and saving must stay absent from the DB and
+    from the detected-account result sent to the frontend."""
+    address = make_evm_address()
+    with blockchain.database.user_write() as cursor:
+        blockchain.modify_blockchain_accounts(
+            write_cursor=cursor,
+            blockchain=SupportedBlockchain.HYPERLIQUID,
+            accounts=[address],
+            append_or_remove='append',
+        )
+        blockchain.remove_single_blockchain_accounts(
+            write_cursor=cursor,
+            blockchain=SupportedBlockchain.HYPERLIQUID,
+            accounts=[address],
+        )
+
+    added: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]] = [
+        (SupportedBlockchain.HYPERLIQUID, address),
+    ]
+    blockchain._save_detected_accounts(added)
+    assert added == []
+    with blockchain.database.conn.read_ctx() as cursor:
+        assert address not in blockchain.database.get_single_blockchain_addresses(
+            cursor, SupportedBlockchain.HYPERLIQUID,
+        )

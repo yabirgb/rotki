@@ -13,6 +13,7 @@ from rotkehlchen.accounting.structures.balance import Balance, BalanceSheet
 from rotkehlchen.api.websockets.typedefs import WSMessageType
 from rotkehlchen.assets.asset import Asset, CryptoAsset
 from rotkehlchen.chain.accounts import BlockchainAccountData, BlockchainAccounts
+from rotkehlchen.chain.activity_retries import ActivityRetryTracker
 from rotkehlchen.chain.arbitrum_one.modules.gearbox.balances import (
     GearboxBalances as GearboxBalancesArbitrumOne,
 )
@@ -75,10 +76,7 @@ from rotkehlchen.concurrency import exception_of, result_of, spawn, wait
 from rotkehlchen.constants import DEFAULT_BALANCE_LABEL, ONE, ZERO
 from rotkehlchen.constants.assets import A_BCH, A_BTC, A_DAI, A_ETH, A_ETH2
 from rotkehlchen.constants.prices import ZERO_PRICE
-from rotkehlchen.constants.timing import (
-    EVMLIKE_ACCOUNTS_DETECTION_RETRY,
-    HOUR_IN_SECONDS,
-)
+from rotkehlchen.constants.timing import HOUR_IN_SECONDS
 from rotkehlchen.db.addressbook import DBAddressbook
 from rotkehlchen.db.cache import DBCacheDynamic, DBCacheStatic
 from rotkehlchen.db.eth2 import DBEth2
@@ -311,10 +309,9 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         self.arbitrum_one = arbitrum_one_manager
         self.base = base_manager
         self.hyperliquid = hyperliquid_manager
-        # (address, chain) of activity checks that failed with an error that may go away
-        # soon (e.g. rate limits). Only these pairs are retried, ahead of the next full detection
-        self._recoverable_activity_failures: set[tuple[ChecksumEvmAddress, SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = set()  # noqa: E501
-        self._next_activity_retry_ts: Timestamp = Timestamp(0)
+        # Activity checks that failed with an error that may go away soon (e.g. rate limits).
+        # Only these are retried, ahead of the next full detection. Persisted in the user DB.
+        self._activity_retries = ActivityRetryTracker(database)
         self.gnosis = gnosis_manager
         self.scroll = scroll_manager
         self.binance_sc = binance_sc_manager
@@ -1032,6 +1029,18 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             append_or_remove='remove',
         )
 
+    def _forget_removed_account_checks(
+            self,
+            write_cursor: DBCursor,
+            chain: SupportedBlockchain,
+            address: str,
+    ) -> None:
+        """Stop retrying failed activity checks for an account the user removed. If it is
+        not tracked anywhere anymore, all its pending checks go, so it is not added back."""
+        self._activity_retries.drop_address(write_cursor=write_cursor, address=address, chain=chain)  # noqa: E501
+        if not any(address in self.accounts.get(c) for c in SUPPORTED_EVM_EVMLIKE_CHAINS):
+            self._activity_retries.drop_address(write_cursor=write_cursor, address=address)
+
     def _init_substrate_account_modification(
             self,
             blockchain: SUPPORTED_SUBSTRATE_CHAINS_TYPE,
@@ -1118,6 +1127,12 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                     chain_modify_remove = self.chain_modify_remove.get(blockchain)
                     if chain_modify_remove is not None:
                         chain_modify_remove(blockchain, account)
+                    if blockchain.is_evm_or_evmlike():  # don't retry what the user removed
+                        self._forget_removed_account_checks(
+                            write_cursor=write_cursor,
+                            chain=blockchain,
+                            address=account,
+                        )
 
         # we are adding/removing accounts, so invalidate the cached chain balance query
         self.flush_chain_balance_query_cache(blockchain)
@@ -1463,9 +1478,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         """
         log.error('%s when checking if %s is active at %s', error, address, chain)
         if isinstance(error, RecoverableRemoteError):
-            self._recoverable_activity_failures.add((address, chain))
-            if self._next_activity_retry_ts <= (now := ts_now()):  # no retry is scheduled yet
-                self._next_activity_retry_ts = Timestamp(now + EVMLIKE_ACCOUNTS_DETECTION_RETRY)
+            self._activity_retries.record_failures([(address, chain)])
 
     def _has_hyperliquid_core_activity(self, address: ChecksumEvmAddress) -> bool | None:
         """Check Hyperliquid Core activity. Returns None if the query failed."""
@@ -1512,6 +1525,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             self,
             address: ChecksumEvmAddress,
             chains: list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE],
+            is_retry: bool = False,
     ) -> tuple[list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE], list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]]:
         """
         Track address for the chains provided. If the address is already tracked on a
@@ -1523,6 +1537,8 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         for chain in chains:
             try:
                 with self.database.user_write() as write_cursor:
+                    if is_retry and not self._activity_retries.is_retry_pending((address, chain)):
+                        continue  # removed while the activity request was in flight
                     self.modify_blockchain_accounts(
                         write_cursor=write_cursor,
                         blockchain=chain,
@@ -1546,6 +1562,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             self,
             account: ChecksumEvmAddress,
             chains: list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE],
+            is_retry: bool = False,
     ) -> tuple[
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
@@ -1565,7 +1582,9 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         if len(active_chains) == 0:
             return [], [], False
 
-        new_tracked_chains, new_failed_chains = self.track_evm_address(account, active_chains)
+        new_tracked_chains, new_failed_chains = self.track_evm_address(
+            account, active_chains, is_retry=is_retry,
+        )
         failed_to_query_chains += new_failed_chains
         if len(new_tracked_chains) > 0:
             # AddressNotSupported doesn't raise because we have only EVM addresses
@@ -1639,6 +1658,8 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             elif had_activity is False and len(chains_with_valid_addresses) != 0:
                 no_activity_accounts += [(chain, account) for chain in chains_with_valid_addresses]
 
+        # checks that failed recoverably are retried even if the address was not tracked anywhere
+        self._activity_retries.mark_submitted(accounts)
         return (
             added_accounts,
             existed_accounts,
@@ -1673,48 +1694,42 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
 
         all_evm_chains = set(SUPPORTED_EVM_EVMLIKE_CHAINS) if chains is None else set(chains)
         added_accounts: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]] = []
-        self._recoverable_activity_failures.clear()
-        for account, account_chains in current_accounts.items():
+        # Retire pending checks only after the full pass completes, keeping them durable
+        # while requests are in flight. Untracked submitted addresses are not rechecked.
+        with self._activity_retries.rechecking([
+            (account, chain)
+            for account, account_chains in current_accounts.items()
+            for chain in all_evm_chains - set(account_chains)
+        ]):
+            for account, account_chains in current_accounts.items():
+                if progress_handler is not None:
+                    progress_handler.new_step(f'Checking {account} EVM chain activity')
+
+                chains_to_check = list(all_evm_chains - set(account_chains))
+                if len(chains_to_check) == 0:
+                    continue
+
+                new_added_accounts, _, _ = self.check_chains_and_add_accounts(
+                    account=account,
+                    chains=chains_to_check,
+                )
+                added_accounts += new_added_accounts
+
             if progress_handler is not None:
-                progress_handler.new_step(f'Checking {account} EVM chain activity')
+                progress_handler.new_step('Potentially write migrated addresses to the DB')
 
-            chains_to_check = list(all_evm_chains - set(account_chains))
-            if len(chains_to_check) == 0:
-                continue
+            self._save_detected_accounts(added_accounts)
+            with self.database.user_write() as cursor:
+                cursor.execute(  # remember last time evm addresses were detected
+                    'INSERT OR REPLACE INTO key_value_cache (name, value) VALUES (?, ?)',
+                    (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value, str(ts_now())),
+                )
 
-            new_added_accounts, _, _ = self.check_chains_and_add_accounts(
-                account=account,
-                chains=chains_to_check,
-            )
-            added_accounts += new_added_accounts
-
-        if progress_handler is not None:
-            progress_handler.new_step('Potentially write migrated addresses to the DB')
-
-        self._save_detected_accounts(added_accounts)
-        with self.database.user_write() as cursor:
-            cursor.execute(  # remember last time evm addresses were detected
-                'INSERT OR REPLACE INTO key_value_cache (name, value) VALUES (?, ?)',
-                (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value, str(ts_now())),
-            )
-
-        self._schedule_activity_retry()
         return added_accounts
-
-    def _schedule_activity_retry(self) -> None:
-        """If some checks failed with recoverable errors schedule a targeted retry of
-        only those, without touching the schedule of the full detection."""
-        self._next_activity_retry_ts = Timestamp(
-            ts_now() + EVMLIKE_ACCOUNTS_DETECTION_RETRY
-            if len(self._recoverable_activity_failures) != 0 else 0,
-        )
 
     def should_retry_activity_checks(self) -> bool:
         """Whether there are failed activity checks whose retry is due"""
-        return (
-            len(self._recoverable_activity_failures) != 0 and
-            ts_now() >= self._next_activity_retry_ts
-        )
+        return self._activity_retries.is_due()
 
     def retry_failed_activity_checks(self) -> list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]]:  # noqa: E501
         """Recheck only the (address, chain) pairs whose activity check failed with a
@@ -1722,32 +1737,32 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
 
         Returns a list of tuples of (chain, address) for the freshly detected accounts.
         """
-        pending, self._recoverable_activity_failures = self._recoverable_activity_failures, set()
-        tracked = {
-            account
-            for chain in SUPPORTED_EVM_EVMLIKE_CHAINS
-            for account in self.accounts.get(chain)
-        }
-        chains_by_address: defaultdict[ChecksumEvmAddress, list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = defaultdict(list)  # noqa: E501
-        allowed_chains = set(self.database.get_chains_to_detect_evm_accounts())
-        for address, chain in pending:
-            if (
-                chain in allowed_chains and  # the user may have excluded it since it failed
-                address in tracked and
-                address not in self.accounts.get(chain)
-            ):
-                chains_by_address[address].append(chain)
-
         added_accounts: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]] = []
-        for address, chains in chains_by_address.items():
-            new_added_accounts, _, _ = self.check_chains_and_add_accounts(
-                account=address,
-                chains=chains,
-            )
-            added_accounts += new_added_accounts
+        with self._activity_retries.rechecking() as pending:
+            tracked = {
+                account
+                for chain in SUPPORTED_EVM_EVMLIKE_CHAINS
+                for account in self.accounts.get(chain)
+            }
+            chains_by_address: defaultdict[ChecksumEvmAddress, list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = defaultdict(list)  # noqa: E501
+            allowed_chains = set(self.database.get_chains_to_detect_evm_accounts())
+            for (address, chain), submitted in pending.items():
+                if (
+                    chain in allowed_chains and  # the user may have excluded it since it failed
+                    (submitted or address in tracked) and  # untracked only if the user added it
+                    address not in self.accounts.get(chain)
+                ):
+                    chains_by_address[address].append(chain)
 
-        self._save_detected_accounts(added_accounts)
-        self._schedule_activity_retry()
+            for address, chains in chains_by_address.items():
+                new_added_accounts, _, _ = self.check_chains_and_add_accounts(
+                    account=address,
+                    chains=chains,
+                    is_retry=True,
+                )
+                added_accounts += new_added_accounts
+
+            self._save_detected_accounts(added_accounts)
         return added_accounts
 
     def _save_detected_accounts(
@@ -1756,6 +1771,11 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
     ) -> None:
         """Write the freshly detected accounts to the DB and notify the frontend"""
         with self.database.user_write() as write_cursor:
+            # Removal may have happened after tracking but before this write.
+            added_accounts[:] = [
+                (chain, address) for chain, address in added_accounts
+                if address in self.accounts.get(chain)
+            ]
             self.database.add_blockchain_accounts(
                 write_cursor=write_cursor,
                 account_data=[BlockchainAccountData(chain=chain, address=address) for chain, address in added_accounts],  # noqa: E501

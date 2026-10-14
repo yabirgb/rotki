@@ -1,6 +1,7 @@
 import logging
 from collections import Counter, defaultdict
 from functools import cached_property
+from threading import Lock
 from typing import TYPE_CHECKING, Final
 
 from rotkehlchen.accounting.structures.balance import Balance, BalanceSheet
@@ -84,15 +85,24 @@ class HyperliquidManager(EvmManager):
     def _rate_limiter(self) -> TokenBucket:
         return create_weight_limiter()
 
+    @cached_property
+    def _listing_lock(self) -> Lock:
+        return Lock()
+
     @property
     def api(self) -> HyperliquidAPI:
         """A Core API client for one operation (balances, history, account detection).
 
-        Only the connection and the request weight limiter are shared between clients, so all
-        queries are paced against the same allowance. Market and DEX metadata is cached per
-        client, so that each operation sees newly listed markets and deployed DEXes.
+        Only the connection, the request weight limiter and the lock serializing list queries
+        are shared between clients, so all queries are paced against the same allowance. Market
+        and DEX metadata is cached per client, so that each operation sees newly listed markets
+        and deployed DEXes.
         """
-        return HyperliquidAPI(session=self._http_session, rate_limiter=self._rate_limiter)
+        return HyperliquidAPI(
+            session=self._http_session,
+            rate_limiter=self._rate_limiter,
+            listing_lock=self._listing_lock,
+        )
 
     def query_balances(
             self,

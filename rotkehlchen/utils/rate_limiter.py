@@ -64,6 +64,14 @@ class TokenBucket:
         self.tokens = min(self.capacity, self.tokens + (now - self.last_refill) * self.rps)
         self.last_refill = now
 
+    def charge(self, weight: int) -> None:
+        """Consume `weight` tokens without waiting, for a cost only known after the work is
+        done. The balance may go negative, in which case the next acquire waits until it has
+        refilled, so the debt is paid by whoever comes next instead of by the current caller."""
+        with self._lock:
+            self._refill()
+            self.tokens -= weight
+
     def acquire(self, weight: int = 1) -> None:
         """Block until `weight` tokens are available, then consume them. Sleeping is a
         cancellation checkpoint, so a cancelled task does not wait for a token.

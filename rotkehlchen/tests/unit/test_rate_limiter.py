@@ -1,4 +1,5 @@
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -116,3 +117,14 @@ def test_weighted_acquire() -> None:
 
     bucket.acquire(weight=1000)  # capped to the capacity of 10, so ~0.1s and not 10s
     assert time.monotonic() - start < 2.0
+
+
+def test_charge_goes_into_debt_that_the_next_acquire_waits_for() -> None:
+    bucket = TokenBucket(rps=10, capacity=10)
+    bucket.charge(15)  # does not wait
+    assert bucket.tokens < 0
+    with patch('rotkehlchen.utils.rate_limiter.cancellable_sleep') as sleep_mock:
+        sleep_mock.side_effect = lambda _: setattr(bucket, 'tokens', 1)
+        bucket.acquire()
+
+    assert sleep_mock.call_args.args[0] > 0.5  # (1 - (-5)) / 10 minus a little refill

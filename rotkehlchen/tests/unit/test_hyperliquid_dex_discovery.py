@@ -1,3 +1,4 @@
+import time
 from http import HTTPStatus
 from unittest.mock import MagicMock, call, patch
 
@@ -5,6 +6,7 @@ import requests
 
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.chain.evm.types import string_to_evm_address
+from rotkehlchen.concurrency import spawn, wait
 from rotkehlchen.errors.misc import RemoteError
 from rotkehlchen.externalapis.hyperliquid import EntryContext, HyperliquidAPI, ParsedFillEntry
 from rotkehlchen.fval import FVal
@@ -248,7 +250,8 @@ def test_requests_are_charged_their_weight() -> None:
         response.json.return_value = [{}] * 45
         api._post_info({'type': 'userFills'})
 
-    assert [c.args[0] for c in limiter.acquire.call_args_list] == [60, 2, 20, 20, 2]
+    assert [c.args[0] for c in limiter.acquire.call_args_list] == [60, 2, 20, 20]
+    assert [c.args[0] for c in limiter.charge.call_args_list] == [2]  # per 20 items returned
 
 
 def test_shared_session_and_limiter_but_separate_metadata() -> None:
@@ -275,22 +278,51 @@ def test_rate_limited_retries_are_charged_again() -> None:
     assert [c.args[0] for c in limiter.acquire.call_args_list] == [60, 60, 60]
 
 
-def test_paged_queries_reserve_their_worst_case_weight_before_sending() -> None:
-    """Concurrent history requests must not be dispatched on budget that their responses
-    will then consume, so the max page weight is reserved first and not given back later"""
+def test_list_queries_are_charged_for_their_actual_size() -> None:
+    """A list query only acquires its base weight, and the extra for the items it returned
+    is charged afterwards, so an empty page costs 20 and not the worst case page weight"""
     limiter = MagicMock()
     api = HyperliquidAPI(rate_limiter=limiter)
-    sent_after_acquire: list[int] = []
     response = MagicMock(status_code=HTTPStatus.OK)
-    response.json.return_value = [{}] * 45
-
-    def post(**kwargs: object) -> MagicMock:
-        sent_after_acquire.append(limiter.acquire.call_args.args[0])
-        return response
-
-    with patch.object(api.session, 'post', side_effect=post):
+    with patch.object(api.session, 'post', return_value=response):
+        response.json.return_value = []
+        api._post_info({'type': 'userFillsByTime'})
+        response.json.return_value = [{}] * 45
         api._post_info({'type': 'userFillsByTime'})
 
-    assert sent_after_acquire == [120]  # 20 + 2000 // 20 reserved before dispatch
-    limiter.acquire.assert_called_once()  # a response within the reservation costs no more
-    assert not limiter.refund.called
+    assert [c.args[0] for c in limiter.acquire.call_args_list] == [20, 20]
+    assert [c.args[0] for c in limiter.charge.call_args_list] == [0, 2]
+
+
+def test_empty_paged_queries_do_not_wait_on_a_fresh_limiter() -> None:
+    """The three requests of a history sync of an address without history don't wait"""
+    api = HyperliquidAPI()
+    response = MagicMock(status_code=HTTPStatus.OK, json=MagicMock(return_value=[]))
+    with patch.object(api.session, 'post', return_value=response), patch(
+        'rotkehlchen.utils.rate_limiter.cancellable_sleep',
+    ) as sleep_mock:
+        for query in ('userFunding', 'userNonFundingLedgerUpdates', 'userFillsByTime'):
+            api._post_info({'type': query})
+
+    sleep_mock.assert_not_called()
+
+
+def test_list_queries_do_not_overlap() -> None:
+    """Their weight is charged after the response, so only one may be in flight at a time, while
+    other queries are not held up by it"""
+    api = HyperliquidAPI()
+    in_flight, max_in_flight = [0], [0]
+
+    def post(**kwargs: object) -> MagicMock:
+        in_flight[0] += 1
+        max_in_flight[0] = max(max_in_flight[0], in_flight[0])
+        time.sleep(0.05)
+        in_flight[0] -= 1
+        return MagicMock(status_code=HTTPStatus.OK, json=MagicMock(return_value=[]))
+
+    with patch.object(api.session, 'post', side_effect=post):
+        wait([spawn(api._post_info, {'type': 'userFillsByTime'}) for _ in range(3)])
+        assert max_in_flight[0] == 1
+        max_in_flight[0] = 0
+        wait([spawn(api._post_info, {'type': 'spotMeta'}) for _ in range(3)])
+        assert max_in_flight[0] > 1

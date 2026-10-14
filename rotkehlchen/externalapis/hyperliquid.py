@@ -4,7 +4,8 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from http import HTTPStatus
-from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypedDict
+from threading import Lock
+from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypedDict, get_args
 
 import requests
 
@@ -91,24 +92,17 @@ HYPERLIQUID_REQUEST_WEIGHTS: Final = {
     'exchangeStatus': 2,
     'userRole': 60,
 }
-# Time range queries cost 1 extra weight for every this many items returned
+# Time range queries cost 1 extra weight for every this many items returned. That is only known
+# from the response, so only the base weight is acquired before sending and the extra is charged
+# afterwards, without waiting.
 HYPERLIQUID_ITEMS_PER_EXTRA_WEIGHT: Final = 20
-# The most items a page returns (see HYPERLIQUID_MIN_PAGE_CAP). The weight for them is reserved
-# before sending a paged query, since the size of the response is not known until it arrives
-# and concurrent requests must not be dispatched on budget the response will then consume.
-# The reservation is kept in full, as refunding it later would exceed the quota.
-HYPERLIQUID_MAX_PAGE_ITEMS: Final = 2000
-HYPERLIQUID_PAGED_QUERIES: Final = frozenset({
-    'userFunding',
-    'userNonFundingLedgerUpdates',
-    'userFillsByTime',
-})
 # Roles of accounts whose balances and history can be queried in Core
 HYPERLIQUID_CORE_ACCOUNT_ROLES: Final = ('user', 'vault', 'subAccount')
 # `agent` wallets only sign for another account, and `missing` has never been seen by Core
 HYPERLIQUID_CORE_NON_ACCOUNT_ROLES: Final = ('agent', 'missing')
 USDC_SYMBOL: Final = 'USDC'
 HistoryQueryType = Literal['userFunding', 'userNonFundingLedgerUpdates', 'userFillsByTime']
+HYPERLIQUID_LISTING_QUERIES: Final = frozenset(get_args(HistoryQueryType))
 
 
 class FundingDelta(TypedDict):
@@ -204,13 +198,16 @@ class HyperliquidAPI:
             self,
             session: requests.Session | None = None,
             rate_limiter: TokenBucket | None = None,
+            listing_lock: Lock | None = None,
     ) -> None:
-        """The session and weight limiter can be shared between clients to reuse the connection
-        and to account all requests against the same allowance. The metadata caches are always
-        per client so a long lived owner does not hold on to stale market/DEX metadata."""
+        """The session, weight limiter and listing lock can be shared between clients to reuse
+        the connection and to account all requests against the same allowance. The metadata
+        caches are always per client so a long lived owner does not hold on to stale
+        market/DEX metadata."""
         self.base_url = 'https://api.hyperliquid.xyz'
         self.session = session if session is not None else create_session()
         self.rate_limiter = rate_limiter if rate_limiter is not None else create_weight_limiter()
+        self.listing_lock = listing_lock if listing_lock is not None else Lock()
         self.arb_usdc = Asset('eip155:42161/erc20:0xaf88d065e77c8cC2239327C5EDb3A432268e5831')
         self._spot_market_to_base_symbol: dict[int, str] | None = None
         self._discovered_dex_names: list[str] | None = None
@@ -249,7 +246,21 @@ class HyperliquidAPI:
         return self._discovered_dex_names
 
     def _post_info(self, payload: dict[str, Any], wait_for_rate_limit: bool = False) -> Any:
-        """Query hyperliquid info endpoint.
+        """Query hyperliquid info endpoint. Queries whose weight depends on the number of
+        items returned go one at a time, since their weight is only charged once the response
+        arrives, and overlapping ones could together owe more than the limiter has accounted.
+
+        May raise:
+            - RemoteError
+        """
+        if payload.get('type') not in HYPERLIQUID_LISTING_QUERIES:
+            return self._send_info(payload=payload, wait_for_rate_limit=wait_for_rate_limit)
+
+        with self.listing_lock:
+            return self._send_info(payload=payload, wait_for_rate_limit=wait_for_rate_limit)
+
+    def _send_info(self, payload: dict[str, Any], wait_for_rate_limit: bool) -> Any:
+        """Send a single info request, paced by the weight limiter.
 
         A rate limited request is retried with a growing backoff up to the configured query
         retry limit. With `wait_for_rate_limit` it keeps retrying for at least the length of
@@ -265,16 +276,12 @@ class HyperliquidAPI:
             str(payload.get('type')),
             HYPERLIQUID_DEFAULT_REQUEST_WEIGHT,
         )
-        request_weight = base_weight + (
-            HYPERLIQUID_MAX_PAGE_ITEMS // HYPERLIQUID_ITEMS_PER_EXTRA_WEIGHT
-            if payload.get('type') in HYPERLIQUID_PAGED_QUERIES else 0
-        )
         cached_settings = CachedSettings()
         timeout = cached_settings.get_timeout_tuple()
         min_attempts = max(1, cached_settings.get_query_retry_limit())
         backoff = slept = attempts = 0
         while True:
-            self.rate_limiter.acquire(request_weight)  # every request, retries included
+            self.rate_limiter.acquire(base_weight)  # every request, retries included
             try:
                 response = self.session.post(
                     url=f'{self.base_url}/info',
@@ -327,13 +334,10 @@ class HyperliquidAPI:
                     f'Failed to decode hyperliquid JSON response: {response.text[:200]}',
                 ) from e
 
-            if isinstance(data, list):  # queries cost extra per items returned
-                # Unused reservation is deliberately not refunded. The bucket has already
-                # refilled by the time the response arrives, so giving it back would hand out
-                # budget the server's per minute window has not freed yet.
-                cost = base_weight + len(data) // HYPERLIQUID_ITEMS_PER_EXTRA_WEIGHT
-                if cost > request_weight:  # more than what was reserved
-                    self.rate_limiter.acquire(cost - request_weight)
+            if isinstance(data, list):
+                # Charge the weight for the items returned without waiting, so that the
+                # next request is the one that gets paced by it.
+                self.rate_limiter.charge(len(data) // HYPERLIQUID_ITEMS_PER_EXTRA_WEIGHT)
 
             return data
 
