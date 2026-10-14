@@ -13,11 +13,12 @@ from rotkehlchen.db.history_events import DBHistoryEvents
 from rotkehlchen.db.ranges import DBQueryRanges
 from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.errors.misc import RemoteError
-from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI
+from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI, create_weight_limiter
 from rotkehlchen.history.events.utils import create_group_identifier_from_unique_id
 from rotkehlchen.inquirer import Inquirer
 from rotkehlchen.logging import RotkehlchenLogsAdapter
 from rotkehlchen.types import Location
+from rotkehlchen.utils.network import create_session
 
 from .accountant import HyperliquidAccountingAggregator
 from .decoding.decoder import HyperliquidTransactionDecoder
@@ -27,9 +28,12 @@ from .transactions import HyperliquidTransactions
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
+    from requests import Session
+
     from rotkehlchen.history.events.structures.base import HistoryBaseEntry
     from rotkehlchen.premium.premium import Premium
     from rotkehlchen.types import ChecksumEvmAddress, Timestamp
+    from rotkehlchen.utils.rate_limiter import TokenBucket
 
     from .node_inquirer import HyperliquidInquirer
 
@@ -73,10 +77,22 @@ class HyperliquidManager(EvmManager):
         self.node_inquirer: HyperliquidInquirer
 
     @cached_property
+    def _http_session(self) -> Session:
+        return create_session()
+
+    @cached_property
+    def _rate_limiter(self) -> TokenBucket:
+        return create_weight_limiter()
+
+    @property
     def api(self) -> HyperliquidAPI:
-        """Core API client, shared with the account detection to reuse the connection
-        and pace rate limited queries. Created on first use."""
-        return HyperliquidAPI()
+        """A Core API client for one operation (balances, history, account detection).
+
+        Only the connection and the request weight limiter are shared between clients, so all
+        queries are paced against the same allowance. Market and DEX metadata is cached per
+        client, so that each operation sees newly listed markets and deployed DEXes.
+        """
+        return HyperliquidAPI(session=self._http_session, rate_limiter=self._rate_limiter)
 
     def query_balances(
             self,

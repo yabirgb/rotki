@@ -18,14 +18,12 @@ from rotkehlchen.chain.evm.types import (
 )
 from rotkehlchen.constants import DEFAULT_BALANCE_LABEL, ONE
 from rotkehlchen.constants.assets import A_ETH
-from rotkehlchen.constants.timing import (
-    EVMLIKE_ACCOUNTS_DETECTION_REFRESH,
-    EVMLIKE_ACCOUNTS_DETECTION_RETRY,
-)
+from rotkehlchen.constants.timing import EVMLIKE_ACCOUNTS_DETECTION_RETRY
 from rotkehlchen.db.addressbook import DBAddressbook
 from rotkehlchen.db.cache import DBCacheDynamic, DBCacheStatic
-from rotkehlchen.errors.misc import NoAvailableIndexers, RemoteError
+from rotkehlchen.errors.misc import NoAvailableIndexers, RecoverableRemoteError, RemoteError
 from rotkehlchen.externalapis.etherscan_like import HasChainActivity
+from rotkehlchen.externalapis.hyperliquid import HyperliquidAPI
 from rotkehlchen.fval import FVal
 from rotkehlchen.tests.utils.blockchain import setup_evm_addresses_activity_mock
 from rotkehlchen.tests.utils.factories import make_evm_address
@@ -37,6 +35,7 @@ from rotkehlchen.types import (
     ChecksumEvmAddress,
     OptionalChainAddress,
     SupportedBlockchain,
+    Timestamp,
 )
 from rotkehlchen.utils.misc import ts_now
 
@@ -522,7 +521,7 @@ def test_hyperliquid_activity_checks_core(
             side_effect=[evm_result],
         ),
         patch.object(
-            blockchain.hyperliquid.api,
+            HyperliquidAPI,
             'has_core_activity',
             side_effect=[core_result],
         ),
@@ -533,48 +532,110 @@ def test_hyperliquid_activity_checks_core(
         ) is expected
 
 
-@pytest.mark.parametrize(('error', 'retries_sooner'), [
-    (RemoteError('rate limited'), True),
+@pytest.mark.parametrize(('error', 'is_retried'), [
+    (RecoverableRemoteError('rate limited'), True),
+    (RemoteError('malformed response'), False),  # permanent errors wait for the full detection
     (NoAvailableIndexers('no indexer'), False),  # won't go away by itself
 ])
-def test_detect_evm_accounts_retries_sooner_after_recoverable_failures(
+def test_detect_evm_accounts_retries_only_failed_pairs(
         blockchain: ChainsAggregator,
         error: RemoteError,
-        retries_sooner: bool,
+        is_retried: bool,
 ) -> None:
-    """If an activity check fails with a recoverable error the detection timestamp is
-    backdated, so the periodic detection retries after EVMLIKE_ACCOUNTS_DETECTION_RETRY
-    and not after a full day. Unrecoverable errors keep the usual refresh period."""
+    """Only recoverable failures are retried, and only for the failed (address, chain) pairs.
+    The timestamp of the full detection is not touched by the failures."""
     with blockchain.database.user_write() as write_cursor:
         blockchain.modify_blockchain_accounts(
             write_cursor=write_cursor,
             blockchain=SupportedBlockchain.ETHEREUM,
-            accounts=[make_evm_address()],
+            accounts=[(address := make_evm_address())],
             append_or_remove='append',
         )
 
-    def detect(failure: RemoteError | None) -> int:
-        with patch.object(
-            blockchain.hyperliquid.node_inquirer,
-            'has_activity',
-            **({'side_effect': failure} if failure else {'return_value': HasChainActivity.NONE}),
-        ), patch.object(
-            blockchain.hyperliquid.api,
-            'has_core_activity',
-            return_value=False,
-        ):
-            blockchain.detect_evm_accounts(chains=[SupportedBlockchain.HYPERLIQUID])
+    with patch.object(
+        blockchain.hyperliquid.node_inquirer,
+        'has_activity',
+        side_effect=error,
+    ), patch.object(HyperliquidAPI, 'has_core_activity', side_effect=error):
+        blockchain.detect_evm_accounts(chains=[SupportedBlockchain.HYPERLIQUID])
 
-        with blockchain.database.conn.read_ctx() as cursor:
-            return ts_now() - int(cursor.execute(
-                'SELECT value FROM key_value_cache WHERE name=?',
-                (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value,),
-            ).fetchone()[0])
+    with blockchain.database.conn.read_ctx() as cursor:
+        assert ts_now() - int(cursor.execute(
+            'SELECT value FROM key_value_cache WHERE name=?',
+            (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value,),
+        ).fetchone()[0]) < 10  # full detection timestamp is never backdated
 
-    assert detect(failure=None) < 10  # no failure -> not backdated
-    elapsed = detect(failure=error)
-    if retries_sooner:
-        backdated = EVMLIKE_ACCOUNTS_DETECTION_REFRESH - EVMLIKE_ACCOUNTS_DETECTION_RETRY
-        assert backdated <= elapsed < backdated + 10
+    failed_pairs = set(blockchain._recoverable_activity_failures)
+    if is_retried:
+        assert (address, SupportedBlockchain.HYPERLIQUID) in failed_pairs
+        assert {chain for _, chain in failed_pairs} == {SupportedBlockchain.HYPERLIQUID}
     else:
-        assert elapsed < 10
+        assert failed_pairs == set()
+
+    assert blockchain.should_retry_activity_checks() is False  # not due yet
+    if is_retried:
+        blockchain._next_activity_retry_ts = Timestamp(ts_now() - 1)
+        assert blockchain.should_retry_activity_checks() is True
+
+    with patch.object(
+        blockchain.hyperliquid.node_inquirer,
+        'has_activity',
+        return_value=HasChainActivity.NONE,
+    ) as evm_mock, patch.object(
+        HyperliquidAPI,
+        'has_core_activity',
+        return_value=True,
+    ):
+        added = blockchain.retry_failed_activity_checks()
+
+    # only the failed pairs were checked again, not every untracked address/chain combination
+    assert evm_mock.call_count == len(failed_pairs)
+    assert {(chain, account) for chain, account in added} == {
+        (chain, account) for account, chain in failed_pairs
+    }
+    for account, chain in failed_pairs:
+        assert account in blockchain.accounts.get(chain)
+
+    assert blockchain.should_retry_activity_checks() is False
+
+
+def test_recoverable_failure_outside_detection_is_not_retried_immediately(
+        blockchain: ChainsAggregator,
+) -> None:
+    """A recoverable failure from any path (e.g. adding an account) schedules the retry after
+    EVMLIKE_ACCOUNTS_DETECTION_RETRY, instead of making the next scheduler tick retry it."""
+    with patch.object(
+        blockchain.hyperliquid.node_inquirer,
+        'has_activity',
+        side_effect=RecoverableRemoteError('timeout'),
+    ), patch.object(HyperliquidAPI, 'has_core_activity', side_effect=RecoverableRemoteError('x')):
+        assert blockchain._check_single_chain_activity(
+            address=(address := make_evm_address()),
+            chain=SupportedBlockchain.HYPERLIQUID,
+        ) is None
+
+    assert (address, SupportedBlockchain.HYPERLIQUID) in blockchain._recoverable_activity_failures
+    assert blockchain.should_retry_activity_checks() is False
+    assert blockchain._next_activity_retry_ts >= ts_now() + EVMLIKE_ACCOUNTS_DETECTION_RETRY - 10
+
+
+def test_retry_skips_chains_excluded_from_detection_since_the_failure(
+        blockchain: ChainsAggregator,
+) -> None:
+    with blockchain.database.user_write() as write_cursor:
+        blockchain.modify_blockchain_accounts(
+            write_cursor=write_cursor,
+            blockchain=SupportedBlockchain.ETHEREUM,
+            accounts=[(address := make_evm_address())],
+            append_or_remove='append',
+        )
+
+    blockchain._recoverable_activity_failures = {(address, SupportedBlockchain.HYPERLIQUID)}
+    with (
+        patch.object(blockchain.database, 'get_chains_to_detect_evm_accounts', return_value=[]),
+        patch.object(blockchain, 'check_chains_and_add_accounts') as check_mock,
+    ):
+        assert blockchain.retry_failed_activity_checks() == []
+
+    assert check_mock.call_count == 0
+    assert blockchain._recoverable_activity_failures == set()

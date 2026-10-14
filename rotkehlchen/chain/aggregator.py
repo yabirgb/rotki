@@ -76,7 +76,6 @@ from rotkehlchen.constants import DEFAULT_BALANCE_LABEL, ONE, ZERO
 from rotkehlchen.constants.assets import A_BCH, A_BTC, A_DAI, A_ETH, A_ETH2
 from rotkehlchen.constants.prices import ZERO_PRICE
 from rotkehlchen.constants.timing import (
-    EVMLIKE_ACCOUNTS_DETECTION_REFRESH,
     EVMLIKE_ACCOUNTS_DETECTION_RETRY,
     HOUR_IN_SECONDS,
 )
@@ -87,14 +86,11 @@ from rotkehlchen.db.queried_addresses import QueriedAddresses
 from rotkehlchen.db.settings import CachedSettings
 from rotkehlchen.errors.asset import UnknownAsset, WrongAssetType
 from rotkehlchen.errors.misc import (
-    APIKeyNotAvailable,
-    ChainNotSupported,
     EthSyncError,
-    IndexerRangeNotCovered,
     InputError,
     ModuleInactive,
     ModuleInitializationFailure,
-    NoAvailableIndexers,
+    RecoverableRemoteError,
     RemoteError,
 )
 from rotkehlchen.externalapis.etherscan_like import HasChainActivity
@@ -316,8 +312,9 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         self.base = base_manager
         self.hyperliquid = hyperliquid_manager
         # (address, chain) of activity checks that failed with an error that may go away
-        # soon (e.g. rate limits), so that the detection can be retried earlier
+        # soon (e.g. rate limits). Only these pairs are retried, ahead of the next full detection
         self._recoverable_activity_failures: set[tuple[ChecksumEvmAddress, SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = set()  # noqa: E501
+        self._next_activity_retry_ts: Timestamp = Timestamp(0)
         self.gnosis = gnosis_manager
         self.scroll = scroll_manager
         self.binance_sc = binance_sc_manager
@@ -1460,11 +1457,15 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             error: RemoteError,
     ) -> None:
         """Log a failed activity check and remember it if retrying soon can help.
-        Errors due to missing configuration or unsupported ranges won't go away by themselves.
+        Only errors that are explicitly recoverable (rate limits, timeouts, 5xx) are remembered.
+        Missing configuration, unsupported ranges, client errors and malformed responses
+        won't go away by themselves so they wait for the next full detection.
         """
         log.error('%s when checking if %s is active at %s', error, address, chain)
-        if not isinstance(error, APIKeyNotAvailable | ChainNotSupported | IndexerRangeNotCovered | NoAvailableIndexers):  # noqa: E501
+        if isinstance(error, RecoverableRemoteError):
             self._recoverable_activity_failures.add((address, chain))
+            if self._next_activity_retry_ts <= (now := ts_now()):  # no retry is scheduled yet
+                self._next_activity_retry_ts = Timestamp(now + EVMLIKE_ACCOUNTS_DETECTION_RETRY)
 
     def _has_hyperliquid_core_activity(self, address: ChecksumEvmAddress) -> bool | None:
         """Check Hyperliquid Core activity. Returns None if the query failed."""
@@ -1690,6 +1691,70 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         if progress_handler is not None:
             progress_handler.new_step('Potentially write migrated addresses to the DB')
 
+        self._save_detected_accounts(added_accounts)
+        with self.database.user_write() as cursor:
+            cursor.execute(  # remember last time evm addresses were detected
+                'INSERT OR REPLACE INTO key_value_cache (name, value) VALUES (?, ?)',
+                (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value, str(ts_now())),
+            )
+
+        self._schedule_activity_retry()
+        return added_accounts
+
+    def _schedule_activity_retry(self) -> None:
+        """If some checks failed with recoverable errors schedule a targeted retry of
+        only those, without touching the schedule of the full detection."""
+        self._next_activity_retry_ts = Timestamp(
+            ts_now() + EVMLIKE_ACCOUNTS_DETECTION_RETRY
+            if len(self._recoverable_activity_failures) != 0 else 0,
+        )
+
+    def should_retry_activity_checks(self) -> bool:
+        """Whether there are failed activity checks whose retry is due"""
+        return (
+            len(self._recoverable_activity_failures) != 0 and
+            ts_now() >= self._next_activity_retry_ts
+        )
+
+    def retry_failed_activity_checks(self) -> list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]]:  # noqa: E501
+        """Recheck only the (address, chain) pairs whose activity check failed with a
+        recoverable error during a previous detection, and start tracking the active ones.
+
+        Returns a list of tuples of (chain, address) for the freshly detected accounts.
+        """
+        pending, self._recoverable_activity_failures = self._recoverable_activity_failures, set()
+        tracked = {
+            account
+            for chain in SUPPORTED_EVM_EVMLIKE_CHAINS
+            for account in self.accounts.get(chain)
+        }
+        chains_by_address: defaultdict[ChecksumEvmAddress, list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]] = defaultdict(list)  # noqa: E501
+        allowed_chains = set(self.database.get_chains_to_detect_evm_accounts())
+        for address, chain in pending:
+            if (
+                chain in allowed_chains and  # the user may have excluded it since it failed
+                address in tracked and
+                address not in self.accounts.get(chain)
+            ):
+                chains_by_address[address].append(chain)
+
+        added_accounts: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]] = []
+        for address, chains in chains_by_address.items():
+            new_added_accounts, _, _ = self.check_chains_and_add_accounts(
+                account=address,
+                chains=chains,
+            )
+            added_accounts += new_added_accounts
+
+        self._save_detected_accounts(added_accounts)
+        self._schedule_activity_retry()
+        return added_accounts
+
+    def _save_detected_accounts(
+            self,
+            added_accounts: list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
+    ) -> None:
+        """Write the freshly detected accounts to the DB and notify the frontend"""
         with self.database.user_write() as write_cursor:
             self.database.add_blockchain_accounts(
                 write_cursor=write_cursor,
@@ -1703,19 +1768,6 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 for chain, address in added_accounts
             ],
         )
-
-        # If some check failed with a recoverable error (e.g. rate limited), backdate the
-        # timestamp so that the periodic detection retries sooner than the usual refresh period.
-        last_detect_ts: int = ts_now()
-        if len(self._recoverable_activity_failures) != 0:
-            last_detect_ts -= EVMLIKE_ACCOUNTS_DETECTION_REFRESH - EVMLIKE_ACCOUNTS_DETECTION_RETRY
-        with self.database.user_write() as cursor:
-            cursor.execute(  # remember last time evm addresses were detected
-                'INSERT OR REPLACE INTO key_value_cache (name, value) VALUES (?, ?)',
-                (DBCacheStatic.LAST_EVM_ACCOUNTS_DETECT_TS.value, str(last_detect_ts)),
-            )
-
-        return added_accounts
 
     def iterate_chain_managers_with_nodes(self) -> Iterator[ChainManagerWithNodesMixin]:
         """Iterate the supported evm chain managers"""

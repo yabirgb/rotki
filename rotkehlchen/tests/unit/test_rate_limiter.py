@@ -101,3 +101,18 @@ def test_reset_can_shrink_or_grow() -> None:
     assert bucket.capacity == 8
     # Outstanding tokens are clamped to the new capacity, never raised above it.
     assert bucket.tokens <= 8
+
+
+def test_weighted_acquire() -> None:
+    """A weighted acquire consumes that many tokens at once and waits for all of them. A weight
+    above the capacity is capped to it so that it can't wait forever."""
+    bucket = TokenBucket(rps=100, capacity=10)
+    start = time.monotonic()
+    bucket.acquire(weight=10)  # drains the burst instantly
+    assert time.monotonic() - start < 0.5
+
+    bucket.acquire(weight=5)  # needs 5 tokens at 100 per second
+    assert 0.04 < time.monotonic() - start < 1.0
+
+    bucket.acquire(weight=1000)  # capped to the capacity of 10, so ~0.1s and not 10s
+    assert time.monotonic() - start < 2.0
