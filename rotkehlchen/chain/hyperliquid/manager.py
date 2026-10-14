@@ -1,6 +1,5 @@
 import logging
 from collections import Counter, defaultdict
-from functools import cached_property
 from threading import Lock
 from typing import TYPE_CHECKING, Final
 
@@ -76,18 +75,11 @@ class HyperliquidManager(EvmManager):
             ),
         )
         self.node_inquirer: HyperliquidInquirer
-
-    @cached_property
-    def _http_session(self) -> Session:
-        return create_session()
-
-    @cached_property
-    def _rate_limiter(self) -> TokenBucket:
-        return create_weight_limiter()
-
-    @cached_property
-    def _listing_lock(self) -> Lock:
-        return Lock()
+        # Created eagerly: history, balances and detection may request clients concurrently
+        # and lazy initialization would hand each of them its own session, limiter and lock.
+        self._http_session: Session = create_session()
+        self._rate_limiter: TokenBucket = create_weight_limiter()
+        self._listing_lock: Lock = Lock()
 
     @property
     def api(self) -> HyperliquidAPI:

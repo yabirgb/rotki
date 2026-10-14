@@ -12,7 +12,11 @@ from web3.exceptions import BadFunctionCallOutput, Web3Exception
 from rotkehlchen.accounting.structures.balance import Balance, BalanceSheet
 from rotkehlchen.api.websockets.typedefs import WSMessageType
 from rotkehlchen.assets.asset import Asset, CryptoAsset
-from rotkehlchen.chain.accounts import BlockchainAccountData, BlockchainAccounts
+from rotkehlchen.chain.accounts import (
+    BlockchainAccountData,
+    BlockchainAccounts,
+    SingleBlockchainAccountData,
+)
 from rotkehlchen.chain.activity_retries import ActivityRetryTracker
 from rotkehlchen.chain.arbitrum_one.modules.gearbox.balances import (
     GearboxBalances as GearboxBalancesArbitrumOne,
@@ -127,7 +131,7 @@ from rotkehlchen.utils.mixins.cacheable import CacheableMixIn, cache_response_ti
 from rotkehlchen.utils.mixins.lockable import LockableQueryMixIn, protect_with_lock
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
     from pathlib import Path
 
     from rotkehlchen.chain.arbitrum_one.manager import ArbitrumOneManager
@@ -1402,9 +1406,12 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             self,
             address: ChecksumEvmAddress,
             chain: SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
     ) -> bool | None:
         """Checks whether address is active in the given chain.
         Returns True if active, False if not and None if we couldn't query the chain.
+        The submission is what the user added the address with, if they did. It is kept with
+        a recoverable failure so that the retry can use it.
         """
         chain_manager = self.get_chain_manager(chain)
         try:
@@ -1444,10 +1451,15 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
 
                 # A positive Core result is enough, but if Core is inactive or also fails
                 # the HyperEVM failure must not be mistaken for inactivity.
-                if self._has_hyperliquid_core_activity(address) is True:
+                if self._has_hyperliquid_core_activity(address, submission) is True:
                     return True
 
-                self._activity_check_failed(address=address, chain=chain, error=e)
+                self._activity_check_failed(
+                    address=address,
+                    chain=chain,
+                    error=e,
+                    submission=submission,
+                )
                 return None
 
             only_token_spam = (
@@ -1458,9 +1470,14 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 chain == SupportedBlockchain.HYPERLIQUID and
                 (only_token_spam or chain_activity == HasChainActivity.NONE)
             ):  # no HyperEVM activity. Check Hyperliquid Core too
-                return self._has_hyperliquid_core_activity(address)
+                return self._has_hyperliquid_core_activity(address, submission)
         except RemoteError as e:
-            self._activity_check_failed(address=address, chain=chain, error=e)
+            self._activity_check_failed(
+                address=address,
+                chain=chain,
+                error=e,
+                submission=submission,
+            )
             return None
         else:
             return not (only_token_spam or chain_activity == HasChainActivity.NONE)
@@ -1470,6 +1487,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             address: ChecksumEvmAddress,
             chain: SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE,
             error: RemoteError,
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
     ) -> None:
         """Log a failed activity check and remember it if retrying soon can help.
         Only errors that are explicitly recoverable (rate limits, timeouts, 5xx) are remembered.
@@ -1478,9 +1496,13 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         """
         log.error('%s when checking if %s is active at %s', error, address, chain)
         if isinstance(error, RecoverableRemoteError):
-            self._activity_retries.record_failures([(address, chain)])
+            self._activity_retries.record_failures([(address, chain)], submission=submission)
 
-    def _has_hyperliquid_core_activity(self, address: ChecksumEvmAddress) -> bool | None:
+    def _has_hyperliquid_core_activity(
+            self,
+            address: ChecksumEvmAddress,
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
+    ) -> bool | None:
         """Check Hyperliquid Core activity. Returns None if the query failed."""
         try:
             return self.hyperliquid.api.has_core_activity(address=address)
@@ -1489,6 +1511,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 address=address,
                 chain=SupportedBlockchain.HYPERLIQUID,
                 error=e,
+                submission=submission,
             )
             return None
 
@@ -1496,6 +1519,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             self,
             address: ChecksumEvmAddress,
             chains: list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE],
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
     ) -> tuple[list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE], list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE]]:
         """Checks whether address is active in the given chains.
         Returns a list of active chains and a list of chains where we couldn't query info
@@ -1509,7 +1533,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         active_chains = []
         failed_to_query_chains: list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE] = []
         tasks = {
-            chain: spawn(self._check_single_chain_activity, address, chain)
+            chain: spawn(self._check_single_chain_activity, address, chain, submission)
             for chain in chains
         }
         wait(list(tasks.values()))
@@ -1563,6 +1587,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             account: ChecksumEvmAddress,
             chains: list[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE],
             is_retry: bool = False,
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
     ) -> tuple[
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
@@ -1578,6 +1603,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
         active_chains, failed_to_query_chains = self.check_single_address_activity(
             address=account,
             chains=chains,
+            submission=submission,
         )
         if len(active_chains) == 0:
             return [], [], False
@@ -1599,6 +1625,7 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
     def add_accounts_to_all_evm(
             self,
             accounts: list[ChecksumEvmAddress],
+            account_data: Mapping[ChecksumEvmAddress, SingleBlockchainAccountData[ChecksumEvmAddress]] | None = None,  # noqa: E501
     ) -> tuple[
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
             list[tuple[SUPPORTED_EVM_EVMLIKE_CHAINS_TYPE, ChecksumEvmAddress]],
@@ -1607,6 +1634,10 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             set[ChecksumEvmAddress],
     ]:
         """Adds each account for all evm chains.
+
+        The account data is the label and tags the user submitted the accounts with. It is
+        kept with the activity checks that fail recoverably, so that a delayed retry can add
+        the account with them.
 
         Returns four lists and one set:
         - list of (chain, address) tuples for all newly added addresses.
@@ -1650,6 +1681,8 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             new_accounts, new_failed_accounts, had_activity = self.check_chains_and_add_accounts(
                 account=account,
                 chains=chains_with_valid_addresses,
+                # explicitly submitted, so recorded as such from the very first failure
+                submission=(account_data or {}).get(account) or SingleBlockchainAccountData(address=account),  # noqa: E501
             )
 
             if had_activity is True:
@@ -1658,8 +1691,6 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
             elif had_activity is False and len(chains_with_valid_addresses) != 0:
                 no_activity_accounts += [(chain, account) for chain in chains_with_valid_addresses]
 
-        # checks that failed recoverably are retried even if the address was not tracked anywhere
-        self._activity_retries.mark_submitted(accounts)
         return (
             added_accounts,
             existed_accounts,
@@ -1776,9 +1807,32 @@ class ChainsAggregator(CacheableMixIn, LockableQueryMixIn):
                 (chain, address) for chain, address in added_accounts
                 if address in self.accounts.get(chain)
             ]
+            existing_tags = {
+                tag.lower(): tag for tag in self.database.get_tags(write_cursor)
+            }
+            account_data = []
+            batch_chains = {(chain, address) for chain, address in added_accounts}
+            for chain, address in added_accounts:
+                # The submission only matters if this is what first starts tracking the address.
+                # Otherwise it was applied when the address was added, and tag mappings are per
+                # address, so applying it again would undo the user's later edits.
+                submission = None if any(
+                    (other, address) not in batch_chains and address in self.accounts.get(other)
+                    for other in SUPPORTED_EVM_EVMLIKE_CHAINS
+                ) else self._activity_retries.get_submission(address)
+                account_data.append(BlockchainAccountData(
+                    chain=chain,
+                    address=address,
+                    label=None if submission is None else submission.label,
+                    # tags deleted since the submission can't be mapped anymore
+                    tags=None if submission is None or submission.tags is None else [
+                        existing_tags[tag.lower()]
+                        for tag in submission.tags if tag.lower() in existing_tags
+                    ],
+                ))
             self.database.add_blockchain_accounts(
                 write_cursor=write_cursor,
-                account_data=[BlockchainAccountData(chain=chain, address=address) for chain, address in added_accounts],  # noqa: E501
+                account_data=account_data,
             )
 
         self.msg_aggregator.add_message(

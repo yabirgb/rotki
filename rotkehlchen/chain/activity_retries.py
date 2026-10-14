@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from threading import Lock
 from typing import TYPE_CHECKING, Final
 
+from rotkehlchen.chain.accounts import SingleBlockchainAccountData
 from rotkehlchen.constants.timing import EVMLIKE_ACCOUNTS_DETECTION_RETRY
 from rotkehlchen.db.cache import DBCacheStatic
 from rotkehlchen.logging import RotkehlchenLogsAdapter
@@ -39,6 +40,8 @@ class ActivityRetryTracker:
     Each pending check also remembers whether the address was explicitly submitted by the user.
     Such addresses may not be tracked on any chain yet (they were inactive everywhere else), so
     they can't be found by the full detection, which only scans tracked addresses.
+    The label and tags they were submitted with are kept too, so that they are not lost when a
+    delayed retry is the one that starts tracking the address.
     """
 
     def __init__(self, database: DBHandler) -> None:
@@ -47,6 +50,8 @@ class ActivityRetryTracker:
         self._pending: dict[ActivityCheck, bool] = {}  # check -> was explicitly submitted
         # None values invalidate responses for checks removed while a retry is running.
         self._in_flight: dict[ActivityCheck, bool | None] | None = None
+        # address -> what the user submitted it with. Only for addresses with a pending check.
+        self._submissions: dict[ChecksumEvmAddress, SingleBlockchainAccountData[ChecksumEvmAddress]] = {}  # noqa: E501
         self._due_ts: Timestamp = Timestamp(0)
         self._load()
 
@@ -65,9 +70,18 @@ class ActivityRetryTracker:
                 for entry in data['checks']
             }
             self._due_ts = Timestamp(int(data['due_ts']))
+            # absent in the state written before submissions were stored
+            self._submissions = {
+                (address := ChecksumEvmAddress(entry['address'])): SingleBlockchainAccountData(
+                    address=address,
+                    label=entry['label'],
+                    tags=entry['tags'],
+                ) for entry in data.get('submissions', [])
+            }
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             log.error('Dropping unreadable pending EVM activity checks %s due to %s', raw, e)
             self._pending = {}
+            self._submissions = {}
             self._due_ts = Timestamp(0)
 
     @contextmanager
@@ -91,6 +105,12 @@ class ActivityRetryTracker:
             check: submitted for check, submitted in (self._in_flight or {}).items()
             if submitted is not None
         } | self._pending
+        # forget the submissions that no check refers to anymore
+        referenced = {address for address, _ in checks}
+        self._submissions = {
+            address: submission for address, submission in self._submissions.items()
+            if address in referenced
+        }
         if len(checks) == 0:
             write_cursor.execute('DELETE FROM key_value_cache WHERE name=?', (_STATE_KEY.value,))
             return
@@ -104,6 +124,10 @@ class ActivityRetryTracker:
                     {'address': address, 'chain': chain.value, 'submitted': submitted}
                     for (address, chain), submitted in checks.items()
                 ],
+                'submissions': [
+                    {'address': address, 'label': submission.label, 'tags': submission.tags}
+                    for address, submission in self._submissions.items()
+                ],
             }),
         )
 
@@ -111,8 +135,13 @@ class ActivityRetryTracker:
             self,
             failures: Collection[ActivityCheck],
             submitted: bool = False,
+            submission: SingleBlockchainAccountData[ChecksumEvmAddress] | None = None,
     ) -> None:
-        """Remember failed checks and schedule their retry if none is scheduled yet"""
+        """Remember failed checks and schedule their retry if none is scheduled yet.
+        A given submission marks the checks of its address as explicitly submitted, and is
+        stored together with them from the very first moment, so that it survives an
+        interruption of the operation that recorded the failure."""
+        submitted = submitted or submission is not None
         if len(failures) == 0:
             return
 
@@ -123,6 +152,8 @@ class ActivityRetryTracker:
                     self._in_flight[check] is None
                 ):
                     continue  # removed during the request: ignore its late failure
+                if submission is not None and check[0] == submission.address:
+                    self._submissions[submission.address] = submission
                 # a submitted check stays submitted even if a later failure is a detection one
                 self._pending[check] = submitted or self._pending.get(check, False) or bool(
                     (self._in_flight or {}).get(check),
@@ -130,19 +161,13 @@ class ActivityRetryTracker:
             self._schedule_if_needed()
             self._write_state(write_cursor)
 
-    def mark_submitted(self, addresses: Collection[ChecksumEvmAddress]) -> None:
-        """Mark the pending checks of explicitly submitted addresses, so that they are
-        retried even if the address ends up not being tracked on any chain"""
-        with self._locked() as write_cursor:
-            if len(marked := [
-                check for check, submitted in self._pending.items()
-                if not submitted and check[0] in addresses
-            ]) == 0:
-                return
-
-            for check in marked:
-                self._pending[check] = True
-            self._write_state(write_cursor)
+    def get_submission(
+            self,
+            address: ChecksumEvmAddress,
+    ) -> SingleBlockchainAccountData[ChecksumEvmAddress] | None:
+        """What the user submitted the address with, if it has a pending check"""
+        with self._lock:
+            return self._submissions.get(address)
 
     def _schedule_if_needed(self) -> None:
         if self._due_ts <= (now := ts_now()):  # no retry is scheduled yet
